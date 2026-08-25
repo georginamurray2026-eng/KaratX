@@ -1,11 +1,27 @@
 /**
  * `@karatx/providers` - adapters for market data, calendar, news, LLM and
- * notifications.
+ * notifications, plus the application logger.
  *
  * Every external response is validated at this boundary before it enters the
- * domain (SEC-3). Malformed input is quarantined, never repaired (section 7).
+ * domain (SEC-3). Malformed input is quarantined, never repaired (F.2).
  *
  * The market-data adapter lands in T1.4/T1.7 against OANDA v20 (ADR-005).
  */
+
+export { getCorrelationId, withCorrelationId } from './correlation.js'
+export {
+  createLogger,
+  LOG_LEVELS,
+  type CreateLoggerOptions,
+  type LogLevel,
+  type Logger,
+} from './logger.js'
+export {
+  createSecretScrubber,
+  MIN_SECRET_LENGTH,
+  REDACTED,
+  REDACTED_FIELD_PATHS,
+  type SecretScrubber,
+} from './redact.js'
 
 export const PROVIDERS_PACKAGE_NAME = '@karatx/providers' as const

@@ -38,6 +38,39 @@ export default tseslint.config(
     },
   },
 
+  // T0.5 acceptance criterion: "Zero empty catch blocks anywhere in the repo."
+  //
+  // `no-empty` already arrives via js.configs.recommended and already covers
+  // catch blocks, so this changes no current behaviour. It is pinned
+  // explicitly with `allowEmptyCatch: false` so that the guarantee is a stated
+  // decision rather than an inherited default that a future config change
+  // could relax without anyone noticing.
+  //
+  // A swallowed error is how a system ends up confidently wrong: the failure
+  // happened, nothing recorded it, and the next layer proceeds on bad data.
+  //
+  // `no-empty` alone is not quite enough: it counts a comment as content, so
+  // `catch { /* ignored */ }` passes it while still swallowing the error. The
+  // selector below looks at the block's statements, which comments are not
+  // part of, and therefore rejects that form too.
+  //
+  // A genuinely justified empty catch remains possible, but it now costs an
+  // explicit `eslint-disable` - which T0.2's require-description rule forces
+  // to carry a reason. That is the intended friction.
+  {
+    rules: {
+      'no-empty': ['error', { allowEmptyCatch: false }],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'CatchClause > BlockStatement[body.length=0]',
+          message:
+            'Empty catch block. A swallowed error is how a system ends up confidently wrong: handle it, rethrow it, or log it - a comment alone is not handling it.',
+        },
+      ],
+    },
+  },
+
   // ---------------------------------------------------------------------------
   // F.3 invariant 1: `packages/core` performs no I/O.
   //   "No fetch, no database, no clock reads. Time is passed in."
@@ -136,6 +169,16 @@ export default tseslint.config(
       // the clock.
       'no-restricted-syntax': [
         'error',
+        // Repeated from the repo-wide block above, deliberately. Flat config
+        // REPLACES a rule's options rather than merging them, so this array is
+        // the complete set for packages/core - omitting the empty-catch
+        // selector here would silently switch it off for the one package where
+        // correctness matters most. Verified with `eslint --print-config`.
+        {
+          selector: 'CatchClause > BlockStatement[body.length=0]',
+          message:
+            'Empty catch block. A swallowed error is how a system ends up confidently wrong: handle it, rethrow it, or log it - a comment alone is not handling it.',
+        },
         {
           selector: "NewExpression[callee.name='Date'][arguments.length=0]",
           message:

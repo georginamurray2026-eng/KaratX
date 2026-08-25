@@ -1,3 +1,5 @@
+import { ConfigError } from '@karatx/core'
+
 /** One thing wrong with one environment variable. */
 export interface ConfigProblem {
   readonly variable: string
@@ -18,18 +20,25 @@ export interface ConfigProblem {
  * default messages echo received values for several issue types, so this class
  * builds its own text rather than passing those through.
  *
- * SEAM FOR T0.5: that task owns the error taxonomy in `packages/core/errors.ts`
- * (validation | provider | network | database | strategy | ai | config |
- * unexpected) and should re-home this class under the `config` classification
- * with its declared handling policy. It is standalone here only because T0.3
- * needs a named error and the taxonomy does not exist yet.
+ * Re-homed in T0.5 under `ConfigError` from the core taxonomy, closing the
+ * seam T0.3 recorded here. It therefore now carries `category: 'config'` and
+ * `policy: 'stop'` (SEC-2: fail fast and loudly on bad configuration), so a
+ * caller can classify it without knowing this package exists.
+ *
+ * Everything T0.3 relied on is unchanged: `name` is still exactly
+ * `ConfigValidationError` (the base sets it from the concrete constructor),
+ * `message` is still built by `formatProblems`, and `problems` is untouched.
+ * T0.3's tests pass without modification, which is the compatibility contract.
  */
-export class ConfigValidationError extends Error {
-  override readonly name = 'ConfigValidationError'
+export class ConfigValidationError extends ConfigError {
   readonly problems: readonly ConfigProblem[]
 
   constructor(problems: readonly ConfigProblem[]) {
-    super(formatProblems(problems))
+    super(formatProblems(problems), {
+      // Variable NAMES only. Their values are exactly what must never reach a
+      // log line, which is why the formatter never echoes them either.
+      context: { variables: problems.map((problem) => problem.variable) },
+    })
     this.problems = problems
   }
 }
