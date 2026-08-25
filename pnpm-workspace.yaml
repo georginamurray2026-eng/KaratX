@@ -1,3 +1,14 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+
+# Dependency build scripts are reviewed explicitly. pnpm 11 treats any
+# unreviewed build script as an error (`strictDepBuilds`, default true), so an
+# entry here is a recorded decision rather than a silenced warning.
+#
+# esbuild: false - drizzle-kit bundles esbuild, which ships its platform binary
+# as an optional dependency rather than downloading one in a postinstall step.
+# `drizzle-kit generate` was verified working with the script disallowed
+# (T0.4), so no third-party install script needs to execute in this workspace.
+allowBuilds:
+  esbuild: false
