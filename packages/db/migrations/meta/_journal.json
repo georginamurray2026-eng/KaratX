@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1787673409928,
+      "tag": "0000_init_system_events_and_config",
+      "breakpoints": true
+    }
+  ]
+}

@@ -1,7 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": "src"
+    "rootDir": "src",
+    // Opts in to Node ambient types: this package talks to Postgres over the
+    // network and its migration entry point reads process state.
+    "types": ["node"]
   },
   "include": ["src/**/*.ts"]
 }

@@ -9,3 +9,9 @@ pnpm-lock.yaml
 # and make the wide tables in DATA_SOURCES.md materially harder to read.
 # Prettier's job in this repo is code formatting.
 *.md
+
+# Drizzle-generated migration artefacts. These are tool output and must stay
+# byte-identical to what drizzle-kit produced: a committed migration is
+# immutable once applied (T0.4 / ADR-003), and reformatting the snapshot would
+# both edit an applied migration and cause churn on every regeneration.
+packages/db/migrations/

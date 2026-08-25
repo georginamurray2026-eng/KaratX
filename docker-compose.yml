@@ -1,0 +1,45 @@
+# Local development database only.
+#
+# This file is NOT a deployment artefact. Production Postgres is managed by
+# Railway (see ADR-003) and nothing here is used there.
+#
+#   pnpm db:up     start it
+#   pnpm db:down   stop it, keeping data
+#   pnpm db:reset  destroy the volume and start clean
+#
+# The credentials below are deliberately committed. They are a throwaway local
+# development value guarding a database that is reachable only from this
+# machine - not a secret. Real credentials never live in this repository:
+# Railway generates and injects its own, and `.env` is git-ignored (SEC-1).
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: karatx-postgres
+    # Bound to the loopback interface only. A plain "5432:5432" would publish
+    # on 0.0.0.0 and expose the database to the local network - this machine
+    # already runs containers published on all interfaces, so the distinction
+    # is not theoretical.
+    ports:
+      - '127.0.0.1:5432:5432'
+    environment:
+      POSTGRES_USER: karatx
+      POSTGRES_PASSWORD: karatx_local_dev
+      POSTGRES_DB: karatx
+      # Deterministic collation. Postgres sorts text according to the
+      # database's collation, so leaving this to the host locale would make
+      # ordering machine-dependent - unacceptable for a project whose
+      # backtests must reproduce byte-for-byte (NFR-12).
+      POSTGRES_INITDB_ARGS: '--locale=C --encoding=UTF8'
+    volumes:
+      - karatx-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U karatx -d karatx']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  karatx-pgdata:
+    name: karatx-pgdata
