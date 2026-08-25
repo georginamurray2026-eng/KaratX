@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.next/
+coverage/
+pnpm-lock.yaml
+
+# Documentation is hand-authored prose. Prettier reflows markdown tables to
+# padded column widths, which would churn ~150KB of specification documents
+# and make the wide tables in DATA_SOURCES.md materially harder to read.
+# Prettier's job in this repo is code formatting.
+*.md

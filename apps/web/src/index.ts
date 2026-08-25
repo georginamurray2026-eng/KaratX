@@ -13,7 +13,4 @@
 import { CONTRACTS_PACKAGE_NAME } from '@karatx/contracts'
 import { CORE_PACKAGE_NAME } from '@karatx/core'
 
-export const WEB_APP_LINKED_PACKAGES = [
-  CORE_PACKAGE_NAME,
-  CONTRACTS_PACKAGE_NAME,
-] as const
+export const WEB_APP_LINKED_PACKAGES = [CORE_PACKAGE_NAME, CONTRACTS_PACKAGE_NAME] as const

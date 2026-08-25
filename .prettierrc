@@ -1,0 +1,14 @@
+{
+  "semi": false,
+  "singleQuote": true,
+  "trailingComma": "all",
+  "printWidth": 100,
+  "tabWidth": 2,
+  "endOfLine": "lf",
+  "overrides": [
+    {
+      "files": ["tsconfig*.json", "*.jsonc"],
+      "options": { "parser": "jsonc", "trailingComma": "none" }
+    }
+  ]
+}
