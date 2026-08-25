@@ -22,6 +22,12 @@
     "noImplicitReturns": true,
     "forceConsistentCasingInFileNames": true,
 
+    // No ambient type packages by default. Each package opts in to what it
+    // needs, so `packages/core` cannot even name `process`, `fetch` or a Node
+    // builtin at the type level - a compile-time barrier reinforcing F.3
+    // invariant 1, underneath the ESLint boundary added in T0.2.
+    "types": [],
+
     "skipLibCheck": true,
     "noEmit": true,
     "sourceMap": true

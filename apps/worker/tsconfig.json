@@ -1,7 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": "src"
+    "rootDir": "src",
+    // Opts in to Node ambient types. This package legitimately reads process
+    // state and uses Node globals; packages/core deliberately does not.
+    "types": ["node"]
   },
   "include": ["src/**/*.ts"]
 }
