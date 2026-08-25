@@ -1,0 +1,19 @@
+{
+  "name": "karatx",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "XAU/USD Command Centre - personal market-intelligence and setup-alerting system. Never places trades.",
+  "packageManager": "pnpm@11.23.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r --no-bail typecheck",
+    "test": "pnpm -r --no-bail test"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  }
+}

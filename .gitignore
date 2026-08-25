@@ -1,0 +1,55 @@
+# ---------------------------------------------------------------------------
+# Secrets (SEC-1). These lines come first deliberately: nothing below this
+# block is allowed to be the reason a credential reaches the history.
+# The OANDA personal access token carries trading authority, not read-only
+# data access -- see docs/DATA_SOURCES.md section 3.
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+secrets/
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+out/
+.next/
+*.tsbuildinfo
+
+# Test and coverage output
+coverage/
+.vitest/
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
+# Caches
+.cache/
+.turbo/
+.eslintcache
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+logs/
+
+# Editor and OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+
+# Local scratch
+tmp/
+scratch/

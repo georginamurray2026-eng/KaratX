@@ -1,0 +1,180 @@
+# Architecture Decision Records
+
+Decisions are numbered, dated, and immutable once accepted. To change one, write a new ADR that supersedes it; do not edit history.
+
+| ADR | Title | Status | Date |
+|---|---|---|---|
+| ADR-001 | Monorepo with separate `web` and `worker` processes | Accepted (pre-recorded, to be written in T0.10) | — |
+| ADR-002 | PostgreSQL + Drizzle | Accepted (pre-recorded, to be written in T0.10) | — |
+| ADR-003 | Migration policy | Accepted (pre-recorded, to be written in T0.10) | — |
+| ADR-004 | Logging and error model | Accepted (pre-recorded, to be written in T0.10) | — |
+| **ADR-005** | **Market data provider** | **Accepted, conditional** | **2026-08-25** |
+
+---
+
+## ADR-005: Market data provider
+
+**Date:** 2026-08-25
+**Status:** **Accepted, conditional on a single account-eligibility check (see Conditions).**
+**Task:** T1.1
+**Supporting evidence:** [`DATA_SOURCES.md`](./DATA_SOURCES.md) — every claim below is cited there against official documentation.
+
+---
+
+### Decision
+
+**OANDA v20 REST API is the single reference feed** for XAU/USD candles, for both live ingestion and historical backfill.
+
+Specifically:
+
+| Concern | Decision |
+|---|---|
+| Instrument | `XAU_USD` |
+| Base candle | `M15`, `price=M` (mid) |
+| Historical + live endpoint | `GET /v3/accounts/{accountID}/instruments/{instrument}/candles` |
+| Daily alignment | `dailyAlignment=17`, `alignmentTimezone=America/New_York` — set explicitly on every request, never relied on as a default |
+| Weekly alignment | `weeklyAlignment=Friday` |
+| Finality | The provider's `complete` flag, mapped to our `is_final` |
+| Candle acquisition | **Polling**, not streaming |
+| Price stream | Used only for current bid/ask (DR-7, M3) and for liveness via its 5-second heartbeat |
+| 1H / 4H / 1D / 1W | Aggregated by us from stored M15 (T1.6), with the provider's own aggregate fetched as a **regression assertion**, not as the source |
+| Environment | `api-fxpractice.oanda.com` initially; the same code path against `api-fxtrade.oanda.com` if a live account is ever used |
+| Reconciliation source (T1.9) | **Twelve Data** free tier, `XAU/USD` at `15min`; fallback **Massive** (ex-Polygon.io) free Currencies tier |
+| DXY (FR-1.5) | **Synthesised** from OANDA's own six USDX component pairs, stored as `USDX_SYNTHETIC`; cross-checked daily against FRED `DTWEXBGS` |
+| US Treasury yields (FR-1.6) | **US Treasury daily XML feed**, `daily_treasury_yield_curve`, free and official |
+
+---
+
+### Context
+
+`SPEC-AUDIT.md` finding C1 established that there is no authoritative XAU/USD price: gold spot is OTC and every venue publishes a slightly different quote. The audit's mitigation was to nominate exactly one reference feed and compute everything on it, so that what the system decides matches what the user sees.
+
+The user charts `OANDA:XAUUSD` on TradingView and executes on IC Markets. That fixes the target: the reference feed must be OANDA, or the product's numbers will disagree with the chart the user actually reads and trust will not survive week one.
+
+Finding C2 required an explicit, DST-aware daily boundary. `INDICATOR-SPEC.md` confirmed it as 17:00 `America/New_York`.
+
+T1.1's job was therefore not to choose a provider from a field — it was to check that the already-implied choice is technically viable, and to find what it cannot supply.
+
+---
+
+### Alternatives considered
+
+**1. Twelve Data as the reference feed.** Rejected. It is a good, cheap aggregator, but its XAU/USD is its own composite, not OANDA's book. Using it would mean the system's candles differ from the user's chart by an unknown and unmanaged amount — reintroducing C1 in full. It has no documented configurable daily boundary, which reopens C2. Retained as the **reconciliation** source, where independence is the point and matching is not.
+
+**2. Massive (formerly Polygon.io) as the reference feed.** Rejected for the same reasons. Its free Currencies tier also caps history at two years, and its intraday availability on the free tier is ambiguous. Retained as the reconciliation fallback.
+
+**3. A paid tick-history vendor for backfill, OANDA for live.** Rejected explicitly — this is the trap `SPEC-AUDIT.md` H7 names. Backtesting on one feed and running live on another produces a backtest that does not describe the live system: different wicks, different closes, possibly different daily boundaries. Sweep detection (FR-2.10) is the most wick-sensitive logic in the spec and is exactly what such a mismatch would corrupt. Same provider for live and history is non-negotiable.
+
+**4. IC Markets, the execution broker, as the data source.** Rejected. `ADR-005`'s predecessor decision already recorded IC Markets as execution-only. It offers no public retail market data API, and using it would put the system's numbers out of step with the TradingView chart the user reads.
+
+**5. Building candles from OANDA's price stream instead of polling.** Rejected on the provider's own documented advice: "you cannot create OHLC candlestick data using the REST v20 Stream endpoint, since open, high, low, and close data of the period are not guaranteed to be returned." The stream is also documented as delivering at most 4 prices per second per instrument with connection-dependent window alignment, so two subscribers can legitimately observe different extremes. Wick fidelity matters here more than latency.
+
+**6. A licensed DXY feed.** Rejected on cost and proportionality. DXY is an ICE product; a real-time licensed feed is far outside this project's budget for what is a contextual input. Synthesising it from OANDA's own component pairs gives 15M granularity on the same feed and the same boundaries, at zero marginal cost.
+
+**7. Bond-price CFDs as a yield proxy.** Rejected. OANDA's `USB02Y_USD`/`USB10Y_USD` are prices, not yields, and move inversely. Feeding a price into a rule written about yields is a sign error waiting to happen.
+
+---
+
+### Reasoning
+
+Four things decided it.
+
+**1. The daily boundary is native, and expressed the right way.** `dailyAlignment` defaults to `17` and `alignmentTimezone` to `America/New_York` — an IANA zone name, not a fixed offset, exactly as `INDICATOR-SPEC.md` demands. C2 is not merely satisfiable; it is the provider's default. We still aggregate ourselves (T1.6), but we now have an exact, cheap cross-check to assert against, which is the strongest possible defence against the silent-correctness bug `BUILD-PLAN.md` flags as Phase 1's likeliest.
+
+**2. Every timeframe we need exists natively, and finality is explicit.** `M15`, `H1`, `H4`, `D`, `W` are all in the granularity enum, and `complete` tells us unambiguously whether a bar has closed. FR-1.4 is a field read, not an inference from wall-clock time — which removes an entire class of race condition.
+
+**3. The API is stable to the point of being frozen.** Version 3.0.25 is dated 28 September 2018 and nothing has changed since. For a project whose whole premise is reproducible numbers over years, an API that does not move is worth more than an API with better features.
+
+**4. Bid, ask and mid are all available.** `price` accepts `M`, `B`, `A` in any combination, which satisfies DR-7 and M3's spread requirement from the same endpoint, with no second integration.
+
+The rate limit (120 req/s) is roughly three orders of magnitude above our load. A full five-year M15 backfill is about 35 requests; steady state is about four per hour. `BUILD-PLAN.md` T1.4's warning that "backfill can be the largest single line item on your bill" does not apply to this provider.
+
+---
+
+### Conditions
+
+**This ADR is conditional on one check that could not be completed without the user.**
+
+OANDA's own documentation states the v20 API is "available to all divisions except OANDA Global Markets and OANDA TMS BROKERS S.A." Separately, Thailand residents are listed as eligible for OANDA Global Markets accounts. A Thailand-resident *live* account therefore appears to land in the one division that cannot use the API. Whether a *practice* account does the same is undocumented and not determinable from outside the signup flow.
+
+**Resolution:** the user opens an fxTrade Practice account, generates a token, and runs the three verification calls in `DATA_SOURCES.md` §11. Ten minutes. Until then, T1.2 onward does not start.
+
+**If the check fails**, this ADR is superseded and the fallbacks in `DATA_SOURCES.md` §9 apply, in order: a demo account under a v20-capable division; a different reference feed that the user can also display on TradingView; or — worst — a non-matching feed with widened tolerances, which reopens C1.
+
+A second, smaller condition rides along: `XAU_USD` must actually appear in `GET /v3/accounts/{accountID}/instruments`, since that list is documented as division-dependent and metals are excluded in at least one division.
+
+---
+
+### Consequences
+
+#### What OANDA gives us that we would otherwise have had to build
+
+- Native 17:00 `America/New_York` daily and `Friday` weekly alignment, DST-aware.
+- An explicit candle-finality flag.
+- Bid/ask/mid from one endpoint, satisfying DR-7 and M3.
+- Published market hours for gold — "Sun-Fri: 18:05 - 16:59" New York — feeding `market_hours` (FR-1.8) directly.
+- Rate headroom that makes backfill cost and pacing a non-issue.
+
+#### What OANDA cannot supply, and how each gap is filled
+
+| Gap | Fill | Cost | Requirement affected |
+|---|---|---|---|
+| **No DXY instrument** | Synthesise the ICE six-currency index from OANDA's own `EUR_USD`, `USD_JPY`, `GBP_USD`, `USD_CAD`, `USD_SEK`, `USD_CHF`. One pure function in `packages/core`; same feed, same boundaries, 15M granularity. Store as `USDX_SYNTHETIC`, never as "DXY". Cross-check daily against FRED `DTWEXBGS`. **The exact ICE coefficients are UNVERIFIED (U7) and must be read from ICE's published methodology before implementation.** | ~half a day | FR-1.5 |
+| **No Treasury yields** (bond *price* CFDs only) | US Treasury daily XML feed, `daily_treasury_yield_curve`, free, no key, history from 1990, all needed tenors. | ~one day | FR-1.6, DR-3 |
+| **Yields are daily EOD, business days only** | Model per-series exchange hours and cadence in `macro_observations`. The gold watchdog must not run over yield series or it will fire every night and all weekend. **Any TR rule requiring intraday yield reaction cannot be built on this source** — a Phase 8 constraint to record now, not discover later. | design constraint | FR-8.4, DR-3, T1.5 |
+| **No candle stream** | Poll `.../candles?granularity=M15&count=2&includeFirst=false` after each 15M boundary; trust `complete`. Stream used only for bid/ask and heartbeat liveness. **`ARCHITECTURE-AND-STACK.md` F.2 should be amended** — it currently implies a websocket-fed candle path. | design change | FR-1.4, T1.7 |
+| **No documented reconnection semantics** | Our own bounded exponential backoff with jitter (T1.7). The 5-second heartbeat is the silent-death detector. | already planned | T1.7 |
+| **No documented candle revision policy** | Do not assume immutability. T1.3's conflicting-upsert rule already raises a `data_quality_event` rather than overwriting. Re-fetch the trailing 7 days nightly for the first month and count events — that measurement is the answer. | already planned | T1.3, U3 |
+| **No public status page** (`status.oanda.com` does not resolve) | We cannot distinguish "our bug" from "their outage" externally. T1.8 (staleness watchdog) and T1.9 (reconciliation) become the only such signal, and their priority rises accordingly. | none | OPS-8, T1.8, T1.9 |
+| **Historical depth for `XAU_USD` unknown** | Measure it by binary search on `from` before T1.4 (`DATA_SOURCES.md` §12). Also check for interior gaps, not just a start date. **Do not state a backtest window until this is measured.** | ~30 min | DR-2, U2 |
+
+#### Licence consequences
+
+The OANDA API License Agreement permits "Internal Use" — research, analysis, data processing, and distribution "to the Licensee (if an individual)" — and prohibits providing FXTrade Rates "to any third party" in any form.
+
+1. **FR-10.6 / decision 5 is now settled by the licence, not just by security.** The dashboard must be private and authenticated. A public URL displaying live OANDA rates is a licence breach regardless of how obscure its path is. `REQUIREMENTS.md` should move FR-10.6 from BLOCKED to PLANNED with this as the rationale.
+2. **`FR-3.7` / `FR-10.7` (embedded chart, already deferred to V2) is now more than deferred** — it is only ever permissible for a viewer who is the Licensee.
+3. **Phase 7 gains a constraint:** the LLM snapshot (FR-7.2) must carry **derived, non-reconstructable** facts — ATR-relative distances, zone states, structure labels — not raw OHLC arrays. This is arguably required by the licence and is independently desirable for FR-7.2 and SEC-8.
+4. **The token is a trading credential, not a data key.** There is no read-only scope. SEC-1 and SEC-12 apply with full force, and compromise is an incident requiring immediate revocation.
+
+#### Cost
+
+Zero marginal data cost. OANDA API access has no documented fee (Schedule A of the licence is unpopulated in the published template and must be checked at token generation — U6). Twelve Data and the Treasury feed are free at our volume. This leaves the entire budget ceiling from decision 3 available to hosting and, later, the LLM.
+
+#### What this does not resolve
+
+C1 is mitigated, not eliminated. Choosing OANDA aligns us with the user's chart; it does not make OANDA's price authoritative. Divergence against the execution broker (IC Markets) remains real and unmeasured, and every level the system publishes should continue to be presented as a **range**, per the audit's mitigation and Part 16 of the build spec.
+
+---
+
+### Reversibility
+
+**Moderately reversible, and the cost rises sharply with time.**
+
+Cheap now, expensive later:
+
+- The provider adapter lives behind `packages/providers/marketdata/*`, and `packages/core` never touches I/O (invariant F.3.1). Swapping the adapter is contained.
+- `candles` carries `provider_id` in its unique key (T1.3), so a second provider's data can coexist rather than requiring a migration.
+- Alignment is configuration, not code (T1.6 takes `boundaryConfig` as a parameter).
+
+What makes it costly to reverse later:
+
+- Every zone, swing, liquidity pool and setup ever detected is computed on this feed's wicks and closes. Switching providers invalidates all of it as a comparable series — a Phase 9 dataset built on OANDA cannot be extended with another provider's bars without a discontinuity that will quietly poison FR-9.6's statistics.
+- The user's chart is the anchor. Changing the feed means either changing the chart or accepting permanent disagreement.
+
+**Practical reading:** reversible at low cost through Phase 2. From Phase 4 onward, treat it as a one-way door and re-derive rather than re-point. If the eligibility check fails, it fails now — which is exactly why it is the gate on this ADR rather than a footnote to it.
+
+---
+
+### Follow-ups created by this decision
+
+| # | Action | When |
+|---|---|---|
+| 1 | User opens fxTrade Practice account, generates token, runs the three verification calls (`DATA_SOURCES.md` §11) | **Before T1.2** |
+| 2 | Measure `XAU_USD` M15 and D history depth and interior gaps (`DATA_SOURCES.md` §12); record in `DATA_SOURCES.md` | Before T1.4 |
+| 3 | Amend `ARCHITECTURE-AND-STACK.md` F.2 — candles are polled, not streamed | Before T1.7 |
+| 4 | Move `REQUIREMENTS.md` FR-10.6 from BLOCKED to PLANNED, citing the licence | Next requirements revision |
+| 5 | Add per-series exchange hours and cadence to the `macro_observations` design | T1.10 |
+| 6 | Read ICE's published USDX coefficients from their methodology PDFs (U7) | Before the synthetic index is implemented |
+| 7 | Verify Twelve Data's free-tier `XAU/USD` access (U9); fall back to Massive (U10) if gated | T1.9 |
+| 8 | Nightly trailing-7-day re-fetch for the first month, to measure the undocumented revision policy (U3) | T1.4 onward |
