@@ -1,0 +1,30 @@
+# Line endings.
+#
+# Store LF in the repository and check out LF on every platform, regardless of
+# each developer's `core.autocrlf`. This machine has `core.autocrlf=true`, so
+# without this file the working copy would be CRLF locally and LF in CI, which
+# contradicts .editorconfig (`end_of_line = lf`) and makes diffs platform-
+# dependent.
+#
+# This matters beyond tidiness: NFR-12 requires backtest results to reproduce
+# byte-for-byte from a pinned dataset, and the golden TradingView CSV fixtures
+# (TEST-1, TEST-13) are text files whose bytes must not depend on the machine
+# that checked them out.
+* text=auto eol=lf
+
+# Files git should never try to normalise, in case content sniffing gets it
+# wrong. Fixtures added in later phases are text (CSV) and are covered above.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.zip binary
+
+# Generated. Collapsed in review UIs, but deliberately still diffable locally:
+# lockfile changes are a supply-chain surface (SEC-10) and should stay readable.
+pnpm-lock.yaml linguist-generated=true
