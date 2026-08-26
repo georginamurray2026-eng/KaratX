@@ -16,7 +16,7 @@ handover document.
 | Phase | **Phase 0 — Engineering Foundation** |
 | Complete | **T0.1 – T0.6** (6 of 10) |
 | Next task | **T0.7 — Web skeleton and health endpoints** (not started) |
-| Branch | `main`, 14 commits, working tree clean |
+| Branch | `main`, working tree clean. (Commit count deliberately not stated — a self-referential number in a committed file is stale the moment it lands. Use `git log --oneline`.) |
 | Remote | none configured. Nothing has been pushed |
 
 Phase 1 task **T1.1** (provider evaluation) was also completed early, out of
