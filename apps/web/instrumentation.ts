@@ -10,74 +10,17 @@
  * route handlers lazily, so a broken environment would surface as a 500 on
  * whichever endpoint happened to be hit first, rather than as a refusal to
  * start. `register()` is the only hook that runs before serving.
+ *
+ * This file contains NO Node API. Next compiles it for the Edge runtime too,
+ * and statically warns about every Node API it finds - even behind a runtime
+ * guard, because the analysis is static rather than a reachability check. The
+ * Node-only work therefore lives in ./instrumentation-node, imported only on
+ * the Node runtime. Both routes pin `runtime = 'nodejs'`, so no Edge instance
+ * exists whose configuration would need validating.
  */
 export async function register(): Promise<void> {
-  // Imported dynamically so this module stays loadable in every Next runtime;
-  // `register` is invoked only on the server.
-  const { existsSync } = await import('node:fs')
-  const path = await import('node:path')
+  if (process.env['NEXT_RUNTIME'] !== 'nodejs') return
 
-  // Local development keeps the connection string in a git-ignored `.env` at
-  // the repository root. Deployed environments have no such file and inject
-  // variables directly, so this loads it only if present rather than requiring
-  // it - the same rule as packages/db's migrate CLI.
-  const repoRoot = path.resolve(process.cwd(), '..', '..')
-  const envPath = path.join(repoRoot, '.env')
-
-  if (existsSync(envPath)) {
-    // An explicitly-set variable wins over the file. `process.loadEnvFile`
-    // overwrites unconditionally, which would make the environment a deployed
-    // platform injects unreproducible locally, and would make it impossible to
-    // run this server against anything but whatever `.env` happens to say.
-    const explicit = new Map(Object.entries(process.env))
-    process.loadEnvFile(envPath)
-    for (const [key, value] of explicit) {
-      if (value !== undefined) process.env[key] = value
-    }
-  }
-
-  const { loadConfig } = await import('@karatx/config')
-
-  try {
-    loadConfig()
-  } catch (error) {
-    // ConfigValidationError lists every problem at once and never echoes a
-    // received value, so this is safe to print even though DATABASE_URL
-    // carries a password. Written to stderr directly because no logger exists
-    // yet at this point in the boot - that is the whole point of being here.
-    const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
-    process.stderr.write(`\nFATAL: ${message}\n\n`)
-
-    // ---------------------------------------------------------------------
-    // DO NOT REMOVE THIS EXIT.
-    //
-    // Without it, Next.js CATCHES this error and keeps serving. Measured, not
-    // assumed - the server logs:
-    //
-    //     ✓ Ready in 398ms
-    //     Failed to prepare server: An error occurred while loading
-    //     instrumentation hook: Invalid environment configuration
-    //
-    // Note the order. "✓ Ready" prints BEFORE the failure. The process stays
-    // alive, binds its port, accepts connections, and returns HTTP 500 to
-    // every request - indefinitely.
-    //
-    // That means every signal a platform uses to judge a deployment reports
-    // success: Railway sees a healthy service, a TCP health check passes, a
-    // log scraper watching for the ready line finds it. It is not a weaker
-    // guarantee than SEC-2 wants; it is a deployment that lies about having
-    // worked.
-    //
-    // Worst of all, /api/health returns 500 - an endpoint DEFINED as touching
-    // nothing, contradicting its own contract. The one check guaranteed not to
-    // fail for external reasons, failing.
-    //
-    // With this exit, the process refuses to run: Railway sees a failed
-    // deploy, a supervisor sees a crash loop with a legible reason, and no
-    // load balancer ever routes to it.
-    //
-    // instrumentation.integration.test.ts fails if this is removed.
-    // ---------------------------------------------------------------------
-    process.exit(1)
-  }
+  const { validateConfiguration } = await import('./instrumentation-node')
+  await validateConfiguration()
 }

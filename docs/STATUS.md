@@ -220,6 +220,34 @@ error at boot probably does kill it — but "probably" is exactly what was just
 disproved for Next. Verify it the same way, by starting it with a broken
 environment and observing the exit code.
 
+### Verify that the observable changed — a fix can look right and do nothing
+
+Two fixes so far have *appeared* to address a problem while doing nothing at
+all. Both were caught by measuring the observable afterwards; neither would
+have been caught by reading the code.
+
+**T0.6 — `verifyNotInTransaction`.** It queried `pg_stat_activity.state` and
+refused if it contained `'in transaction'`. But while a query is executing the
+state is always `'active'`, including inside an open transaction — so the check
+could **never fire**. It read like a safeguard on the one operation that
+deletes databases, and was not one. Removed rather than left in place.
+
+**T0.7 — the `NEXT_RUNTIME` guard.** Turbopack warned that `node:fs` is
+unavailable in the Edge runtime. Adding `if (process.env.NEXT_RUNTIME !==
+'nodejs') return` looked like the fix and silenced **nothing**: Turbopack's
+analysis is static, not a reachability check. Only physically moving the Node
+APIs into a separate module removed the warnings — 6 → 0, measured.
+
+**The rule: when a fix targets something observable — a warning count, a log
+line, a refusal, an exit code — check that the observable actually changed.**
+"I added a guard" and "I added a check" are both easy to write, easy to
+believe, and independently worthless.
+
+Related: recurring noise in a channel you rely on for signal eventually
+destroys that channel. Six warnings on every build is how build output stops
+being read, and then a real error hides in it. Same argument as flaky tests,
+different surface.
+
 ### Runtime names are invisible to a suite that never sees a production build
 
 The boot message read `FATAL: r: Invalid environment configuration`. `r` was
