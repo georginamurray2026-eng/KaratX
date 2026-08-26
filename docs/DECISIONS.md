@@ -212,7 +212,12 @@ Consequences, recorded so this is not rediscovered the hard way:
 ## ADR-005: Market data provider
 
 **Date:** 2026-08-25
-**Status:** **Accepted, conditional on a single account-eligibility check (see Conditions).**
+**Status:** **SUPERSEDED by [ADR-008](#adr-008-market-data-provider-re-evaluated) on 2026-08-27.** The conditional account-eligibility check failed: OANDA v20 is unavailable to a Thailand-resident account.
+
+> **Do not edit the reasoning below.** It was sound on what was known at the
+> time, and the record is more useful intact than corrected. ADR-008 records
+> what changed and why. The one thing worth carrying forward is that the
+> failure was not in this analysis — it was in what the analysis never checked.
 **Task:** T1.1
 **Supporting evidence:** [`DATA_SOURCES.md`](./DATA_SOURCES.md) — every claim below is cited there against official documentation.
 
@@ -375,3 +380,136 @@ What makes it costly to reverse later:
 | 6 | Read ICE's published USDX coefficients from their methodology PDFs (U7) | Before the synthetic index is implemented |
 | 7 | Verify Twelve Data's free-tier `XAU/USD` access (U9); fall back to Massive (U10) if gated | T1.9 |
 | 8 | Nightly trailing-7-day re-fetch for the first month, to measure the undocumented revision policy (U3) | T1.4 onward |
+
+---
+
+## ADR-008: Market data provider, re-evaluated
+
+**Date:** 2026-08-27
+**Status:** **Accepted.**
+**Task:** T1.1 (re-run)
+**Supersedes:** ADR-005
+**Supporting evidence:** `STATUS.md` — every number below was measured against a live API on a free-tier key, not read from documentation.
+
+---
+
+### Decision
+
+**Twelve Data is the reference feed. Massive (formerly Polygon.io) is the reconciliation source and the trading-calendar oracle.**
+
+| Concern | Decision |
+|---|---|
+| Instrument | `XAU/USD` — metadata confirms `currency_base: "Gold Spot"`, `type: "Precious Metal"` |
+| Base candle | `15min`, native |
+| Endpoint | `GET /time_series` |
+| Authentication | `Authorization: apikey <key>` header — **never** the documented query parameter |
+| Timezone | `timezone=UTC` **explicitly on every request** |
+| Numeric handling | Preserve the decimal text as received; never round-trip through `Number()` |
+| Daily alignment | **Imposed by us** in T1.6 at 17:00 `America/New_York`. No provider supplies it |
+| Trading calendar | **Ours, and authoritative** — see T1.5. Bars outside it are rejected and recorded, never silently dropped |
+| Reconciliation (T1.9) | **Massive**, `C:XAUUSD` at 15min, free tier |
+| Calendar oracle | **Massive** — see Reasoning |
+| Execution-venue comparator | cTrader Open API, optional, off the hot path |
+| Cost | **£0. No paid market-data access**, by explicit constraint |
+
+---
+
+### Context — why ADR-005 failed, and what it teaches
+
+OANDA v20 is **unavailable**. Following OANDA's own Developer Getting Started wizard to its end: a Thailand-resident account is routed to OANDA Global Markets, which is MT4/MT5 only and has no Portal access. v20 belongs to the fxTrade platform of OANDA's other regulated entities. No workaround was attempted, and none should be — an account obtained by misrepresenting residence can be closed without notice, which is worse than not having one.
+
+**The generalisation is worth more than the finding: OANDA did not fail as a data source. It failed as a BROKER.**
+
+A broker opens a regulated account, and regulated accounts are routed by residence to a legal entity. **The API follows the entity, not the brand.** No amount of evaluating the v20 API could have caught this, because the API was never the problem. ADR-005's reasoning was sound; what was missing was a gate, not better analysis.
+
+**Pure data vendors do not have this failure mode.** They sell a data subscription, not a regulated account — no entity routing, no residence-dependent platform assignment.
+
+---
+
+### The reframe that widened the field
+
+ADR-005 treated matching the user's TradingView chart as near-decisive, and derived the provider from it. That was reconsidered.
+
+The requirement was never OANDA. It was **a feed close enough to the traded chart to be trustworthy.** A spot check of OANDA against IC Markets found them near-identical, so brand-matching is worth far less than assumed — and T1.9's reconciliation job exists to *measure* divergence rather than assume it.
+
+This is now quantified. Two independent providers agree on weekday 15M bars to **9–11% of bar range** (0.8–2.8 basis points; roughly \$0.20–\$1.20 on gold). C1's "no authoritative XAU/USD price" is real, but the spread between reputable feeds is small and measurable, not a chasm.
+
+---
+
+### Two criteria added to the matrix, permanently
+
+**1. Regional availability to a Thailand-based user is checked FIRST**, before anything else about a candidate is evaluated. Cheap to check, expensive to miss, and it eliminated the front-runner after everything else had already looked good. **A candidate that cannot be confirmed available is marked UNVERIFIED, never assumed available** — "no restriction found" and "available" are different claims, and conflating them is how ADR-005 happened.
+
+Twelve Data's availability is now **confirmed on evidence**: an authenticated call succeeded from the user's machine.
+
+**2. Can this provider's responses be recorded as fixtures and replayed?** Replaying real responses against real infrastructure has found eight genuine defects in this project. A protocol that breaks it is expensive in a way nothing else in the matrix captured. Demonstrated in practice, not asserted: a real Twelve Data response is committed under `test/fixtures/providers/` and loads through `readJsonFixture` with its decimal text preserved byte-for-byte.
+
+---
+
+### Reasoning
+
+**Depth, and it is real depth.** Twelve Data serves 15min from **2020-01-24**, verified by fetching bars at that date rather than trusting the catalogue. That is ~161,000 real bars after weekend filtering, against Massive's ~48,700 on its 2-year free tier — **3.3x more**.
+
+Critically, that depth was *validated*. Twelve Data began emitting synthetic weekend bars in mid-2025, which raised a reasonable worry that the weekday instrument had also changed. Measured against Massive across the boundary: raw divergence grew 2.91x, but volatility grew 2.34x, and normalised divergence changed only 1.25x (9.0% of bar range before, 11.2% after). **The weekday series is sound throughout.** Without a second independent series this would have remained an open doubt.
+
+**MASSIVE AS CALENDAR ORACLE — a second, independent reason to keep it.**
+
+We had committed to building a trading calendar from scratch, with no way to check it beyond reasoning. Massive **demonstrably implements the correct one**: zero Saturday bars across 2024–2026, Friday's last bar closing 21:00 UTC = 17:00 New York, Sunday opening 21:00 UTC = 17:00 New York, weekdays 93 of 96 bars with the missing 45 minutes at the rollover.
+
+That converts calendar correctness from an assertion we reason about into **a testable proposition with a free reference implementation**. Where our calendar and Massive's bar coverage disagree, one of them is wrong, and we get an event rather than a silent divergence. This is independent of reconciliation and would justify keeping Massive on its own.
+
+It also gave C2 its **third independent confirmation** — TradingView, Twelve Data's pre-2025 history, and Massive's current data all place the daily boundary at 17:00 America/New_York.
+
+**Why not Massive as the feed.** Two years, permanently, under the no-paid-data constraint — and its free intraday access contradicts its own published pricing page, so it is an entitlement that could be withdrawn without notice. Excellent as a check; too thin and too uncertain as the spine.
+
+**Why not EODHD.** Its free tier serves end-of-day only and one year of history, so it cannot verify its own distinguishing claim of deep clean history. **A provider that requires payment before evaluation is disadvantaged on process grounds**, separately from its data. Its \$29.99 is deferred with an explicit trigger, not dismissed.
+
+**Why not cTrader / IC Markets.** Protobuf or JSON over TLS TCP, no REST endpoint for historical data, 5 historical requests per second. Near worst-case against the fixture criterion. Repurposed as an optional execution-venue comparator for T1.9, where a slow awkward protocol is acceptable off the hot path.
+
+---
+
+### The Phase 9 arithmetic, and its honest status
+
+The load-bearing argument for depth is that Phase 9 slices results by four grades and three sessions — twelve cells — and small cells are where fake precision comes from.
+
+At an assumed **2–3 setups per week**, 6.6 years gives roughly 700–1,000 setups, so 60–80 per cell; two years gives 200–300, so 17–25 per cell.
+
+**THAT SETUP RATE IS AN ESTIMATE, NOT A MEASUREMENT. Nothing has measured it.** The detector does not exist until Phase 4.
+
+The *direction* is safe regardless — 3.3x more data helps at any setup rate, and cannot hurt. But **the specific 60–80 per cell figure must not be quoted as fact.** Revise it once Phase 4 reports a real detection rate; if the true rate is far lower, even 6.6 years may not support twelve-cell segmentation, and Phase 9's analysis plan needs revisiting rather than the provider choice.
+
+---
+
+### Consequences
+
+- The trading calendar (T1.5) becomes load-bearing infrastructure, not a filter. Roughly 31% of Twelve Data's returned bars fall outside real market hours.
+- **24/7 gold is an industry representation, not a vendor defect.** Twelve Data and EODHD both emit weekend gold bars. The calendar decision is correct for the whole category, not a workaround for one vendor.
+- T1.6's regression guard cannot compare our 1D aggregate against the provider's own daily candle — a 24/7 series emits Saturday and Sunday "days". It compares against the calendar.
+- Backfill is cheap: 6.6 years in **47 requests, ~6 minutes**, within a free tier of 800 credits/day and 8/minute.
+- DXY and US Treasury yields are **not settled by this ADR**. ADR-005's approach (synthesise DXY from component pairs; US Treasury's own XML feed for yields) is untouched and needs re-checking against Twelve Data's symbol coverage.
+
+---
+
+### Process lessons this re-evaluation cost, recorded so they are not rediscovered
+
+1. **Check regional availability first.** It is the cheapest check and the one that invalidates everything downstream.
+2. **Fetch instrument metadata before any prices.** `symbol_search` returns `exchange_timezone: "Australia/Sydney"` and a venue documented as 24/7 — neither appears in a `time_series` response. Both T1.1 anomalies were explained by that one call. **The UTC+10 default was never undocumented; we had not looked it up.**
+3. **Measure before committing.** Every important number here contradicted or refined its documentation: "since 1980" applies to daily bars only; Massive's free tier serves intraday its pricing page denies; EODHD's free tier serves less than implied.
+4. **An absence result needs a positive control.** Eight recorded instances of checks that passed while testing nothing or testing the wrong thing.
+5. **When a ratio lands near a threshold, find the confound.**
+
+---
+
+### REVERSAL CONDITIONS
+
+**A decision recorded without its reversal conditions gets re-litigated from scratch.** Each of these is monitorable.
+
+| Trigger | Detection | Response |
+|---|---|---|
+| **Twelve Data changes its WEEKDAY series** the way it changed weekends in 2025 | **T1.9 reconciliation against Massive.** Normalised divergence is 9–11% of bar range today; a sustained move well outside that is the signal. This is precisely what the reconciliation job is for | Re-run the cross-provider comparison. If the weekday instrument has changed, Twelve Data's pre-change history is no longer continuous with live and the feed must be reconsidered |
+| **Phase 9 proves 6.6 years too short** | Cell counts in the segmented analysis, once Phase 4 gives a real setup rate | Pay EODHD's \$29.99 for one month and run the measurement blocked in T1.1 — 17-year Saturday sweep, real intraday depth, 1-minute backfill cost weighed against that depth |
+| **Massive withdraws its undocumented free intraday** | A 403 `NOT_AUTHORIZED` from the reconciliation job | **This costs the oracle and the reconciliation source at once**, which is why it is listed. Fall back to cTrader for execution-venue reconciliation, and the calendar loses its reference implementation — it must then be validated against a static published calendar instead |
+| **Twelve Data's free tier stops covering our needs** | 429s, or credit exhaustion against 800/day | Current usage is ~96 polls/day against 800. Substantial headroom; revisit only if polling frequency changes |
+| **A Thailand-availability change** at any provider | An authenticated call failing with an entitlement or region error | Re-run the T1.1 gate. This is the failure that produced this ADR |
+
+Nothing else reopens this. Not price, not a marketing depth figure, not a new provider appearing — absent one of the triggers above, the decision stands.

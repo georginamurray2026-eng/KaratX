@@ -19,10 +19,18 @@ handover document.
 | Branch | `main`, working tree clean. (Commit count deliberately not stated — a self-referential number in a committed file is stale the moment it lands. Use `git log --oneline`.) |
 | Remote | none configured. Nothing has been pushed |
 
-Phase 1 task **T1.1** (provider evaluation) was completed early, out of order,
-because it unblocks Phase 1. **It has been REOPENED — see "T1.1 reopened"
-below. ADR-005 (OANDA) is superseded in substance; ADR-008 will record the
-replacement once measurement is done.**
+Phase 1 task **T1.1** (provider evaluation) was completed early, then **REOPENED
+and RE-RUN on 2026-08-27** when OANDA v20 proved unavailable. **It is now
+CLOSED: [ADR-008](./DECISIONS.md) supersedes ADR-005.**
+
+> **Cold-session summary of where T1.1 landed.** The feed is **Twelve Data**
+> (`XAU/USD`, native 15min, 6.6 years of verified depth, free tier). **Massive**
+> (ex-Polygon.io, `C:XAUUSD`) is the reconciliation source AND the trading-calendar
+> oracle. **No paid market-data access** — an explicit user constraint. OANDA is
+> out because a Thailand-resident account is routed to an entity whose platform
+> has no v20 API: **it failed as a broker, not as a data source.** Every number
+> in ADR-008 was measured against a live API, not read from documentation.
+> ADR-008 carries the reversal conditions; read those before re-litigating it.
 
 ---
 
@@ -546,7 +554,7 @@ is one people stop classifying against.
 
 ---
 
-## T1.1 reopened — OANDA v20 is UNAVAILABLE
+## T1.1 re-run and CLOSED — OANDA v20 is UNAVAILABLE (see ADR-008)
 
 **Established 2026-08-27 by the user, following OANDA's own Developer Getting
 Started wizard to its end.** A Thailand-resident account is routed to OANDA
@@ -867,14 +875,27 @@ determines how to read everything it returns.
 
 ---
 
-### Status
+### Outcome — ADR-008, decided on measurement
 
-**Measurement, not commitment.** No primary provider is nominated and no ADR
-is written until actual depth has been measured on free-tier keys. Leading
-candidates are EODHD and Twelve Data; Massive (formerly Polygon.io) is
-pending a targeted check on whether it covers gold at all. **ADR-008 is
-written after the numbers exist, so it records a decision made on measurement
-rather than on documentation.**
+**Twelve Data is the feed. Massive is the reconciliation source and the
+calendar oracle. EODHD is deferred with a trigger. Total cost: £0.**
+
+| Provider | Role | Deciding number |
+|---|---|---|
+| **Twelve Data** | **reference feed** | 6.6 yrs of native 15M, ~161,000 real bars — **3.3x** the alternative — and the weekday series validated against an independent source |
+| **Massive** | reconciliation + **calendar oracle** | respects the trading calendar and places the daily boundary at 17:00 NY; 2 yrs depth is too thin to be the spine |
+| EODHD | deferred | free tier is EOD-only, so it cannot verify its own distinguishing claim |
+| cTrader / IC Markets | optional execution-venue comparator | no REST for history; near worst-case for fixtures |
+
+**Read ADR-008 for the reversal conditions.** The three that matter: Twelve
+Data changing its weekday series (T1.9 reconciliation detects it), Phase 9
+proving 6.6 years too short, or Massive withdrawing its undocumented free
+intraday — which would cost the oracle and the reconciliation source at once.
+
+**One number in ADR-008 is an ESTIMATE, not a measurement:** the assumed 2–3
+setups per week driving the Phase 9 cell-count argument. Nothing has measured
+it; the detector does not exist until Phase 4. The direction is safe at any
+setup rate, but do not quote "60–80 per cell" as fact.
 
 ---
 
@@ -907,6 +928,20 @@ Railway credentials are in this repository — verified across full git history.
    messages and error output.
 6. When something is unproven, say so. Several criteria above are partially
    met and are recorded as such rather than ticked.
+7. **T1.1 is closed. The feed is Twelve Data; Massive is the reconciliation
+   source and calendar oracle; no paid market data.** Read
+   [ADR-008](./DECISIONS.md) before reopening it — it carries reversal
+   conditions, and a decision recorded with them should not be re-litigated
+   from scratch.
+8. **An absence result needs a positive control.** Eight recorded instances of
+   a check passing while testing nothing, or testing the wrong thing. If a
+   query cannot show PRESENCE where presence is expected, its absence result
+   proves nothing. This is the single most reusable thing this repository has
+   learned.
+9. **Measure; do not read.** Nearly every important figure in T1.1 contradicted
+   its own documentation in one direction or the other. Where a number matters,
+   it was bought with a real API call — and those measurements are recorded
+   here precisely so they need not be bought twice.
 
 ## Relevant files
 
