@@ -3,8 +3,8 @@
 Handoff file between Claude Code sessions (§27, §44). The repository is the
 project memory — do not rely on conversation history.
 
-**Last verified:** 2026-08-26 (T0.8 close), by inspecting the repository and
-running the commands below. Every figure here came from an actual run, not from a
+**Last verified:** 2026-08-27, by inspecting the repository and running the
+commands below. Every figure here came from an actual run, not from a
 handover document.
 
 ---
@@ -14,8 +14,8 @@ handover document.
 | | |
 |---|---|
 | Phase | **Phase 0 — Engineering Foundation** |
-| Complete | **T0.1 – T0.8** (8 of 10) |
-| Next task | **T0.9 — CI** (not started) |
+| Complete | **T0.1 – T0.7** (7 of 10). **T0.8 is IMPLEMENTED but NOT CLOSED OUT** — see next task |
+| Next task | **Close out T0.8**: quality gate + criterion-by-criterion assessment. Then T0.9, then T0.10 |
 | Branch | `main`, working tree clean. (Commit count deliberately not stated — a self-referential number in a committed file is stale the moment it lands. Use `git log --oneline`.) |
 | Remote | none configured. Nothing has been pushed |
 
@@ -42,12 +42,14 @@ All run on 2026-08-26 from a clean tree.
 pnpm install --frozen-lockfile   EXIT=0
 pnpm lint                        EXIT=0
 pnpm format:check                EXIT=0
-pnpm typecheck                   EXIT=0    7 projects
-pnpm test                        EXIT=0    235 tests  (verified with PostgreSQL STOPPED)
-pnpm test:integration            EXIT=0     52 tests  (+1 skipped, see below)
-pnpm --filter @karatx/web build  EXIT=0    zero warnings; /api/* listed as Dynamic
-pnpm --filter @karatx/web test:e2e EXIT=0   2 Playwright tests
+pnpm typecheck                   EXIT=0
+pnpm test                        EXIT=0    235 tests  (PostgreSQL CONFIRMED STOPPED)
+pnpm test:integration            EXIT=0     52 tests + 1 deliberate skip
 ```
+
+Every exit code above is from a run on 2026-08-27, not recalled. PostgreSQL
+was stopped and its absence confirmed (`docker ps` count 0) before the unit
+run, so "database-free" is measured rather than assumed.
 
 Unit test breakdown:
 
@@ -85,11 +87,38 @@ unproven** — see "Not proven" and obligation 18.
 | T0.5 Logging and error model | **Done** | Pino JSON, 3-layer redaction, correlation IDs, 8-class error taxonomy |
 | T0.6 Test harness | **Done, two honest caveats** | `@karatx/test-support`; unit runs exclude integration tests and are verified with PostgreSQL stopped; ephemeral database per integration run; fixture loader; core-boundary regression test |
 | T0.7 Web skeleton + health endpoints | **Done, one honest caveat** | Next 16 + React 19; /api/health and /api/ready; boot-time config validation that refuses to start; Playwright smoke test. See "Not proven" for the unenforced criterion |
-| T0.8 Worker skeleton | **Done, one honest caveat** | Boot sequence (config → logger → database → migration check → `system_events` startup row), ordered shutdown with per-hook timeouts, crash logging, heartbeat. 33 unit + 9 integration tests against a real worker process and two real databases. Caveat: end-to-end SIGTERM is unproven until CI runs on Linux |
+| T0.8 Worker skeleton | **Implemented, NOT closed out** | Boot sequence, ordered shutdown, crash logging, heartbeat. 33 unit + 9 integration tests. **Owes a quality gate and a criterion-by-criterion assessment against BUILD-PLAN** |
 | T0.9 CI | Not started | No `.github/` directory exists |
 | T0.10 Railway deploy + docs | Not started | — |
 
 `packages/contracts` is still a stub. It is populated in T1.2.
+
+---
+
+## THE EXACT NEXT TASK
+
+**Close out T0.8.** It is implemented and green but was never formally
+assessed, because T1.1 had to be reopened mid-task when OANDA proved
+unavailable. Nothing is known to be wrong with it; it simply has not been
+checked against its own acceptance criteria.
+
+BUILD-PLAN T0.8 lists three criteria. Assess each explicitly, and put anything
+partial in "Not proven" rather than ticking it:
+
+| Criterion | Expected finding |
+|---|---|
+| Boots, validates config, connects to the DB, writes a `system_events` startup row | **Met.** Proven by log ORDER in a real process, and one startup row asserted in an integration test |
+| Handles SIGTERM: stops accepting work, finishes in flight, closes connections, exits 0 (OPS-3) | **Partial.** Mechanism fully covered by 33 unit tests; the end-to-end case is skipped on win32 because Windows cannot deliver a catchable SIGTERM. **Unproven until CI runs it on Linux** — obligation 18 |
+| Crash-loops are visible in logs, not silent | **Met.** `uncaughtException` and `unhandledRejection` emit one fatal JSON line carrying category and policy, then rethrow so Node still terminates |
+
+Then the quality gate: `pnpm lint`, `format:check`, `typecheck`, `test` with
+PostgreSQL stopped, `test:integration`. All were green on 2026-08-27, so this
+should be confirmation rather than repair.
+
+**After that: T0.9 (CI), then T0.10 (Railway deploy + docs).** T0.9 carries the
+largest cluster of outstanding obligations — see the table below.
+
+**Do not start T0.9 before T0.8 is closed out.**
 
 ---
 
@@ -456,6 +485,30 @@ it.**
 
 ## Carried-forward obligations
 
+
+**22 open, 2 discharged.** Where they land:
+
+- **T0.10** — 3
+- **T0.9 — firm** — 3
+- **T0.9** — 2
+- **before Phase 2** — 2
+- **T1.4, T1.7** — 1
+- **unassigned — suggest T0.10** — 1
+- **ongoing** — 1
+- **low priority** — 1
+- **open — may become moot** — 1
+- **if suite slows** — 1
+- **cosmetic** — 1
+- **do not "fix"** — 1
+- **rationale** — 1
+- **audit — not urgent** — 1
+- **before Phase 6** — 1
+- **T0.10 — firm** — 1
+
+Sorted ascending. Discharged obligations are struck through and kept, so a
+later session can see that a question was asked and answered rather than
+wondering whether it was ever considered.
+
 | # | Obligation | Lands in |
 |---|---|---|
 | ~~1~~ | ~~**`packages/core` import-boundary regression test.**~~ **DISCHARGED in T0.6.** `packages/test-support/src/core-boundary.test.ts` lints snippets through the ESLint API against a virtual `packages/core` path and asserts each rule fires. Proven by deliberately weakening `eslint.config.js` two ways: changing the core block glob failed 11 of 15 tests, removing the empty-catch selector failed exactly 1. Both reverted, confirmed with `git diff`. **Its failure messages explain why the boundary exists and say not to delete the test** — the real risk is removal by someone who does not know what it protects | done |
@@ -467,21 +520,21 @@ it.**
 | 7 | **ESLint flat-config trap.** Flat config *replaces* a rule's options rather than merging. Any future repo-wide `no-restricted-syntax` rule must be repeated inside the `packages/core` block or it silently switches off there. Verify with `eslint --print-config` | ongoing |
 | ~~8~~ | ~~**`ARCHITECTURE-AND-STACK.md` §D is wrong and needs correcting.**~~ **DISCHARGED in T0.8.** §D no longer says "holding a websocket" and carries a dated correction note; §E/U-1's matrix row now records that the question is resolved for OANDA and that its original answer ("websocket is better for sweep detection") was exactly backwards for this provider — kept as a criterion because it still applies to evaluating a replacement. The F.2 amendment, which had flagged both as uncorrected, now says both were fixed | done |
 | 9 | **Migration CLI duplicates redaction logic.** `packages/db/src/bin/migrate.ts` hand-rolls error redaction predating T0.5's logger. **Its `.env` loading was deduplicated in T0.8** — that copy and three others now share `loadEnvFileIfPresent` in `@karatx/config` — but the redaction itself is untouched | low priority |
+| 10 | **The CSV fixture loader does not handle quoted fields containing commas.** `readCsvFixture` in `@karatx/test-support` splits on `,` with no quote handling. The TradingView exports it serves are not believed to use quoted fields, and a half-implemented quote parser that looks correct is worse than none — but **this fails as silently wrong numbers, not as an error**, because a quoted `"4,637.29"` would split into two values and either throw a column-count error or, worse, shift every subsequent column. **When real golden data arrives, check whether any field contains a quoted comma before trusting the loader.** **STAYS OPEN, and may become moot:** TradingView's export is a paid feature we do not have (obligation 12). If golden values instead arrive via Pine Script `log.info()`, the format is one we control rather than TradingView's, and this limitation stops mattering. Do not close it on the assumption that the format will be CSV | **open — may become moot** |
 | 10a | **REQUIRED, not optional: a CI job that runs unit tests with NO PostgreSQL service attached.** Stopping the database by hand is a spot check that proves it today; only CI makes it a property that cannot silently regress. **This has already regressed once.** During T0.6 `packages/test-support` gained integration tests, its unit script had no config, Vitest's default `include` swept them into `pnpm test`, and the unit suite silently began requiring a database — passing only because Postgres happened to be running. `vitest.shared.ts` now excludes `*.integration.test.ts`, but nothing prevents a future package from being wired up without it. T0.9 must attach no database service to the unit job | **T0.9 — firm** |
 | 10b | **Integration isolation is per *run*, not per *file*.** Each run gets its own ephemeral database, so two runs — CI and local, or two CI jobs — cannot collide. **Within** a run, files still share that one database and rely on `fileParallelism: false`. Revisit per-worker schemas if the integration suite becomes slow in Phase 1 | if suite slows |
+| 10c | **A pre-T0.6 leftover database `karatx_test` exists on the local server.** It does not match the current anchored naming pattern, so the sweep will correctly never touch it — "unrecognised means untouched". It is harmless clutter from the T0.4 scheme and can be dropped manually whenever convenient | cosmetic |
+| 10d | **Do not replace the crash-path test with a "more realistic" kill test.** `db.integration.test.ts` reproduces the post-crash state deterministically via `KEEP_TEST_DB=1`, which skips teardown and leaves exactly the database a crashed run leaves behind. Two attempts at a timing-based kill were tried first and neither was valid — one finished before the kill landed, the other killed a worker while Vitest's main process survived and cleaned up anyway. A timing-based test would be **flaky forever**, and a flaky test around destructive operations is worse than none. Reproducing the state that matters beats simulating the event that causes it | do not "fix" |
 | 10e | **Vitest cleans up after a worker crash — the orphan window is narrower than assumed.** Measured during T0.6: killing a test *worker* leaves Vitest's main process alive, which reports `Worker exited unexpectedly` and still runs `globalSetup` teardown, dropping the database. So a crashed test does not usually orphan anything. **The 24-hour floor is still justified**, because it covers the cases teardown genuinely cannot run: machine reboot, a cancelled CI job, SIGKILL of the whole process tree, and Docker stopping underneath a running suite. Those are the real orphan sources | rationale |
 | 11 | **PHASE 2 PREREQUISITE — make the unit suite fast before Phase 2 begins.** Currently 18.2s, of which ~11s is `pnpm -r` spawning a separate Vitest process per package. Fix: a single Vitest workspace run sharing one process. **This is a prerequisite, not a nice-to-have.** In Phase 2 the unit suite runs constantly while fifteen TR rule definitions are tuned against TradingView parity data — an 18-second wait at that cadence changes behaviour, and people stop running it. That is §11's rotting risk applied to the *unit* suite rather than the integration suite. Fixing it after Phase 2 has started is fixing it after the damage | **before Phase 2** |
-| 10d | **Do not replace the crash-path test with a "more realistic" kill test.** `db.integration.test.ts` reproduces the post-crash state deterministically via `KEEP_TEST_DB=1`, which skips teardown and leaves exactly the database a crashed run leaves behind. Two attempts at a timing-based kill were tried first and neither was valid — one finished before the kill landed, the other killed a worker while Vitest's main process survived and cleaned up anyway. A timing-based test would be **flaky forever**, and a flaky test around destructive operations is worse than none. Reproducing the state that matters beats simulating the event that causes it | do not "fix" |
-| 10c | **A pre-T0.6 leftover database `karatx_test` exists on the local server.** It does not match the current anchored naming pattern, so the sweep will correctly never touch it — "unrecognised means untouched". It is harmless clutter from the T0.4 scheme and can be dropped manually whenever convenient | cosmetic |
+| 12 | **C3 indicator parity still needs TradingView's own computed values, and there is no route to them yet.** TradingView's *Export chart data* is a paid feature the user does not have, so the golden CSV planned for T0.6/T1.10 could not be produced. Without TradingView's own EMA and Stoch RSI numbers there is nothing to assert engine output *against*, and audit finding C3 — parity within a documented tolerance — cannot be closed by inspection alone. **Routes being explored, in order:** (1) Pine Script `log.info()` output, which would let the chart emit its own indicator values; (2) one month of a paid TradingView plan purely to run the export; (3) manual transcription of ~20 bars, enough for a spot check but not a fixture. **Blocks nothing in Phase 0 or Phase 1.** Required before **Phase 2** indicator work begins | **before Phase 2** |
+| 13 | **T0.9 must set `NEXT_TELEMETRY_DISABLED=1` in the CI environment.** Next.js collects anonymous build-time telemetry by default. It is declined via the environment variable rather than `next telemetry disable`, because the latter writes machine-global state a fresh CI runner would silently not have. Recorded in `.env.example`; CI needs it set independently | **T0.9** |
+| 14 | **`pnpm typecheck` has a blind spot — audit it.** `vitest.shared.ts` sat at the repository root with a type error (it imported `UserConfig` from `vitest/node`, which exports it as `TestUserConfig`) and **no package tsconfig included it**, so nothing checked it. It surfaced only by accident, when `apps/web` happened to pull it in through a relative import. Root-level and config files outside every package's `include` are unchecked today. **Audit which files are outside every package tsconfig and decide deliberately whether each should be covered.** A typecheck with unknown blind spots is worse than one whose shape is known | **audit — not urgent** |
+| 15 | **T0.9 must build `apps/web` BEFORE running integration tests.** Its boot tests spawn a real server with `next start`, which requires `.next` to exist. Locally the build is usually already there; a fresh CI checkout has nothing. The test asserts the build exists and says so explicitly rather than surfacing as a confusing timeout, but CI must order the steps: install, build, then integration tests | **T0.9 — firm** |
+| 16 | **`apps/web` computing strategy is unenforced.** F.1 says the web app reads what the worker wrote and never computes. That holds today by inspection only — no rule prevents `apps/web` importing an indicator from `packages/core` and calculating in the dashboard, producing two implementations that drift. The fix has a proven shape: an ESLint boundary plus a regression test, exactly as T0.2/T0.6 did for `packages/core`. Cheap now, and the reason to do it before Phase 6 builds the real dashboard | **before Phase 6** |
+| 17 | **T0.10 must re-measure worker boot-failure behaviour against however the worker actually runs on Railway.** T0.8 measured six failure modes under `tsx` and all exited non-zero, so the worker needs no explicit `process.exit(1)`. **That result is valid for `tsx` only.** If production runs compiled output, a different entry point, or a process supervisor that wraps execution, the measurement must be repeated — believing a tsx result about production would be the minified-name mistake in a different costume. **Also check what Railway does with each exit code**: the lifecycle exits 0 on a clean shutdown and 1 when a hook failed or timed out, and that distinction is only useful if the platform acts on it | **T0.10 — firm** |
 | 18 | **OPS-3 end to end is unproven, and CI is the only place it can run.** Windows cannot deliver a catchable SIGTERM to a Node child, so `apps/worker/src/boot.integration.test.ts` skips that case on win32. The CI job must run integration tests on Linux, and this test must be confirmed as RUN rather than skipped — a skipped test reported as green is the "verification that tests nothing" failure in its most ordinary form | **T0.9 — firm** |
 | 19 | **`apps/web` resolves the repository root from a BUNDLED module.** Its instrumentation hook now calls the shared `loadEnvFileIfPresent`, which walks up from the module's own location looking for `pnpm-workspace.yaml`. Under Turbopack that module is bundled, so `import.meta.url` points inside `.next/`. It resolves correctly today — verified by a real build, 9 integration tests and 2 Playwright tests — but a `standalone` output that copies files elsewhere would break it silently, and the failure mode is "no .env found", not an error. Re-verify if the web deployment mode changes | **T0.10** |
-| 17 | **T0.10 must re-measure worker boot-failure behaviour against however the worker actually runs on Railway.** T0.8 measured six failure modes under `tsx` and all exited non-zero, so the worker needs no explicit `process.exit(1)`. **That result is valid for `tsx` only.** If production runs compiled output, a different entry point, or a process supervisor that wraps execution, the measurement must be repeated — believing a tsx result about production would be the minified-name mistake in a different costume. **Also check what Railway does with each exit code**: the lifecycle exits 0 on a clean shutdown and 1 when a hook failed or timed out, and that distinction is only useful if the platform acts on it | **T0.10 — firm** |
-| 16 | **`apps/web` computing strategy is unenforced.** F.1 says the web app reads what the worker wrote and never computes. That holds today by inspection only — no rule prevents `apps/web` importing an indicator from `packages/core` and calculating in the dashboard, producing two implementations that drift. The fix has a proven shape: an ESLint boundary plus a regression test, exactly as T0.2/T0.6 did for `packages/core`. Cheap now, and the reason to do it before Phase 6 builds the real dashboard | **before Phase 6** |
-| 15 | **T0.9 must build `apps/web` BEFORE running integration tests.** Its boot tests spawn a real server with `next start`, which requires `.next` to exist. Locally the build is usually already there; a fresh CI checkout has nothing. The test asserts the build exists and says so explicitly rather than surfacing as a confusing timeout, but CI must order the steps: install, build, then integration tests | **T0.9 — firm** |
-| 14 | **`pnpm typecheck` has a blind spot — audit it.** `vitest.shared.ts` sat at the repository root with a type error (it imported `UserConfig` from `vitest/node`, which exports it as `TestUserConfig`) and **no package tsconfig included it**, so nothing checked it. It surfaced only by accident, when `apps/web` happened to pull it in through a relative import. Root-level and config files outside every package's `include` are unchecked today. **Audit which files are outside every package tsconfig and decide deliberately whether each should be covered.** A typecheck with unknown blind spots is worse than one whose shape is known | **audit — not urgent** |
-| 13 | **T0.9 must set `NEXT_TELEMETRY_DISABLED=1` in the CI environment.** Next.js collects anonymous build-time telemetry by default. It is declined via the environment variable rather than `next telemetry disable`, because the latter writes machine-global state a fresh CI runner would silently not have. Recorded in `.env.example`; CI needs it set independently | **T0.9** |
-| 12 | **C3 indicator parity still needs TradingView's own computed values, and there is no route to them yet.** TradingView's *Export chart data* is a paid feature the user does not have, so the golden CSV planned for T0.6/T1.10 could not be produced. Without TradingView's own EMA and Stoch RSI numbers there is nothing to assert engine output *against*, and audit finding C3 — parity within a documented tolerance — cannot be closed by inspection alone. **Routes being explored, in order:** (1) Pine Script `log.info()` output, which would let the chart emit its own indicator values; (2) one month of a paid TradingView plan purely to run the export; (3) manual transcription of ~20 bars, enough for a spot check but not a fixture. **Blocks nothing in Phase 0 or Phase 1.** Required before **Phase 2** indicator work begins | **before Phase 2** |
-| 10 | **The CSV fixture loader does not handle quoted fields containing commas.** `readCsvFixture` in `@karatx/test-support` splits on `,` with no quote handling. The TradingView exports it serves are not believed to use quoted fields, and a half-implemented quote parser that looks correct is worse than none — but **this fails as silently wrong numbers, not as an error**, because a quoted `"4,637.29"` would split into two values and either throw a column-count error or, worse, shift every subsequent column. **When real golden data arrives, check whether any field contains a quoted comma before trusting the loader.** **STAYS OPEN, and may become moot:** TradingView's export is a paid feature we do not have (obligation 12). If golden values instead arrive via Pine Script `log.info()`, the format is one we control rather than TradingView's, and this limitation stops mattering. Do not close it on the assumption that the format will be CSV | **open — may become moot** |
 
 ---
 
