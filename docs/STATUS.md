@@ -14,8 +14,8 @@ handover document.
 | | |
 |---|---|
 | Phase | **Phase 0 — Engineering Foundation** |
-| Complete | **T0.1 – T0.6** (6 of 10) |
-| Next task | **T0.7 — Web skeleton and health endpoints** (not started) |
+| Complete | **T0.1 – T0.7** (7 of 10) |
+| Next task | **T0.8 — Worker skeleton** (not started) |
 | Branch | `main`, working tree clean. (Commit count deliberately not stated — a self-referential number in a committed file is stale the moment it lands. Use `git log --oneline`.) |
 | Remote | none configured. Nothing has been pushed |
 
@@ -33,8 +33,10 @@ pnpm install --frozen-lockfile   EXIT=0
 pnpm lint                        EXIT=0
 pnpm format:check                EXIT=0
 pnpm typecheck                   EXIT=0    7 projects
-pnpm test                        EXIT=0    180 tests, 11 files, 18.2s  (verified with PostgreSQL STOPPED)
-pnpm test:integration            EXIT=0     24 tests, 2 files
+pnpm test                        EXIT=0    196 tests  (verified with PostgreSQL STOPPED)
+pnpm test:integration            EXIT=0     43 tests
+pnpm --filter @karatx/web build  EXIT=0    zero warnings; /api/* listed as Dynamic
+pnpm --filter @karatx/web test:e2e EXIT=0   2 Playwright tests
 ```
 
 Unit test breakdown:
@@ -44,10 +46,12 @@ Unit test breakdown:
 | `packages/core` | 2 | 47 |
 | `packages/test-support` | 4 | 64 |
 | `packages/config` | 4 | 40 |
+| `packages/db` | 1 | 11 |
+| `apps/web` | 1 | 5 |
 | `packages/providers` | 1 | 29 |
-| **total** | **11** | **180** |
+| **total** | **13** | **196** |
 
-Integration: `packages/test-support` 15 tests, `packages/db` 9 tests — against real PostgreSQL, each run in its own ephemeral database.
+Integration (43): `packages/test-support` 15, `packages/db` 19, `apps/web` 9 — against real PostgreSQL, each run in its own ephemeral database. Plus 2 Playwright end-to-end tests against a real built server.
 
 **Known failures: none.** Nothing is skipped, mocked-out or quarantined.
 
@@ -63,7 +67,7 @@ Integration: `packages/test-support` 15 tests, `packages/db` 9 tests — against
 | T0.4 Database, Drizzle, first migration | **Done** | Docker Postgres 17, `system_events` + `config`, migration applied and idempotent, 9 integration tests |
 | T0.5 Logging and error model | **Done** | Pino JSON, 3-layer redaction, correlation IDs, 8-class error taxonomy |
 | T0.6 Test harness | **Done, two honest caveats** | `@karatx/test-support`; unit runs exclude integration tests and are verified with PostgreSQL stopped; ephemeral database per integration run; fixture loader; core-boundary regression test |
-| T0.7 Web skeleton + health endpoints | Not started | `apps/web` is a stub; no Next.js installed |
+| T0.7 Web skeleton + health endpoints | **Done, one honest caveat** | Next 16 + React 19; /api/health and /api/ready; boot-time config validation that refuses to start; Playwright smoke test. See "Not proven" for the unenforced criterion |
 | T0.8 Worker skeleton | Not started | `apps/worker` is a stub; no lifecycle |
 | T0.9 CI | Not started | No `.github/` directory exists |
 | T0.10 Railway deploy + docs | Not started | — |
@@ -125,9 +129,7 @@ never live in this repository.
 
 These acceptance criteria are **partially** met. Do not record them as done.
 
-- **T0.3 "config fails before any other work."** No boot sequence exists yet.
-  `loadConfig()` is the documented first call; **T0.7 and T0.8 must verify the
-  ordering.**
+- **T0.3 "config fails before any other work."** **PROVEN for `apps/web` in T0.7** — `instrumentation.ts` validates at server start and calls `process.exit(1)`, and 4 integration tests boot a real built server with a broken environment and assert a non-zero exit. **Still open for `apps/worker`, which has no lifecycle yet — T0.8 must prove the same, by measurement rather than assumption** (see the Lessons entry on start signals).
 - **T0.3 "no secret ever appears in a log line."** T0.5 added the logger and
   three redaction layers, so this is now largely covered — but only for output
   going through that logger. Anything using `console.log` directly bypasses it.
@@ -155,6 +157,7 @@ These acceptance criteria are **partially** met. Do not record them as done.
   exists yet. Its inability to parse quoted fields containing commas
   (obligation 10) is therefore an untested assumption about the file format.
   Treat the helper as ready in principle and unproven in practice. **No golden export exists and there is currently no route to one** — see obligation 12.
+- **T0.7 "no strategy logic in the web app."** True today — `apps/web` computes nothing; it imports `@karatx/db` to read status and `@karatx/config` to validate. But it is **satisfied by inspection, not enforced**. Nothing stops a future change importing an indicator from `packages/core` and calculating in the dashboard, which is exactly how two implementations of the same rule start drifting (F.1). This is the same shape as the `packages/core` boundary before T0.6 gave it a regression test. See obligation 16.
 
 ---
 
@@ -290,6 +293,7 @@ it.**
 | 11 | **PHASE 2 PREREQUISITE — make the unit suite fast before Phase 2 begins.** Currently 18.2s, of which ~11s is `pnpm -r` spawning a separate Vitest process per package. Fix: a single Vitest workspace run sharing one process. **This is a prerequisite, not a nice-to-have.** In Phase 2 the unit suite runs constantly while fifteen TR rule definitions are tuned against TradingView parity data — an 18-second wait at that cadence changes behaviour, and people stop running it. That is §11's rotting risk applied to the *unit* suite rather than the integration suite. Fixing it after Phase 2 has started is fixing it after the damage | **before Phase 2** |
 | 10d | **Do not replace the crash-path test with a "more realistic" kill test.** `db.integration.test.ts` reproduces the post-crash state deterministically via `KEEP_TEST_DB=1`, which skips teardown and leaves exactly the database a crashed run leaves behind. Two attempts at a timing-based kill were tried first and neither was valid — one finished before the kill landed, the other killed a worker while Vitest's main process survived and cleaned up anyway. A timing-based test would be **flaky forever**, and a flaky test around destructive operations is worse than none. Reproducing the state that matters beats simulating the event that causes it | do not "fix" |
 | 10c | **A pre-T0.6 leftover database `karatx_test` exists on the local server.** It does not match the current anchored naming pattern, so the sweep will correctly never touch it — "unrecognised means untouched". It is harmless clutter from the T0.4 scheme and can be dropped manually whenever convenient | cosmetic |
+| 16 | **`apps/web` computing strategy is unenforced.** F.1 says the web app reads what the worker wrote and never computes. That holds today by inspection only — no rule prevents `apps/web` importing an indicator from `packages/core` and calculating in the dashboard, producing two implementations that drift. The fix has a proven shape: an ESLint boundary plus a regression test, exactly as T0.2/T0.6 did for `packages/core`. Cheap now, and the reason to do it before Phase 6 builds the real dashboard | **before Phase 6** |
 | 15 | **T0.9 must build `apps/web` BEFORE running integration tests.** Its boot tests spawn a real server with `next start`, which requires `.next` to exist. Locally the build is usually already there; a fresh CI checkout has nothing. The test asserts the build exists and says so explicitly rather than surfacing as a confusing timeout, but CI must order the steps: install, build, then integration tests | **T0.9 — firm** |
 | 14 | **`pnpm typecheck` has a blind spot — audit it.** `vitest.shared.ts` sat at the repository root with a type error (it imported `UserConfig` from `vitest/node`, which exports it as `TestUserConfig`) and **no package tsconfig included it**, so nothing checked it. It surfaced only by accident, when `apps/web` happened to pull it in through a relative import. Root-level and config files outside every package's `include` are unchecked today. **Audit which files are outside every package tsconfig and decide deliberately whether each should be covered.** A typecheck with unknown blind spots is worse than one whose shape is known | **audit — not urgent** |
 | 13 | **T0.9 must set `NEXT_TELEMETRY_DISABLED=1` in the CI environment.** Next.js collects anonymous build-time telemetry by default. It is declined via the environment variable rather than `next telemetry disable`, because the latter writes machine-global state a fresh CI runner would silently not have. Recorded in `.env.example`; CI needs it set independently | **T0.9** |
