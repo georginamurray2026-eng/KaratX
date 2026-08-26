@@ -3,8 +3,8 @@
 Handoff file between Claude Code sessions (§27, §44). The repository is the
 project memory — do not rely on conversation history.
 
-**Last verified:** 2026-08-26, by inspecting the repository and running the
-commands below. Every figure here came from an actual run, not from a
+**Last verified:** 2026-08-26 (T0.8 close), by inspecting the repository and
+running the commands below. Every figure here came from an actual run, not from a
 handover document.
 
 ---
@@ -14,13 +14,15 @@ handover document.
 | | |
 |---|---|
 | Phase | **Phase 0 — Engineering Foundation** |
-| Complete | **T0.1 – T0.7** (7 of 10) |
-| Next task | **T0.8 — Worker skeleton** (not started) |
+| Complete | **T0.1 – T0.8** (8 of 10) |
+| Next task | **T0.9 — CI** (not started) |
 | Branch | `main`, working tree clean. (Commit count deliberately not stated — a self-referential number in a committed file is stale the moment it lands. Use `git log --oneline`.) |
 | Remote | none configured. Nothing has been pushed |
 
-Phase 1 task **T1.1** (provider evaluation) was also completed early, out of
-order, because it unblocks Phase 1. See ADR-005.
+Phase 1 task **T1.1** (provider evaluation) was completed early, out of order,
+because it unblocks Phase 1. **It has been REOPENED — see "T1.1 reopened"
+below. ADR-005 (OANDA) is superseded in substance; ADR-008 will record the
+replacement once measurement is done.**
 
 ---
 
@@ -33,8 +35,8 @@ pnpm install --frozen-lockfile   EXIT=0
 pnpm lint                        EXIT=0
 pnpm format:check                EXIT=0
 pnpm typecheck                   EXIT=0    7 projects
-pnpm test                        EXIT=0    196 tests  (verified with PostgreSQL STOPPED)
-pnpm test:integration            EXIT=0     43 tests
+pnpm test                        EXIT=0    235 tests  (verified with PostgreSQL STOPPED)
+pnpm test:integration            EXIT=0     52 tests  (+1 skipped, see below)
 pnpm --filter @karatx/web build  EXIT=0    zero warnings; /api/* listed as Dynamic
 pnpm --filter @karatx/web test:e2e EXIT=0   2 Playwright tests
 ```
@@ -45,15 +47,22 @@ Unit test breakdown:
 |---|---|---|
 | `packages/core` | 2 | 47 |
 | `packages/test-support` | 4 | 64 |
-| `packages/config` | 4 | 40 |
+| `packages/config` | 5 | 46 |
 | `packages/db` | 1 | 11 |
 | `apps/web` | 1 | 5 |
+| `apps/worker` | 3 | 33 |
 | `packages/providers` | 1 | 29 |
-| **total** | **13** | **196** |
+| **total** | **17** | **235** |
 
-Integration (43): `packages/test-support` 15, `packages/db` 19, `apps/web` 9 — against real PostgreSQL, each run in its own ephemeral database. Plus 2 Playwright end-to-end tests against a real built server.
+Integration (52): `packages/test-support` 15, `packages/db` 19, `apps/web` 9, `apps/worker` 9 — against real PostgreSQL, each run in its own ephemeral database. Plus 2 Playwright end-to-end tests against a real built server.
 
-**Known failures: none.** Nothing is skipped, mocked-out or quarantined.
+**Known failures: none. One deliberate skip**, named honestly rather than
+hidden: the worker's end-to-end SIGTERM test is skipped on win32. Measured in
+T0.8 — `process.kill(pid, 'SIGTERM')` on Windows calls TerminateProcess, so the
+child dies with exit code 1 and its handler never runs. The test would FAIL
+here, not pass vacuously. It runs on Linux, which is both the CI platform and
+the deployment target. **Until CI has run it, OPS-3's end-to-end criterion is
+unproven** — see "Not proven" and obligation 18.
 
 ---
 
@@ -68,7 +77,7 @@ Integration (43): `packages/test-support` 15, `packages/db` 19, `apps/web` 9 —
 | T0.5 Logging and error model | **Done** | Pino JSON, 3-layer redaction, correlation IDs, 8-class error taxonomy |
 | T0.6 Test harness | **Done, two honest caveats** | `@karatx/test-support`; unit runs exclude integration tests and are verified with PostgreSQL stopped; ephemeral database per integration run; fixture loader; core-boundary regression test |
 | T0.7 Web skeleton + health endpoints | **Done, one honest caveat** | Next 16 + React 19; /api/health and /api/ready; boot-time config validation that refuses to start; Playwright smoke test. See "Not proven" for the unenforced criterion |
-| T0.8 Worker skeleton | Not started | `apps/worker` is a stub; no lifecycle |
+| T0.8 Worker skeleton | **Done, one honest caveat** | Boot sequence (config → logger → database → migration check → `system_events` startup row), ordered shutdown with per-hook timeouts, crash logging, heartbeat. 33 unit + 9 integration tests against a real worker process and two real databases. Caveat: end-to-end SIGTERM is unproven until CI runs on Linux |
 | T0.9 CI | Not started | No `.github/` directory exists |
 | T0.10 Railway deploy + docs | Not started | — |
 
@@ -116,6 +125,9 @@ pnpm db:down            stop it, keep data
 pnpm db:reset           destroy the volume and start clean
 pnpm db:generate        generate a migration from the schema (no DB, no credentials)
 pnpm db:migrate         apply migrations — deliberate step, never at boot (ADR-003)
+
+pnpm --filter @karatx/worker dev     run the worker (tsx watch)
+pnpm --filter @karatx/worker start   run the worker once
 ```
 
 Local setup for a fresh machine: `cp .env.example .env` then `pnpm db:up`.
@@ -129,7 +141,8 @@ never live in this repository.
 
 These acceptance criteria are **partially** met. Do not record them as done.
 
-- **T0.3 "config fails before any other work."** **PROVEN for `apps/web` in T0.7** — `instrumentation.ts` validates at server start and calls `process.exit(1)`, and 4 integration tests boot a real built server with a broken environment and assert a non-zero exit. **Still open for `apps/worker`, which has no lifecycle yet — T0.8 must prove the same, by measurement rather than assumption** (see the Lessons entry on start signals).
+- **T0.3 "config fails before any other work."** **NOW PROVEN FOR BOTH PROCESSES.** `apps/web` in T0.7 (`instrumentation.ts` validates at server start and calls `process.exit(1)`; 4 integration tests boot a real built server with a broken environment and assert a non-zero exit). `apps/worker` in T0.8, proven by ORDER in the real process's log rather than by reading the source: `configuration validated` must be log line 0 and must precede `database schema verified`. A broken environment produces **no JSON log line at all**, because the logger's level and secret list come from the configuration that just failed — asserted, and confirmed capable of failing by planting an early line and watching three tests break.
+- **OPS-3 "SIGTERM stops accepting work, finishes in flight, closes connections, exits 0" — end-to-end UNPROVEN.** The mechanism is fully covered without any OS involvement: 33 unit tests including reverse ordering, an in-flight task, a failing hook, a hanging hook, a second signal, and the handler-to-exit-code wiring driven by `process.emit`. What is NOT proven is that a real SIGTERM from a real supervisor reaches it, because **Windows cannot deliver a catchable SIGTERM to a Node child at all** (measured: TerminateProcess, exit 1, handler never runs). The end-to-end test exists and is skipped on win32. **T0.9's CI run on Linux is what discharges this. Do not tick OPS-3 before then.**
 - **T0.3 "no secret ever appears in a log line."** T0.5 added the logger and
   three redaction layers, so this is now largely covered — but only for output
   going through that logger. Anything using `console.log` directly bypasses it.
@@ -230,7 +243,7 @@ transaction, no violation — first make it FAIL deliberately and confirm you se
 the failure. A check that has never been observed failing has not been shown to
 work.**
 
-Four instances so far, all caught by reading the actual output rather than the
+Six instances so far, all caught by reading the actual output rather than the
 exit code or the absence of an error:
 
 | Where | What looked fine | What was actually happening |
@@ -239,6 +252,8 @@ exit code or the absence of an error:
 | T0.7 Turbopack runtime guard | `NEXT_RUNTIME !== 'nodejs'` early return | Turbopack analyses statically; warnings unchanged, 6 → 6 |
 | T0.8 secret-leak probe | "No password in the crash output" | The planted value was a *valid* URL, so nothing failed and no error path ran |
 | T0.8 escaping bug | Exit code 1, apparently a config failure | Exit 1 came from esbuild — an unterminated string literal, never reaching the code under test |
+| T0.8 `.env` precedence loop | A loop preserving explicitly-set variables over the file | Node's `loadEnvFile` **already** gives the environment precedence. Deleting the loop broke no test — because it had never done anything. Found by mutating it away, not by reading it |
+| T0.8 mutation probe, second attempt | 7 integration tests failing — the mutation "working" | The mutation itself was a syntax error, so the worker never started. Seven failures from a broken probe, none from the assertion under test. **The same escaping trap as the row above, two rows apart** |
 
 The leak probe is the sharpest: it produced confident reassurance from a code
 path that never executed. Its exit code and its output both looked like a pass.
@@ -250,6 +265,31 @@ is connected to anything.
 
 **Apply it going forward: any assertion of absence gets a deliberate failure
 first.**
+
+### Measure the platform before writing code that compensates for it
+
+**Three times now, a defensive mechanism was written against an assumed
+platform behaviour, and the assumption was wrong in both directions.** The cost
+is not wasted code; it is a comment asserting a hazard that does not exist,
+which the next reader believes.
+
+| Assumed | Actually | Consequence |
+|---|---|---|
+| Next.js would surface an instrumentation failure as a failed start | It prints `✓ Ready`, then serves 500s forever | T0.7 needed `process.exit(1)` — the compensation was **necessary** |
+| The worker would likewise need an explicit exit | Every one of six failure modes already exits 1 under tsx | T0.8 wrote **no** exit. An unnecessary one would imply Node does not crash on unhandled rejections |
+| `process.loadEnvFile` overwrites already-set variables | It gives the environment precedence, and always did (documented for `--env-file`, measured on v24.19.0) | A hand-rolled precedence loop that could never change an outcome, in the repository since T0.7, copied forward in T0.8 before being caught |
+
+The third is the instructive one, because it was written twice: once in T0.7's
+instrumentation hook, then again when that logic was extracted in T0.8 — with a
+comment confidently describing a bug that did not exist, and a test that
+"passed" while proving only that Node works. A mutation test caught it.
+
+**Apply it going forward: before writing code that compensates for a platform
+behaviour, spend the five minutes to observe that behaviour.** Where the code
+then depends on it, pin it with a test — `env-file.test.ts` now asserts Node's
+precedence not because we implement it, but because `db:migrate` relies on it
+and a change in Node should arrive as a test failure rather than as a silently
+migrated wrong database.
 
 ### Verify that the observable changed — a fix can look right and do nothing
 
@@ -313,14 +353,16 @@ it.**
 | 5 | **"Avoid infinite retry loops" (§23).** T0.5 defines the `retry` policy but **nothing consumes it**. It lands in T1.4 backfill and T1.7 reconnection, both of which specify bounded exponential backoff with jitter | **T1.4, T1.7** |
 | 6 | **No ADR records the TypeScript 6.0.3 pin.** TypeScript 7 is npm's `latest`, but typescript-eslint does not support it and hard-errors on load. A routine `pnpm update` would silently break `pnpm lint`. The reason exists only in commit `d41b2cb` | **unassigned — suggest T0.10** |
 | 7 | **ESLint flat-config trap.** Flat config *replaces* a rule's options rather than merging. Any future repo-wide `no-restricted-syntax` rule must be repeated inside the `packages/core` block or it silently switches off there. Verify with `eslint --print-config` | ongoing |
-| 8 | **`ARCHITECTURE-AND-STACK.md` §D is wrong and needs correcting.** It describes the worker as "a long-lived singleton process holding a websocket and a scheduler". F.2 was amended during T1.1 to polling — OANDA's own docs state you cannot build OHLC candles from their price stream — but §D was not updated, and §E/U-1's evaluation matrix still frames websocket-vs-polling as an open question. **The code is right; the document is stale.** Candles are polled after each M15 close; the stream supplies bid/ask and heartbeat liveness only. Fix belongs to whichever task next touches the worker — currently **T0.8** | T0.8 |
-| 9 | **Migration CLI duplicates redaction logic.** `packages/db/src/bin/migrate.ts` hand-rolls error redaction predating T0.5's logger | low priority |
+| ~~8~~ | ~~**`ARCHITECTURE-AND-STACK.md` §D is wrong and needs correcting.**~~ **DISCHARGED in T0.8.** §D no longer says "holding a websocket" and carries a dated correction note; §E/U-1's matrix row now records that the question is resolved for OANDA and that its original answer ("websocket is better for sweep detection") was exactly backwards for this provider — kept as a criterion because it still applies to evaluating a replacement. The F.2 amendment, which had flagged both as uncorrected, now says both were fixed | done |
+| 9 | **Migration CLI duplicates redaction logic.** `packages/db/src/bin/migrate.ts` hand-rolls error redaction predating T0.5's logger. **Its `.env` loading was deduplicated in T0.8** — that copy and three others now share `loadEnvFileIfPresent` in `@karatx/config` — but the redaction itself is untouched | low priority |
 | 10a | **REQUIRED, not optional: a CI job that runs unit tests with NO PostgreSQL service attached.** Stopping the database by hand is a spot check that proves it today; only CI makes it a property that cannot silently regress. **This has already regressed once.** During T0.6 `packages/test-support` gained integration tests, its unit script had no config, Vitest's default `include` swept them into `pnpm test`, and the unit suite silently began requiring a database — passing only because Postgres happened to be running. `vitest.shared.ts` now excludes `*.integration.test.ts`, but nothing prevents a future package from being wired up without it. T0.9 must attach no database service to the unit job | **T0.9 — firm** |
 | 10b | **Integration isolation is per *run*, not per *file*.** Each run gets its own ephemeral database, so two runs — CI and local, or two CI jobs — cannot collide. **Within** a run, files still share that one database and rely on `fileParallelism: false`. Revisit per-worker schemas if the integration suite becomes slow in Phase 1 | if suite slows |
 | 10e | **Vitest cleans up after a worker crash — the orphan window is narrower than assumed.** Measured during T0.6: killing a test *worker* leaves Vitest's main process alive, which reports `Worker exited unexpectedly` and still runs `globalSetup` teardown, dropping the database. So a crashed test does not usually orphan anything. **The 24-hour floor is still justified**, because it covers the cases teardown genuinely cannot run: machine reboot, a cancelled CI job, SIGKILL of the whole process tree, and Docker stopping underneath a running suite. Those are the real orphan sources | rationale |
 | 11 | **PHASE 2 PREREQUISITE — make the unit suite fast before Phase 2 begins.** Currently 18.2s, of which ~11s is `pnpm -r` spawning a separate Vitest process per package. Fix: a single Vitest workspace run sharing one process. **This is a prerequisite, not a nice-to-have.** In Phase 2 the unit suite runs constantly while fifteen TR rule definitions are tuned against TradingView parity data — an 18-second wait at that cadence changes behaviour, and people stop running it. That is §11's rotting risk applied to the *unit* suite rather than the integration suite. Fixing it after Phase 2 has started is fixing it after the damage | **before Phase 2** |
 | 10d | **Do not replace the crash-path test with a "more realistic" kill test.** `db.integration.test.ts` reproduces the post-crash state deterministically via `KEEP_TEST_DB=1`, which skips teardown and leaves exactly the database a crashed run leaves behind. Two attempts at a timing-based kill were tried first and neither was valid — one finished before the kill landed, the other killed a worker while Vitest's main process survived and cleaned up anyway. A timing-based test would be **flaky forever**, and a flaky test around destructive operations is worse than none. Reproducing the state that matters beats simulating the event that causes it | do not "fix" |
 | 10c | **A pre-T0.6 leftover database `karatx_test` exists on the local server.** It does not match the current anchored naming pattern, so the sweep will correctly never touch it — "unrecognised means untouched". It is harmless clutter from the T0.4 scheme and can be dropped manually whenever convenient | cosmetic |
+| 18 | **OPS-3 end to end is unproven, and CI is the only place it can run.** Windows cannot deliver a catchable SIGTERM to a Node child, so `apps/worker/src/boot.integration.test.ts` skips that case on win32. The CI job must run integration tests on Linux, and this test must be confirmed as RUN rather than skipped — a skipped test reported as green is the "verification that tests nothing" failure in its most ordinary form | **T0.9 — firm** |
+| 19 | **`apps/web` resolves the repository root from a BUNDLED module.** Its instrumentation hook now calls the shared `loadEnvFileIfPresent`, which walks up from the module's own location looking for `pnpm-workspace.yaml`. Under Turbopack that module is bundled, so `import.meta.url` points inside `.next/`. It resolves correctly today — verified by a real build, 9 integration tests and 2 Playwright tests — but a `standalone` output that copies files elsewhere would break it silently, and the failure mode is "no .env found", not an error. Re-verify if the web deployment mode changes | **T0.10** |
 | 17 | **T0.10 must re-measure worker boot-failure behaviour against however the worker actually runs on Railway.** T0.8 measured six failure modes under `tsx` and all exited non-zero, so the worker needs no explicit `process.exit(1)`. **That result is valid for `tsx` only.** If production runs compiled output, a different entry point, or a process supervisor that wraps execution, the measurement must be repeated — believing a tsx result about production would be the minified-name mistake in a different costume. **Also check what Railway does with each exit code**: the lifecycle exits 0 on a clean shutdown and 1 when a hook failed or timed out, and that distinction is only useful if the platform acts on it | **T0.10 — firm** |
 | 16 | **`apps/web` computing strategy is unenforced.** F.1 says the web app reads what the worker wrote and never computes. That holds today by inspection only — no rule prevents `apps/web` importing an indicator from `packages/core` and calculating in the dashboard, producing two implementations that drift. The fix has a proven shape: an ESLint boundary plus a regression test, exactly as T0.2/T0.6 did for `packages/core`. Cheap now, and the reason to do it before Phase 6 builds the real dashboard | **before Phase 6** |
 | 15 | **T0.9 must build `apps/web` BEFORE running integration tests.** Its boot tests spawn a real server with `next start`, which requires `.next` to exist. Locally the build is usually already there; a fresh CI checkout has nothing. The test asserts the build exists and says so explicitly rather than surfacing as a confusing timeout, but CI must order the steps: install, build, then integration tests | **T0.9 — firm** |
@@ -351,6 +393,128 @@ readable:
   added in T0.5 (rejecting a catch whose body is empty even when it holds a
   comment) matches the source's intent rather than exceeding it.
 - §23's "Avoid infinite retry loops" is obligation 5 above.
+
+### The taxonomy in real use — first consumer, T0.8
+
+T0.5 defined the eight categories and five policies. T0.8 is the first code
+to consume them for a decision rather than to test them. It works, with one
+genuine finding.
+
+**What worked.** `policyOf` walking the cause chain is the right shape: the
+worker's top-level handler reports HOW a failure should be handled without
+knowing which package raised it. `toKaratxError` meant the crash handlers could
+take `unknown` — which is what a catch block and an `uncaughtException` listener
+both actually receive — and still emit a classified line. The Pino `err`
+serialiser attaching `category` and `policy` to every error line means the
+classification reaches the log with no call site doing anything.
+
+**The finding: policy is a property of the SITUATION, not only of the class.**
+Every boot failure in T0.8 had to override the class default:
+
+| Error | Class default | What boot needs | Why |
+|---|---|---|---|
+| `DatabaseError` — unreachable at boot | `alert` (a human should look; keep running) | `stop` | At boot there is no "keep running" to fall back to. A worker with no database consumes the feed and discards it |
+| `DatabaseError` — schema mismatch | `alert` | `stop` | ADR-003: the worker must refuse rather than proceed against a schema it does not expect |
+
+The same `DatabaseError` mid-run, once T1.7 has a feed, genuinely is `alert` or
+`retry` — a dropped connection should reconnect, not kill the process. So the
+class default is not wrong; it is simply incomplete on its own.
+
+**Is that awkward enough to call the taxonomy unusable? No — and the reason
+matters.** The override is a documented constructor option, it is explicit at
+each call site, and the resulting log line carries the policy that actually
+applied rather than the class default. Nothing is silently wrong. Two of two
+boot errors overriding is a small sample; the honest reading is "the default
+is tuned for steady state, and boot is not steady state".
+
+**What would make it a real problem, and what to watch for.** If Phase 1
+finds most call sites overriding, the category-to-policy mapping is carrying
+no information and should be replaced by an explicit policy at every raise
+site. **Watch this at T1.4 and T1.7**, which are the first sustained
+consumers. Reviewing at T1.7: if the override rate across all raise sites is
+above roughly a third, the defaults are decoration.
+
+**One thing NOT done, deliberately.** No `boot` variant of each error class was
+added. That would encode the situation in the type and remove the overrides,
+but it doubles the taxonomy to carry a distinction that exists at exactly one
+point in the process lifetime — and a taxonomy nobody can hold in their head
+is one people stop classifying against.
+
+---
+
+## T1.1 reopened — OANDA v20 is UNAVAILABLE
+
+**Established 2026-08-27 by the user, following OANDA's own Developer Getting
+Started wizard to its end.** A Thailand-resident account is routed to OANDA
+Global Markets, which is MT4/MT5 only and has no Portal access. The v20 API
+belongs to the fxTrade platform offered by OANDA's other regulated entities.
+The wizard offered no separate v20 practice signup. No workaround was
+attempted, and none should be: an account obtained by misrepresenting
+residence can be closed without notice, which is worse than not having one.
+
+### The generalisation — it failed as a BROKER, not as a data source
+
+**A broker opens a REGULATED ACCOUNT, and regulated accounts are routed by
+residence to a legal entity. The API follows the entity, not the brand.** No
+amount of evaluating the v20 API could have caught this, because the API was
+never the problem. ADR-005's reasoning was sound on what was known; what was
+missing was a gate, not better analysis.
+
+**Pure data vendors do not have this failure mode.** They sell a data
+subscription, not a regulated account — there is no entity routing and no
+residence-dependent platform assignment. That is a structural difference, and
+it is the strongest argument for moving off broker feeds entirely.
+
+### Two permanent additions to the evaluation matrix
+
+1. **REGIONAL AVAILABILITY TO A THAILAND-BASED USER IS CHECKED FIRST**, before
+   anything else about a candidate is evaluated. It is cheap to check and
+   expensive to miss, and it is what eliminated the front-runner after
+   everything else had already looked good. **A candidate that cannot be
+   confirmed available is marked UNVERIFIED, never assumed available** —
+   "no restriction found" and "available" are different claims, and conflating
+   them is how this was missed.
+2. **CAN THIS PROVIDER'S RESPONSES BE RECORDED AS FIXTURES AND REPLAYED?**
+   Replaying real responses against real infrastructure has found four genuine
+   defects so far. A protocol that breaks it — protobuf over persistent TCP, a
+   Java-only SDK, a proprietary terminal dependency — is expensive in a way
+   nothing else in the matrix captures. Score it explicitly.
+
+### Reframe: brand-matching the chart is worth little
+
+The requirement was never OANDA. It was a feed close enough to the traded
+chart to be trustworthy. A spot check of OANDA against IC Markets found them
+near-identical, so matching the TradingView chart's provider is worth much
+less than assumed. **Optimise for API and data quality, not for brand match.**
+T1.9's reconciliation job exists to MEASURE divergence rather than assume it.
+
+### cTrader Open API — repurposed, not rejected
+
+**IC Markets via cTrader Open API is NOT the feed, but IS the intended
+reconciliation source for T1.9.** From cTrader's own documentation: transport
+is TCP with mandatory TLS on port 5035 or WebSocket; encoding is JSON or
+Google Protocol Buffers; there is **no HTTP/REST endpoint for historical data
+at all**; historical requests are capped at 5 per second per connection.
+
+Against the new criterion 2 that is close to worst-case — a stateful
+authenticated session over a persistent socket, where "a response" is a
+message in a stream rather than a document that can be saved under
+`test/fixtures/` and replayed. Against criterion 3 it is the opposite of
+HTTP/JSON.
+
+**Off the hot path those costs stop mattering.** A reconciliation job runs
+occasionally, tolerates a slow awkward protocol, and benefits from being an
+INDEPENDENT comparator against the actual execution venue — which is strictly
+more useful for reconciliation than a second data vendor would be.
+
+### Status
+
+**Measurement, not commitment.** No primary provider is nominated and no ADR
+is written until actual depth has been measured on free-tier keys. Leading
+candidates are EODHD and Twelve Data; Massive (formerly Polygon.io) is
+pending a targeted check on whether it covers gold at all. **ADR-008 is
+written after the numbers exist, so it records a decision made on measurement
+rather than on documentation.**
 
 ---
 
@@ -397,4 +561,9 @@ docs/ARCHITECTURE-AND-STACK.md  topology, invariants, schema sketch
 docs/INDICATOR-SPEC.md       confirmed EMA and Stoch RSI formulas
 eslint.config.js             the packages/core boundary rules
 docker-compose.yml           local Postgres 17, 127.0.0.1 only
+
+apps/worker/src/boot.ts      the boot ORDER: config, logger, database, startup row
+apps/worker/src/lifecycle.ts ordered shutdown with a per-hook timeout
+apps/worker/src/index.ts     entry point; runs on import and exports nothing
+packages/config/src/env-file.ts  the single .env loader, shared by four callers
 ```

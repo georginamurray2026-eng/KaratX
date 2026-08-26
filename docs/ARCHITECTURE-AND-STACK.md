@@ -26,7 +26,9 @@
 
 **Next.js App Router — confirmed for the dashboard, rejected as the home of the engine.**
 
-See audit H6. Next.js is a request-oriented framework; the monitoring core is a long-lived singleton process holding a websocket and a scheduler. Putting them in one service means a dashboard deploy drops your feed, and it makes the engine hard to test in isolation (which NFR-9 forbids).
+See audit H6. Next.js is a request-oriented framework; the monitoring core is a long-lived singleton process holding a price stream and a scheduler. Putting them in one service means a dashboard deploy drops your feed, and it makes the engine hard to test in isolation (which NFR-9 forbids).
+
+> **Corrected 2026-08-26 (T0.8).** This paragraph said "holding a websocket". The F.2 amendment below records that for the provider in ADR-005 the price stream is chunked HTTP, not a websocket, and that candles are POLLED rather than streamed. The architectural point is unchanged - the process is long-lived and singleton, which is why it cannot live inside Next.js - but the mechanism named here was wrong, and the amendment had flagged it as still uncorrected.
 
 **Proposal:** one repo, pnpm workspaces, two deployable processes.
 
@@ -105,7 +107,7 @@ I have no web access in this session, so I will not name providers or quote pric
 |---|---|
 | XAU/USD availability and whether it's spot or a proxy | A CFD/futures proxy will not match your chart |
 | Historical intraday depth and granularity | H7 — backtest must use the live feed |
-| Realtime method: websocket vs polling | Polling at 15M is acceptable; websocket is better for sweep detection |
+| Realtime method: streaming vs polling | **Resolved for OANDA by ADR-005 / the F.2 amendment - candles are POLLED.** The original entry read "websocket is better for sweep detection", which is exactly backwards for this provider: its stream cannot produce faithful OHLC, so using it for sweep detection would corrupt the most wick-sensitive logic in the spec. Kept as a criterion because it still applies to evaluating any REPLACEMENT provider |
 | Whether the feed supplies wick extremes faithfully | Sweep logic is wick-sensitive (C1) |
 | Bid/ask or spread availability | M3 |
 | DXY availability | Avoids a second integration |
@@ -250,7 +252,7 @@ That last line is a rule worth enforcing in review: if the dashboard ever calcul
 
 **Amended 2026-08-25 after T1.1 — candles are polled, not streamed.**
 
-This section originally implied a websocket-fed candle path (D above still describes the worker as "holding a websocket", and E/U-1's evaluation matrix still frames websocket-vs-polling as an open question). For the provider chosen in ADR-005 that question is closed by the provider's own documentation:
+This section originally implied a websocket-fed candle path. D above and E/U-1's evaluation matrix both carried the same error; **both were corrected in T0.8** and now point here. For the provider chosen in ADR-005 that question is closed by the provider's own documentation:
 
 > "you cannot create OHLC candlestick data using the REST v20 Stream endpoint, since open, high, low, and close data of the period are not guaranteed to be returned in the response packets."
 
