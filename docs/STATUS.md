@@ -42,10 +42,10 @@ Unit test breakdown:
 | Package | Files | Tests |
 |---|---|---|
 | `packages/core` | 2 | 47 |
-| `packages/test-support` | 3 | 64 |
+| `packages/test-support` | 4 | 64 |
 | `packages/config` | 4 | 40 |
 | `packages/providers` | 1 | 29 |
-| **total** | **9** | **180** |
+| **total** | **11** | **180** |
 
 Integration: `packages/test-support` 15 tests, `packages/db` 9 tests — against real PostgreSQL, each run in its own ephemeral database.
 
