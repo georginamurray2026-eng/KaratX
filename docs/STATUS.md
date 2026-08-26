@@ -14,9 +14,9 @@ handover document.
 | | |
 |---|---|
 | Phase | **Phase 0 — Engineering Foundation** |
-| Complete | **T0.1 – T0.5** (5 of 10) |
-| Next task | **T0.6 — Test harness** (not started) |
-| Branch | `main`, 10 commits, working tree clean |
+| Complete | **T0.1 – T0.6** (6 of 10) |
+| Next task | **T0.7 — Web skeleton and health endpoints** (not started) |
+| Branch | `main`, 14 commits, working tree clean |
 | Remote | none configured. Nothing has been pushed |
 
 Phase 1 task **T1.1** (provider evaluation) was also completed early, out of
@@ -33,8 +33,8 @@ pnpm install --frozen-lockfile   EXIT=0
 pnpm lint                        EXIT=0
 pnpm format:check                EXIT=0
 pnpm typecheck                   EXIT=0    7 projects
-pnpm test                        EXIT=0    116 tests, 7 files
-pnpm test:integration            EXIT=0      9 tests, 1 file
+pnpm test                        EXIT=0    180 tests, 9 files  (verified with PostgreSQL STOPPED)
+pnpm test:integration            EXIT=0     24 tests, 2 files
 ```
 
 Unit test breakdown:
@@ -42,11 +42,12 @@ Unit test breakdown:
 | Package | Files | Tests |
 |---|---|---|
 | `packages/core` | 2 | 47 |
+| `packages/test-support` | 3 | 64 |
 | `packages/config` | 4 | 40 |
 | `packages/providers` | 1 | 29 |
-| **total** | **7** | **116** |
+| **total** | **9** | **180** |
 
-Integration: `packages/db` — 1 file, 9 tests, against real PostgreSQL.
+Integration: `packages/test-support` 15 tests, `packages/db` 9 tests — against real PostgreSQL, each run in its own ephemeral database.
 
 **Known failures: none.** Nothing is skipped, mocked-out or quarantined.
 
@@ -57,11 +58,11 @@ Integration: `packages/db` — 1 file, 9 tests, against real PostgreSQL.
 | Task | State | Evidence |
 |---|---|---|
 | T0.1 Repo + workspace skeleton | **Done** | pnpm workspace, `apps/{web,worker}`, `packages/{core,contracts,db,providers,config}`, strict TS with `noUncheckedIndexedAccess` |
-| T0.2 Lint, format, import boundaries | **Done, one deferral** | ESLint + Prettier; `packages/core` boundary enforced on imports, globals and clock/random syntax. Regression test deferred to T0.6 |
+| T0.2 Lint, format, import boundaries | **Done** | ESLint + Prettier; `packages/core` boundary enforced on imports, globals and clock/random syntax. The deferred regression test landed in T0.6 |
 | T0.3 Configuration and secrets | **Done, two honest gaps** | Zod schema, `Secret<T>`, sanitised errors. See "Not proven" below |
 | T0.4 Database, Drizzle, first migration | **Done** | Docker Postgres 17, `system_events` + `config`, migration applied and idempotent, 9 integration tests |
 | T0.5 Logging and error model | **Done** | Pino JSON, 3-layer redaction, correlation IDs, 8-class error taxonomy |
-| T0.6 Test harness | **Not started** | — |
+| T0.6 Test harness | **Done** | `@karatx/test-support`; unit runs exclude integration tests and are verified with PostgreSQL stopped; ephemeral database per integration run; fixture loader; core-boundary regression test |
 | T0.7 Web skeleton + health endpoints | Not started | `apps/web` is a stub; no Next.js installed |
 | T0.8 Worker skeleton | Not started | `apps/worker` is a stub; no lifecycle |
 | T0.9 CI | Not started | No `.github/` directory exists |
@@ -141,17 +142,19 @@ These acceptance criteria are **partially** met. Do not record them as done.
 
 | # | Obligation | Lands in |
 |---|---|---|
-| 1 | **`packages/core` import-boundary regression test.** T0.2 proved the rule fires with a one-shot manual check, then deleted the probe. Nothing now fails if the rule is weakened. Confirmed absent: no test file loads ESLint | **T0.6** |
+| ~~1~~ | ~~**`packages/core` import-boundary regression test.**~~ **DISCHARGED in T0.6.** `packages/test-support/src/core-boundary.test.ts` lints snippets through the ESLint API against a virtual `packages/core` path and asserts each rule fires. Proven by deliberately weakening `eslint.config.js` two ways: changing the core block glob failed 11 of 15 tests, removing the empty-catch selector failed exactly 1. Both reverted, confirmed with `git diff`. **Its failure messages explain why the boundary exists and say not to delete the test** — the real risk is removal by someone who does not know what it protects | done |
 | 2 | **Prevent modification of existing migration files on `main`.** Drizzle does not detect tampering (see above), so CI must fail when a commit alters a migration already on `main`. This is the only thing that will actually enforce ADR-003's immutability rule | **T0.9** |
 | 3 | **Verify Railway's pre-deploy/release migration mechanism.** Migrations must be a release step, never the service start command (OPS-2). How Railway expresses that is `[VERIFY]` — unconfirmed, `ARCHITECTURE-AND-STACK.md` U-7 | **T0.10** |
 | 4 | **Railway backup and restore (OPS-7).** Requires a *tested* restore, not just a configured backup. Entirely outstanding | **T0.10** |
 | 5 | **"Avoid infinite retry loops" (§23).** T0.5 defines the `retry` policy but **nothing consumes it**. It lands in T1.4 backfill and T1.7 reconnection, both of which specify bounded exponential backoff with jitter | **T1.4, T1.7** |
-| 6 | **No ADR records the TypeScript 6.0.3 pin.** TypeScript 7 is npm's `latest`, but typescript-eslint does not support it and hard-errors on load. A routine `pnpm update` would silently break `pnpm lint`. The reason exists only in commit `d41b2cb` | **unassigned — suggest T0.6 or T0.10** |
+| 6 | **No ADR records the TypeScript 6.0.3 pin.** TypeScript 7 is npm's `latest`, but typescript-eslint does not support it and hard-errors on load. A routine `pnpm update` would silently break `pnpm lint`. The reason exists only in commit `d41b2cb` | **unassigned — suggest T0.10** |
 | 7 | **ESLint flat-config trap.** Flat config *replaces* a rule's options rather than merging. Any future repo-wide `no-restricted-syntax` rule must be repeated inside the `packages/core` block or it silently switches off there. Verify with `eslint --print-config` | ongoing |
 | 8 | **`ARCHITECTURE-AND-STACK.md` §D is wrong and needs correcting.** It describes the worker as "a long-lived singleton process holding a websocket and a scheduler". F.2 was amended during T1.1 to polling — OANDA's own docs state you cannot build OHLC candles from their price stream — but §D was not updated, and §E/U-1's evaluation matrix still frames websocket-vs-polling as an open question. **The code is right; the document is stale.** Candles are polled after each M15 close; the stream supplies bid/ask and heartbeat liveness only. Fix belongs to whichever task next touches the worker — currently **T0.8** | T0.8 |
 | 9 | **Migration CLI duplicates redaction logic.** `packages/db/src/bin/migrate.ts` hand-rolls error redaction predating T0.5's logger | low priority |
 | 10a | **REQUIRED, not optional: a CI job that runs unit tests with NO PostgreSQL service attached.** Stopping the database by hand is a spot check that proves it today; only CI makes it a property that cannot silently regress. **This has already regressed once.** During T0.6 `packages/test-support` gained integration tests, its unit script had no config, Vitest's default `include` swept them into `pnpm test`, and the unit suite silently began requiring a database — passing only because Postgres happened to be running. `vitest.shared.ts` now excludes `*.integration.test.ts`, but nothing prevents a future package from being wired up without it. T0.9 must attach no database service to the unit job | **T0.9 — firm** |
 | 10b | **Integration isolation is per *run*, not per *file*.** Each run gets its own ephemeral database, so two runs — CI and local, or two CI jobs — cannot collide. **Within** a run, files still share that one database and rely on `fileParallelism: false`. Revisit per-worker schemas if the integration suite becomes slow in Phase 1 | if suite slows |
+| 10e | **Vitest cleans up after a worker crash — the orphan window is narrower than assumed.** Measured during T0.6: killing a test *worker* leaves Vitest's main process alive, which reports `Worker exited unexpectedly` and still runs `globalSetup` teardown, dropping the database. So a crashed test does not usually orphan anything. **The 24-hour floor is still justified**, because it covers the cases teardown genuinely cannot run: machine reboot, a cancelled CI job, SIGKILL of the whole process tree, and Docker stopping underneath a running suite. Those are the real orphan sources | rationale |
+| 10d | **Do not replace the crash-path test with a "more realistic" kill test.** `db.integration.test.ts` reproduces the post-crash state deterministically via `KEEP_TEST_DB=1`, which skips teardown and leaves exactly the database a crashed run leaves behind. Two attempts at a timing-based kill were tried first and neither was valid — one finished before the kill landed, the other killed a worker while Vitest's main process survived and cleaned up anyway. A timing-based test would be **flaky forever**, and a flaky test around destructive operations is worse than none. Reproducing the state that matters beats simulating the event that causes it | do not "fix" |
 | 10c | **A pre-T0.6 leftover database `karatx_test` exists on the local server.** It does not match the current anchored naming pattern, so the sweep will correctly never touch it — "unrecognised means untouched". It is harmless clutter from the T0.4 scheme and can be dropped manually whenever convenient | cosmetic |
 | 10 | **The CSV fixture loader does not handle quoted fields containing commas.** `readCsvFixture` in `@karatx/test-support` splits on `,` with no quote handling. The TradingView exports it serves are not believed to use quoted fields, and a half-implemented quote parser that looks correct is worse than none — but **this fails as silently wrong numbers, not as an error**, because a quoted `"4,637.29"` would split into two values and either throw a column-count error or, worse, shift every subsequent column. **When the real exports arrive in T1.10, check whether any field contains a quoted comma before trusting the loader.** Phase 2's indicator-parity work depends on this being right | **T1.10** |
 
