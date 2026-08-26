@@ -7,11 +7,14 @@
     "typecheck": "tsc --noEmit",
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test": "vitest run"
   },
   "dependencies": {
+    "@karatx/config": "workspace:*",
     "@karatx/contracts": "workspace:*",
     "@karatx/core": "workspace:*",
+    "@karatx/db": "workspace:*",
     "next": "^16.3.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"

@@ -1,4 +1,4 @@
-import type { UserConfig } from 'vitest/node'
+import type { TestUserConfig } from 'vitest/node'
 
 /**
  * Shared configuration for UNIT test runs.
@@ -17,7 +17,7 @@ import type { UserConfig } from 'vitest/node'
  * database" is a property of the configuration rather than an accident of
  * which files happen to exist.
  */
-export const unitTestConfig: UserConfig['test'] = {
+export const unitTestConfig: TestUserConfig = {
   include: ['src/**/*.test.ts'],
   exclude: ['**/node_modules/**', '**/dist/**', '**/*.integration.test.ts'],
 }
