@@ -14,8 +14,8 @@ handover document.
 | | |
 |---|---|
 | Phase | **Phase 0 — Engineering Foundation** |
-| Complete | **T0.1 – T0.7** (7 of 10). **T0.8 is IMPLEMENTED but NOT CLOSED OUT** — see next task |
-| Next task | **Close out T0.8**: quality gate + criterion-by-criterion assessment. Then T0.9, then T0.10 |
+| Complete | **T0.1 – T0.8** (8 of 10). T0.8 closed 2026-08-27 with three recorded gaps |
+| Next task | **T0.9 — CI** (not started) |
 | Branch | `main`, working tree clean. (Commit count deliberately not stated — a self-referential number in a committed file is stale the moment it lands. Use `git log --oneline`.) |
 | Remote | none configured. Nothing has been pushed |
 
@@ -87,7 +87,7 @@ unproven** — see "Not proven" and obligation 18.
 | T0.5 Logging and error model | **Done** | Pino JSON, 3-layer redaction, correlation IDs, 8-class error taxonomy |
 | T0.6 Test harness | **Done, two honest caveats** | `@karatx/test-support`; unit runs exclude integration tests and are verified with PostgreSQL stopped; ephemeral database per integration run; fixture loader; core-boundary regression test |
 | T0.7 Web skeleton + health endpoints | **Done, one honest caveat** | Next 16 + React 19; /api/health and /api/ready; boot-time config validation that refuses to start; Playwright smoke test. See "Not proven" for the unenforced criterion |
-| T0.8 Worker skeleton | **Implemented, NOT closed out** | Boot sequence, ordered shutdown, crash logging, heartbeat. 33 unit + 9 integration tests. **Owes a quality gate and a criterion-by-criterion assessment against BUILD-PLAN** |
+| T0.8 Worker skeleton | **Done, three honest gaps** | Boot sequence, ordered shutdown, crash logging, heartbeat. 33 unit + 9 integration tests. Criterion 1 met; criteria 2 and 3 partial — see the close-out assessment. Obligations 20, 21, 22 |
 | T0.9 CI | Not started | No `.github/` directory exists |
 | T0.10 Railway deploy + docs | Not started | — |
 
@@ -95,33 +95,116 @@ unproven** — see "Not proven" and obligation 18.
 
 ---
 
-## THE EXACT NEXT TASK
+## T0.8 CLOSED OUT — assessed 2026-08-27, one criterion met of three
 
-**Close out T0.8.** It is implemented and green but was never formally
-assessed, because T1.1 had to be reopened mid-task when OANDA proved
-unavailable. Nothing is known to be wrong with it; it simply has not been
-checked against its own acceptance criteria.
+**Assessed against the repository, not against the pre-assessment. Two of the
+three pre-assessed verdicts were WRONG and are corrected here.** The
+pre-assessment was written from memory at the end of a long session; checking
+the code found gaps it had glossed over.
 
-BUILD-PLAN T0.8 lists three criteria. Assess each explicitly, and put anything
-partial in "Not proven" rather than ticking it:
+| # | Criterion | Verdict |
+|---|---|---|
+| 1 | Boots, validates config, connects to the DB, writes a `system_events` startup row | **MET** |
+| 2 | Handles SIGTERM: stops accepting work, finishes in flight, closes connections, exits 0 (OPS-3) | **PARTIAL** — four sub-clauses, one proven |
+| 3 | Crash-loops are visible in logs, not silent | **PARTIAL** — pre-assessed as MET, which was wrong |
 
-| Criterion | Expected finding |
+### Criterion 1 — MET
+
+Proven by ORDER in a real process log rather than by reading the source:
+`configuration validated` is log line 0 and precedes `database schema verified`.
+A broken environment produces no JSON line at all, because the logger's level
+and secret list come from the configuration that just failed. One
+`process.started` row is asserted in the database by an integration test running
+against a real migrated PostgreSQL. Confirmed capable of failing: planting an
+early log line broke exactly three tests.
+
+### Criterion 2 — PARTIAL. Do not tick.
+
+| Sub-clause | State |
 |---|---|
-| Boots, validates config, connects to the DB, writes a `system_events` startup row | **Met.** Proven by log ORDER in a real process, and one startup row asserted in an integration test |
-| Handles SIGTERM: stops accepting work, finishes in flight, closes connections, exits 0 (OPS-3) | **Partial.** Mechanism fully covered by 33 unit tests; the end-to-end case is skipped on win32 because Windows cannot deliver a catchable SIGTERM. **Unproven until CI runs it on Linux** — obligation 18 |
-| Crash-loops are visible in logs, not silent | **Met.** `uncaughtException` and `unhandledRejection` emit one fatal JSON line carrying category and policy, then rethrow so Node still terminates |
+| finishes in flight | **proven** — a synthetic in-flight task, not zero hooks |
+| closes connections | **UNVERIFIED against a real pool.** The lifecycle tests use a hook *named* `database-pool` that pushes to an array. Nothing asserts `pool.end()` actually released connections — e.g. by checking `pg_stat_activity` after shutdown |
+| stops accepting work | **SEAM ONLY.** `isShuttingDown` has NO production consumer — `grep` finds it referenced solely by `lifecycle.ts` and its own tests. There is no work to stop accepting until T1.7 |
+| exits 0 | **unproven on this platform.** Windows cannot deliver a catchable SIGTERM (measured: `TerminateProcess`, exit 1, handler never runs). The end-to-end test exists and is `skipIf(win32)` |
 
-Then the quality gate: `pnpm lint`, `format:check`, `typecheck`, `test` with
-PostgreSQL stopped, `test:integration`. All were green on 2026-08-27, so this
-should be confirmation rather than repair.
+**The pre-assessment said "mechanism fully covered by 33 unit tests". That
+overstated it.** The unit tests cover ordering, timeouts, failing hooks, second
+signals and handler-to-exit-code wiring — genuinely thorough — but two of the
+four sub-clauses above are not mechanism questions at all, and no number of
+unit tests answers them.
 
-**After that: T0.9 (CI), then T0.10 (Railway deploy + docs).** T0.9 carries the
-largest cluster of outstanding obligations — see the table below.
+### Criterion 3 — PARTIAL. The pre-assessment said MET; that was wrong.
 
-**Do not start T0.9 before T0.8 is closed out.**
+**`installCrashLogging` has never been exercised in a real spawned worker.** It
+is unit-tested by pulling the registered listener off `process` and invoking it
+directly — which does prove the rethrow, the fatal level and the taxonomy
+fields. But no integration test starts a real worker, makes it crash, and
+asserts a fatal JSON line reaches stdout.
+
+The T0.8 measurement that showed six failure modes exiting 1 under `tsx` does
+not cover this either: **it was run before `crash-logging.ts` existed.**
+
+So "crash-loops are visible in logs" is proven for the handler in isolation and
+unproven for the process. That gap is exactly the shape of this project's
+recurring defect — a thing that works in a test and has never been observed
+working where it matters.
+
+### Also assessed
+
+- **Required test — "integration test asserting startup and graceful shutdown
+  behaviour":** the startup half runs and passes. **The graceful-shutdown half
+  does not run on this machine.** The test exists; the platform cannot execute it.
+- **NFR-2 risk — "design the lifecycle hook for it now":** **MET.** `onShutdown`
+  is the seam, and `lifecycle.ts` documents it as such.
+
+### Quality gate — real exit codes, 2026-08-27
+
+```
+pnpm install --frozen-lockfile   EXIT=0
+pnpm lint                        EXIT=0
+pnpm format:check                EXIT=0
+pnpm typecheck                   EXIT=0
+pnpm test                        EXIT=0   235 tests, PostgreSQL CONFIRMED STOPPED
+pnpm test:integration            EXIT=0    52 tests + 1 deliberate skip
+```
+
+### Verdict
+
+**T0.8 is CLOSED with three honest gaps, none of which block T0.9.** Nothing is
+known to be broken; what is missing is EVIDENCE.
+
+Three of the four unproven sub-clauses are discharged inside T0.9 itself —
+running the suite on Linux proves `exits 0` (obligation 18), and obligations 20
+and 21 are two integration tests that belong with the CI work. The fourth,
+`stops accepting work`, cannot be discharged until there is work to stop
+accepting, which is T1.7 (obligation 22).
+
+New obligations 20, 21 and 22 record them.
 
 ---
 
+## THE EXACT NEXT TASK
+
+**T0.9 — CI.** It carries the largest cluster of outstanding obligations, and
+it discharges two of T0.8's three gaps by running the suite on Linux.
+
+BUILD-PLAN acceptance criteria: install → format check → lint → typecheck →
+unit tests → integration tests (with a Postgres service) → build → Playwright
+smoke; secret scanning; dependency vulnerability scanning (SEC-10); and **a
+deliberately broken commit turning CI red, verified once on purpose.**
+
+That last one is the positive-control rule applied to the pipeline itself: a
+green CI that has never been observed failing has not been shown to work.
+
+Obligations landing in T0.9: **10a** (unit job with NO database service),
+**13** (`NEXT_TELEMETRY_DISABLED=1`), **15** (build web before integration
+tests), **18** (confirm the SIGTERM test RUNS, not that the suite is green),
+and **2** (fail on modification of migrations already on `main`).
+
+**There is a manual step:** creating the GitHub repository and connecting it.
+Exact click-by-click instructions when we get there.
+
+---
 ## Architecture in brief
 
 Two deployable processes, one repository (ADR-001, audit H6).
@@ -179,7 +262,8 @@ never live in this repository.
 These acceptance criteria are **partially** met. Do not record them as done.
 
 - **T0.3 "config fails before any other work."** **NOW PROVEN FOR BOTH PROCESSES.** `apps/web` in T0.7 (`instrumentation.ts` validates at server start and calls `process.exit(1)`; 4 integration tests boot a real built server with a broken environment and assert a non-zero exit). `apps/worker` in T0.8, proven by ORDER in the real process's log rather than by reading the source: `configuration validated` must be log line 0 and must precede `database schema verified`. A broken environment produces **no JSON log line at all**, because the logger's level and secret list come from the configuration that just failed — asserted, and confirmed capable of failing by planting an early line and watching three tests break.
-- **OPS-3 "SIGTERM stops accepting work, finishes in flight, closes connections, exits 0" — end-to-end UNPROVEN.** The mechanism is fully covered without any OS involvement: 33 unit tests including reverse ordering, an in-flight task, a failing hook, a hanging hook, a second signal, and the handler-to-exit-code wiring driven by `process.emit`. What is NOT proven is that a real SIGTERM from a real supervisor reaches it, because **Windows cannot deliver a catchable SIGTERM to a Node child at all** (measured: TerminateProcess, exit 1, handler never runs). The end-to-end test exists and is skipped on win32. **T0.9's CI run on Linux is what discharges this. Do not tick OPS-3 before then.**
+- **OPS-3 "SIGTERM stops accepting work, finishes in flight, closes connections, exits 0" — PARTIAL after the T0.8 close-out.** Of four sub-clauses: *finishes in flight* is proven with a synthetic in-flight task; *closes connections* is unverified against a real pool (obligation 21); *stops accepting work* is a seam with no consumer (obligation 22); *exits 0* is unproven on Windows, which cannot deliver a catchable SIGTERM, and the end-to-end test is skipped here (obligation 18). **Do not tick OPS-3 until CI has run it on Linux and the pool assertion exists.**
+- **T0.8 "crash-loops are visible in logs, not silent" — PARTIAL.** Proven for the handler in isolation: the rethrow, the fatal level, and the `category`/`policy` fields are all unit-tested, and removing the rethrow fails 5 tests. **Not proven for the process** — no test starts a real worker, crashes it, and reads its stdout. Obligation 20.
 - **T0.3 "no secret ever appears in a log line."** T0.5 added the logger and
   three redaction layers, so this is now largely covered — but only for output
   going through that logger. Anything using `console.log` directly bypasses it.
@@ -535,6 +619,9 @@ wondering whether it was ever considered.
 | 17 | **T0.10 must re-measure worker boot-failure behaviour against however the worker actually runs on Railway.** T0.8 measured six failure modes under `tsx` and all exited non-zero, so the worker needs no explicit `process.exit(1)`. **That result is valid for `tsx` only.** If production runs compiled output, a different entry point, or a process supervisor that wraps execution, the measurement must be repeated — believing a tsx result about production would be the minified-name mistake in a different costume. **Also check what Railway does with each exit code**: the lifecycle exits 0 on a clean shutdown and 1 when a hook failed or timed out, and that distinction is only useful if the platform acts on it | **T0.10 — firm** |
 | 18 | **OPS-3 end to end is unproven, and CI is the only place it can run.** Windows cannot deliver a catchable SIGTERM to a Node child, so `apps/worker/src/boot.integration.test.ts` skips that case on win32. The CI job must run integration tests on Linux, and this test must be confirmed as RUN rather than skipped — a skipped test reported as green is the "verification that tests nothing" failure in its most ordinary form | **T0.9 — firm** |
 | 19 | **`apps/web` resolves the repository root from a BUNDLED module.** Its instrumentation hook now calls the shared `loadEnvFileIfPresent`, which walks up from the module's own location looking for `pnpm-workspace.yaml`. Under Turbopack that module is bundled, so `import.meta.url` points inside `.next/`. It resolves correctly today — verified by a real build, 9 integration tests and 2 Playwright tests — but a `standalone` output that copies files elsewhere would break it silently, and the failure mode is "no .env found", not an error. Re-verify if the web deployment mode changes | **T0.10** |
+| 20 | **Crash logging has never run in a real worker process.** `installCrashLogging` is unit-tested by invoking the registered listener directly, which proves the rethrow and the taxonomy fields but not that a fatal JSON line reaches stdout from a spawned worker. The T0.8 tsx measurement does not cover it — that ran BEFORE `crash-logging.ts` existed. Needs an integration test that starts a real worker, crashes it, and asserts one fatal line with `category` and `policy` | **T0.9** |
+| 21 | **Pool closure is unverified against a real database.** The lifecycle tests use a hook *named* `database-pool` that pushes to an array. Nothing asserts `pool.end()` released connections. Verify by checking `pg_stat_activity` after a shutdown, against a real PostgreSQL — the same "assert the observable changed" discipline that caught `verifyNotInTransaction` | **T0.9** |
+| 22 | **`isShuttingDown` has no production consumer.** OPS-3's "stops accepting work" is a SEAM, not a behaviour — `grep` finds it referenced only by `lifecycle.ts` and its own tests. Correct today, since there is no work until the feed exists. **T1.7 must wire the feed consumer to check it**, or the clause is never actually satisfied | **T1.7 — firm** |
 
 ---
 
