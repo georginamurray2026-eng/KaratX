@@ -1,8 +1,4 @@
-import { existsSync } from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-
-import { loadConfig } from '@karatx/config'
+import { loadConfig, loadEnvFileIfPresent } from '@karatx/config'
 
 import { runMigrations } from '../migrate'
 
@@ -13,14 +9,18 @@ import { runMigrations } from '../migrate'
  * pre-deploy command, never by an application starting up. See ADR-003.
  */
 
-// Local development keeps the connection string in a git-ignored `.env`.
-// Deployed environments have no such file and inject the environment directly,
-// so this loads it only if present rather than requiring it.
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
-const envPath = path.join(repoRoot, '.env')
-if (existsSync(envPath)) {
-  process.loadEnvFile(envPath)
-}
+// Loads the repository-root `.env` if there is one. Locally that is where the
+// connection string comes from; a deployed environment has no such file and
+// injects variables directly.
+//
+// An explicitly-set DATABASE_URL wins over the file - Node's own `loadEnvFile`
+// precedence, pinned by a test in @karatx/config because this command depends
+// on it. `DATABASE_URL=... pnpm db:migrate` must migrate the database named on
+// the command line, not whatever `.env` happens to point at.
+//
+// This used to compute the repository root by counting `..` segments, which
+// resolves to the wrong directory silently if the file ever moves.
+loadEnvFileIfPresent()
 
 async function main(): Promise<void> {
   const config = loadConfig()

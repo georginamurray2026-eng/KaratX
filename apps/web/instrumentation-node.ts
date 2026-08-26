@@ -8,29 +8,19 @@
  * build train people to stop reading build output.
  */
 export async function validateConfiguration(): Promise<void> {
-  const { existsSync } = await import('node:fs')
-  const path = await import('node:path')
-
   // Local development keeps the connection string in a git-ignored `.env` at
   // the repository root. Deployed environments have no such file and inject
   // variables directly, so this loads it only if present rather than requiring
-  // it - the same rule as packages/db's migrate CLI.
-  const repoRoot = path.resolve(process.cwd(), '..', '..')
-  const envPath = path.join(repoRoot, '.env')
+  // it - and an explicitly-set variable wins over the file, which is Node's
+  // own `loadEnvFile` precedence.
+  //
+  // The implementation lives in @karatx/config, which is where the db:migrate
+  // CLI and the test harness now get it too. It used to be copied here, along
+  // with a loop that re-applied that precedence by hand; T0.8 measured Node
+  // and found the loop could never change an outcome, so it is gone.
+  const { loadConfig, loadEnvFileIfPresent } = await import('@karatx/config')
 
-  if (existsSync(envPath)) {
-    // An explicitly-set variable wins over the file. `process.loadEnvFile`
-    // overwrites unconditionally, which would make the environment a deployed
-    // platform injects unreproducible locally, and would make it impossible to
-    // run this server against anything but whatever `.env` happens to say.
-    const explicit = new Map(Object.entries(process.env))
-    process.loadEnvFile(envPath)
-    for (const [key, value] of explicit) {
-      if (value !== undefined) process.env[key] = value
-    }
-  }
-
-  const { loadConfig } = await import('@karatx/config')
+  loadEnvFileIfPresent()
 
   try {
     loadConfig()

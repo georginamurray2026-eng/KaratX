@@ -15,6 +15,7 @@
  * The ESLint boundary added in T0.2 enforces that.
  */
 
+export { findRepoRoot, loadEnvFileIfPresent } from './env-file'
 export { ConfigValidationError, formatProblems, type ConfigProblem } from './errors'
 export { loadConfig, resetConfigCache } from './load'
 export { parseConfig, type Config, type EnvSource } from './parse'

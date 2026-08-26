@@ -15,6 +15,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
+    "@karatx/config": "workspace:*",
     "pg": "^8.23.0"
   },
   "devDependencies": {
