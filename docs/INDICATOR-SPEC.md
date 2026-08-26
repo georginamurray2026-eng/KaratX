@@ -26,6 +26,48 @@ Stored as an IANA zone, **never as a fixed UTC offset.** This is 21:00 UTC durin
 
 **Retain as a regression guard in T1.6:** when aggregating 1D from 15M candles, assert our aggregate matches the provider's own daily candle. This is cheap and catches the case where the provider silently changes its alignment default at some future point. Audit finding C2 is closed, but the assertion stays.
 
+### Second, independent confirmation — found in market data, 2026-08-27
+
+**The boundary is now corroborated by two unrelated sources.** The first was the
+user reading it off their own TradingView chart. The second came out of Twelve
+Data's historical 15M series during the T1.1 re-evaluation, from a provider that
+documents no daily convention at all and was not being asked about one.
+
+Measured over 2024-03-15 to 2024-03-18, `XAU/USD` 15min, requested with an
+explicit `timezone=UTC`:
+
+| Observation | Bars | UTC | New York (EDT, UTC-4) |
+|---|---|---|---|
+| Friday's last bar opens | 84 that day | `2024-03-15 20:45` | 16:45, closing at **17:00** |
+| Saturday | 0 | — | market closed |
+| Sunday's first bar opens | 8 that day | `2024-03-17 22:00` | 18:00 |
+| Monday | 92, not 96 | missing `21:00`–`22:00` | **17:00–18:00**, the daily rollover |
+
+Three separate features of the data agree on the same instant. The Friday
+session ends at 17:00 NY. The Monday bar count is short by exactly four 15M
+bars, and the missing hour is exactly the one following 17:00 NY. The weekly
+reopen is one hour after that boundary.
+
+**Why this is worth more than either source alone.** The chart reading and the
+API data share no common origin: one is a broker feed rendered by TradingView,
+the other a commodity-data vendor whose own default display timezone is
+`Australia/Sydney`. Agreement between them is not two readings of the same
+number — it rules out the possibility that the convention was an artefact of how
+the user's chart happened to be configured.
+
+**A caveat that matters for provider choice.** This structure is present in
+Twelve Data's PRE-2025 data only. From 2026 the same symbol returns a flat 96
+bars every calendar day, including Saturdays, with no session gaps at all — the
+instrument is documented as a 24/7 "COMMODITY" venue. So the corroboration above
+is a fact about historical data, and **the boundary is no longer observable in
+that series going forward.**
+
+This does not weaken C2 — the convention is confirmed twice and T1.6 imposes it
+rather than discovering it. But the T1.6 regression guard described above cannot
+rely on a provider's own daily candle agreeing, because a 24/7 series will
+produce Saturday and Sunday "days". **The guard must compare against the trading
+calendar, not against the provider.** See STATUS.md on calendar-as-authority.
+
 ---
 
 ## Stoch RSI — CONFIRMED

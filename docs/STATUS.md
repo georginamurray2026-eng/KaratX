@@ -507,6 +507,100 @@ occasionally, tolerates a slow awkward protocol, and benefits from being an
 INDEPENDENT comparator against the actual execution venue — which is strictly
 more useful for reconciliation than a second data vendor would be.
 
+### Twelve Data — measured 2026-08-27 (35 credits), NOT yet a recommendation
+
+| Fact | Value | How established |
+|---|---|---|
+| Thailand access | **works** | authenticated call succeeded from the user's machine |
+| XAU/USD 15min earliest | **2020-01-24 13:00** | `earliest_timestamp`, then verified by requesting that day and getting real bars |
+| 1min earliest | 2020-04-06 | `earliest_timestamp` |
+| 1day earliest | 1979-12-26 | the "since 1980" claim applies to DAILY only |
+| Bar density | 35,071 bars/year at 15min | counted from a full 5,000-bar page |
+| Full 6.6yr backfill | 47 requests, ~6 min | 5,000 bars/request, 8 credits/min |
+| Instrument | Gold Spot, `type: "Precious Metal"` | spot, not CFD or futures — C1 satisfied on evidence |
+| Default timezone | **Australia/Sydney (UTC+10)** | documented on the exchange page; ABSENT from the `time_series` body |
+| Numeric format | **float32**, ~9 significant figures | `4643.35156` is exactly float32 `4643.3515625` |
+| Weekend bars | 0 in 2020–2024, 49 on 2025-06-14, 96 from 2026 | one call per year |
+| Gold-specific? | **No** — EUR/USD and GBP/USD identical | the control test that refuted the source-swap hypothesis |
+
+**Two conclusions were revised by later evidence, and the revisions matter more
+than the originals.** "Variable decimals mean trailing-zero stripping" was wrong —
+it is float32 shortest-round-trip printing, and the decimal count changed only
+because gold crossed a magnitude boundary. "The weekday series may have changed
+venue" was wrong and never had evidence; one EUR/USD call killed it. New evidence
+should invalidate prior findings, not sit alongside them.
+
+**Adapter requirements this produced** (for T1.4, and for the ADR):
+
+- Send the key as `Authorization: apikey <key>`, **never** as a query parameter —
+  a key in a URL reaches proxy logs, referrer headers and echoed errors.
+- Pass `timezone=UTC` explicitly on every request. A response carries no timezone,
+  and the default is UTC+10 — an adapter storing `datetime` as UTC would be wrong
+  by ten hours on every candle, silently.
+- Preserve the decimal text as received (NFR-12). `Number()` round-tripping
+  destroys byte-for-byte reproduction.
+
+---
+### The trading calendar is the AUTHORITY — decided 2026-08-27, built in T1.5
+
+**Do not write a filter that discards what looks wrong. Assert what SHOULD be
+present, and record every mismatch as a data-quality event.**
+
+The distinction is the whole point, and it is a failure-mode inversion:
+
+| | A filter | A calendar assertion |
+|---|---|---|
+| Says | "drop bars that look like weekend" | "our calendar says gold trades these hours on this date, so expect exactly this many bars" |
+| When it breaks | silently stops matching; bad bars flow into indicators | the expectation stops being met, and an event is emitted |
+| Evidence produced | none | a recorded, queryable data-quality event |
+| 92-bars-in-2024 vs 96-in-2026 | a subtlety the filter must be careful about | **a detectable fact the system reports** |
+
+A filter that silently stops working corrupts indicators quietly, which is the
+defect class this project keeps finding. A calendar that stops matching produces
+something you can see.
+
+**Anything outside the calendar is REJECTED AND RECORDED, never silently
+dropped.** F.2 already requires malformed input to be quarantined rather than
+repaired; this is the same rule applied to bars that are well-formed but should
+not exist. It also turns the Twelve Data weekend behaviour from a liability into
+a signal: the series changes character in 2025, and a calendar-driven system
+reports exactly when and by how much.
+
+**Not built now.** Recorded as the approach for T1.5. The calendar itself needs
+the 17:00 America/New_York boundary (INDICATOR-SPEC.md C2, now confirmed by two
+independent sources) plus holiday handling, which is its own work.
+
+**Consequence for T1.6.** The regression guard in INDICATOR-SPEC.md says to
+assert our 1D aggregate matches the provider's own daily candle. That cannot
+stand against a 24/7 series, which emits Saturday and Sunday "days". The guard
+compares against the calendar, not against the provider.
+
+### Check symbol metadata FIRST, for every provider
+
+`symbol_search` returns fields that `time_series` omits entirely:
+
+```
+exchange:           "COMMODITY"
+exchange_timezone:  "Australia/Sydney"
+instrument_type:    "Precious Metal"
+```
+
+Both T1.1 anomalies were explained by that one call, and by the exchange page it
+points to, which states verbatim: *"Trading hours (24/7): Main market 00:00 -
+23:59"* and *"All times are displayed in the Australia/Sydney timezone (AEST,
+UTC+10:00)"*.
+
+**The UTC+10 default was not undocumented — we had not looked it up.** Neither
+was the 24/7 behaviour. Two hours of investigation, including a hypothesis that
+turned out to be wrong, would have started from a much better place with one
+metadata call.
+
+**Standard first step for any provider evaluation: fetch the instrument
+definition before fetching any prices.** What the vendor thinks the symbol IS
+determines how to read everything it returns.
+
+---
+
 ### Status
 
 **Measurement, not commitment.** No primary provider is nominated and no ADR
