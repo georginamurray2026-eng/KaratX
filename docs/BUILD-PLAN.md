@@ -150,7 +150,7 @@ Each phase has a **quality gate**. Do not start the next phase until the gate is
 ### T0.10 — Railway deployment and project documentation
 
 **Objective:** both services live, and the repository able to brief a fresh Claude Code session.
-**Files:** `railway.json` or service config, `CLAUDE.md`, `docs/STATUS.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, `docs/TESTING.md`, `docs/SECURITY.md`, `docs/DEPLOYMENT.md`, `README.md`
+**Files:** `railway.json` or service config, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, `docs/TESTING.md`, `docs/SECURITY.md`, `docs/DEPLOYMENT.md`, `README.md`; expands the existing `CLAUDE.md` and `docs/STATUS.md`
 **Depends on:** all of Phase 0
 **Acceptance criteria:**
 - `web` and `worker` deploy from the same repo as separate Railway services, both healthy
@@ -161,6 +161,21 @@ Each phase has a **quality gate**. Do not start the next phase until the gate is
 - `docs/STATUS.md` accurately reflects reality
 - ADRs written: ADR-001 monorepo + worker split, ADR-002 Postgres + Drizzle, ADR-003 migration policy, ADR-004 logging + error model
 **Risks:** OPS-5 — verify nothing depends on local filesystem persistence
+
+> **Amended 2026-08-26.** `CLAUDE.md` and `docs/STATUS.md` were originally
+> **created** in this task. Both were pulled forward to T0.6 and now exist.
+>
+> Scheduling them here was a mistake: §27 makes the repository the project
+> memory and `docs/STATUS.md` the handoff file between sessions, and §44
+> requires it updated at the end of every substantial session. Deferring them
+> to the last task of Phase 0 meant five tasks ran with no handoff file at
+> all, and a session had to be resumed from a hand-written document — the
+> precise failure §27 exists to prevent.
+>
+> **From T0.6 onward, `docs/STATUS.md` is maintained continuously** and updated
+> at the end of every substantial session, not written once at T0.10. T0.10
+> expands both files with deployment specifics and verifies them; it no longer
+> creates them.
 
 ---
 
