@@ -1,0 +1,5 @@
+{
+  "symbol": "XAU_USD",
+  "granularity": "H1",
+  "source": "sample fixture for the T0.6 loader tests"
+}

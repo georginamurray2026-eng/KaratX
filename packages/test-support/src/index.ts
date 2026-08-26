@@ -1,0 +1,22 @@
+/**
+ * `@karatx/test-support` - shared test infrastructure. Never imported by
+ * production code.
+ *
+ * It exists so that filesystem and database access needed by tests lives in
+ * one audited place rather than being duplicated across packages. That matters
+ * most for `packages/core`, which may not touch `node:fs` at all - not even in
+ * its own tests. Core's tests import this package instead, and the ESLint
+ * boundary continues to forbid everything else.
+ */
+
+export { findRepoRoot, loadRepoEnv } from './env.js'
+export {
+  FIXTURES_ROOT,
+  fixturePath,
+  readCsvFixture,
+  readFixture,
+  readJsonFixture,
+  type CsvFixture,
+} from './fixtures.js'
+
+export const TEST_SUPPORT_PACKAGE_NAME = '@karatx/test-support' as const

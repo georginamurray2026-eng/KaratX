@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    // Opts in to Node ambient types: this package exists to do the filesystem
+    // and database work that production packages - packages/core especially -
+    // must not do themselves.
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"]
+}
