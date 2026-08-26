@@ -84,6 +84,16 @@ importers:
       '@karatx/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@karatx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@karatx/providers':
+        specifier: workspace:*
+        version: link:../../packages/providers
+    devDependencies:
+      tsx:
+        specifier: ^4.23.12
+        version: 4.23.12
 
   packages/config:
     dependencies:

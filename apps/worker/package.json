@@ -4,11 +4,19 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@karatx/config": "workspace:*",
     "@karatx/contracts": "workspace:*",
-    "@karatx/core": "workspace:*"
+    "@karatx/core": "workspace:*",
+    "@karatx/db": "workspace:*",
+    "@karatx/providers": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.12"
   }
 }
