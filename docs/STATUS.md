@@ -236,14 +236,29 @@ error at boot probably does kill it — but "probably" is exactly what was just
 disproved for Next. Verify it the same way, by starting it with a broken
 environment and observing the exit code.
 
-### A verification can pass while testing nothing — make it fail on purpose first
+### A verification can pass while testing nothing — an absence check needs TWO assertions
 
-**Before trusting any check that something is ABSENT — no leak, no warning, no
-transaction, no violation — first make it FAIL deliberately and confirm you see
-the failure. A check that has never been observed failing has not been shown to
-work.**
+**AN ABSENCE CHECK MUST FIRST ESTABLISH THAT THE OBSERVATION WAS VALID. Zero
+results means nothing until the request is confirmed to have succeeded. Every
+check for absence needs two assertions:**
 
-Six instances so far, all caught by reading the actual output rather than the
+1. **the observation succeeded** — HTTP 200, process exited 0, file was read,
+   query returned; and
+2. **the thing is absent** — zero rows, no match, no warning.
+
+**Conflating them manufactures clean passes out of failed requests.**
+
+Then, separately: **before trusting the check, make it FAIL deliberately and
+confirm you see the failure.** A check that has never been observed failing has
+not been shown to work.
+
+**THE SECOND RULE DOES NOT SUBSTITUTE FOR THE FIRST.** That is the whole content
+of instance 7 below: the sweep *did* fail, and reported success, so "make it
+fail on purpose" had nothing to catch. A deliberately-broken run and a
+denied-request run produce the same clean output when the check only looks at
+the count.
+
+Seven instances so far, all caught by reading the actual output rather than the
 exit code or the absence of an error:
 
 | Where | What looked fine | What was actually happening |
@@ -254,6 +269,7 @@ exit code or the absence of an error:
 | T0.8 escaping bug | Exit code 1, apparently a config failure | Exit 1 came from esbuild — an unterminated string literal, never reaching the code under test |
 | T0.8 `.env` precedence loop | A loop preserving explicitly-set variables over the file | Node's `loadEnvFile` **already** gives the environment precedence. Deleting the loop broke no test — because it had never done anything. Found by mutating it away, not by reading it |
 | T0.8 mutation probe, second attempt | 7 integration tests failing — the mutation "working" | The mutation itself was a syntax error, so the worker never started. Seven failures from a broken probe, none from the assertion under test. **The same escaping trap as the row above, two rows apart** |
+| **T1.1 EODHD Saturday sweep** | Seven years of Saturdays reported `0 bars   correct - market closed` | **Every one was HTTP 403 "Only EOD data allowed for free users".** The check tested `bars === 0` without testing whether the request succeeded. Zero rows because access was DENIED, rendered as a clean pass. **Written days after this lesson, inside the sweep designed to be rigorous** |
 
 The leak probe is the sharpest: it produced confident reassurance from a code
 path that never executed. Its exit code and its output both looked like a pass.
@@ -262,6 +278,23 @@ This is why the T0.6 boundary test, the T0.7 `force-dynamic` test and the T0.7
 boot test were each proven by deliberately breaking the thing they guard. That
 is not thoroughness for its own sake — it is the only evidence that the check
 is connected to anything.
+
+#### Instance 7 happened while deliberately applying this lesson
+
+**This is the part a future session most needs to know.** The EODHD Saturday
+sweep was written specifically because the Twelve Data weekend finding had made
+the Saturday test a standard step. It was the rigorous check. It ran seven
+requests, every one was refused with HTTP 403, and it printed seven lines saying
+`correct - market closed`.
+
+The lesson as previously written — "make it fail on purpose first" — could not
+have caught this, because **the sweep did fail and reported success**. A
+deliberately-broken run and a denied-request run are indistinguishable to a
+check that only looks at the result count. Knowing the rule, and intending to
+follow it, was not enough. The rule itself was incomplete.
+
+Hence the two-assertion form above. The status code is not error handling; **it
+is half the assertion.**
 
 **Apply it going forward: any assertion of absence gets a deliberate failure
 first.**
@@ -541,6 +574,117 @@ should invalidate prior findings, not sit alongside them.
   destroys byte-for-byte reproduction.
 
 ---
+### 24/7 gold is an INDUSTRY REPRESENTATION, not a Twelve Data defect
+
+**This reframe matters more than either provider measurement, and it arrived by
+accident.** Twelve Data emits weekend bars for spot gold from 2025. So does
+EODHD. Two unrelated vendors, measured independently, both represent XAU/USD as
+a continuously-quoted instrument in 2026.
+
+The first reading — "Twelve Data has a data-quality problem" — was wrong. The
+correct reading is that **this is how the market-data industry now represents
+spot gold**, and any provider we choose will need the same treatment.
+
+**The calendar-as-authority decision was right for a better reason than we chose
+it.** It was adopted as a way to handle one vendor's quirk without a fragile
+filter. It is actually the correct posture toward the entire category: no
+provider will hand us a series aligned to a 17:00 America/New_York trading week,
+so the calendar has to be ours regardless of who supplies the bars.
+
+It also removes what looked like EODHD's decisive advantage — see below.
+
+### EODHD — measured 2026-08-27, BLOCKED by its own free tier
+
+| Fact | Value | How established |
+|---|---|---|
+| Free tier scope | **EOD only** | HTTP 403 on every intraday request: *"Only EOD data allowed for free users"* |
+| Free daily depth | **1 year** (2025-08-26 → 2026-08-25) | the response body carries `"warning": "Data is limited by one year as you have free subscription"` |
+| Intraday depth | **UNMEASURABLE** | requires the $29.99/mo plan |
+| Saturday sweep | **DID NOT RUN** | see instance 7 in the lessons — seven 403s reported as passes |
+| Daily weekend bars | **present**: 47 Sat, 52 Sun of 360 | day-of-week over the full free window |
+| Saturday character | opens exactly at Friday's close; ranges $0.14–$0.70 | vs weekday average range $102.18 |
+| `volume` field | **unreliable** | 2026-08-04 Tue reports `48` against ~1,000,000 on every other weekday |
+| Auth | **query parameter only** (`api_token=`) | no documented header form |
+| Metadata | `Name: "Gold Spot US Dollar"`, `Type: "Currency"` | **no timezone field at all**, unlike Twelve Data |
+
+**Inference, labelled:** EODHD's weekend contamination looks different in KIND
+from Twelve Data's. Twelve Data manufactures a full 96-bar Saturday averaging
+$1.55 per 15M bar; EODHD's Saturdays are near-flat, consistent with a few stray
+ticks landing in a UTC-day bucket. Its Sunday ranges ($16–39) fit the genuine
+22:00 UTC Sunday open falling inside a UTC calendar day. **Unconfirmable without
+intraday access.**
+
+**A process disadvantage, separate from the data.** EODHD's free tier cannot
+verify EODHD's own distinguishing claim. Its case rests on deep, clean history
+and that is precisely the part payment gates. For a project whose method is
+measure-before-committing, **a provider that requires payment before evaluation
+is disadvantaged on process grounds** — independently of how good its data turns
+out to be.
+
+### ADR-008 inputs collected so far
+
+Assemble the ADR from these rather than from memory.
+
+**Confirmed about Twelve Data:** Thailand access works (authenticated call);
+XAU/USD is spot gold, not a CFD or futures proxy (`currency_base: "Gold Spot"`,
+`type: "Precious Metal"`) — C1 satisfied on evidence; 15min depth 2020-01-24,
+verified by fetching bars at that date; native 15min; 6.6-year backfill in 47
+requests; free tier permitted full evaluation before payment.
+
+**Adapter decisions:** send the key as `Authorization: apikey <key>`, never a
+query parameter — a key in a URL reaches proxy logs, referrer headers and echoed
+errors. Pass `timezone=UTC` explicitly on every request; the response carries no
+timezone and the default is UTC+10, so a naive adapter is wrong by ten hours on
+every candle, silently. Preserve decimal text as received (NFR-12); values are
+float32 printed at ~9 significant figures.
+
+**Process decisions:** fetch instrument metadata BEFORE any prices — what the
+vendor thinks the symbol IS determines how to read everything it returns.
+Absence checks need two assertions (see the lessons).
+
+**Against EODHD:** query-parameter-only auth; unreliable `volume` field; no
+timezone in metadata; free tier cannot verify its own distinguishing claim.
+
+**cTrader:** not the feed — protobuf or JSON over TLS TCP, no REST for history,
+5 historical requests/second. Repurposed as T1.9's reconciliation source, where
+an independent comparator against the actual execution venue beats a second
+data vendor.
+
+**Retracted, and recorded as retracted:** that the weekday series changed venue
+(refuted by one EUR/USD call); that variable decimals were trailing-zero
+stripping (they are float32 printing).
+
+**Still missing:** Massive — does gold exist, and if so its Eastern Time bar
+alignment, which is the closest any candidate comes to the 17:00 NY convention
+and is now a scored criterion rather than a footnote.
+
+---
+### DEFERRED, not closed: paying $29.99 to measure EODHD
+
+**Decision 2026-08-27: do not pay yet.** Recorded with its trigger so this is a
+deferred decision rather than a dismissed one.
+
+**Why the question stopped mattering.** The reason to want EODHD was clean deep
+history that would avoid a filter dependency. That reason evaporated:
+
+- We are building the calendar assertion **regardless**, because two unrelated
+  vendors both emit weekend gold bars.
+- EODHD's own clean pre-2020 history sits **behind the same break** in its own
+  recent data, so it buys no consistency.
+- What $29.99 actually buys is depth beyond 2020 **at 1-minute only** — roughly
+  1.9M rows for five years — for a system that aggregates to 15M immediately.
+- Twelve Data supplies **6.6 years of native 15M in 47 requests and ~6 minutes.**
+
+**TRIGGER TO REVISIT: Phase 9 demonstrating that 6.6 years of 15M is too short a
+backtest window.** If the backtest needs more regime coverage than 2020–2026
+provides, pay the $29.99, run the measurement that was blocked today — the
+17-year Saturday sweep, real intraday depth, and the 1-minute backfill cost
+weighed against that depth — and reopen the comparison.
+
+Nothing else should reopen it. Not price, not the marketing depth figure.
+
+---
+
 ### The trading calendar is the AUTHORITY — decided 2026-08-27, built in T1.5
 
 **Do not write a filter that discards what looks wrong. Assert what SHOULD be
