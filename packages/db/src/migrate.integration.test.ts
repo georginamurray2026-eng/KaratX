@@ -1,49 +1,20 @@
 import { Pool } from 'pg'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, inject, it } from 'vitest'
 
 import { runMigrations } from './migrate.js'
 
 /**
  * Migration proof against a real Postgres - not a mock.
  *
- * The test runs against a database derived from DATABASE_URL by appending
- * `_test` to the database name, so it never touches the development database
- * even if DATABASE_URL is pointed somewhere unexpected. The guard below
- * enforces that before anything destructive happens.
+ * The database is created fresh for this run by `test/global-setup.ts` and
+ * dropped afterwards, so nothing here can reach the development database. T0.4
+ * derived a fixed `<base>_test` name and reset its schemas in `beforeAll`,
+ * which serialised runs rather than isolating them: two concurrent runs shared
+ * one database. The naming, creation, dropping and safety interlock now live in
+ * `@karatx/test-support`.
  */
 
-const TEST_DB_SUFFIX = '_test'
-
-function deriveTestDatabaseUrl(baseUrl: string): { url: string; name: string; adminUrl: string } {
-  const parsed = new URL(baseUrl)
-  const baseName = parsed.pathname.replace(/^\//, '')
-  const name = `${baseName}${TEST_DB_SUFFIX}`
-
-  const testUrl = new URL(baseUrl)
-  testUrl.pathname = `/${name}`
-
-  // Creating a database cannot be done from inside it, so DDL runs against the
-  // always-present `postgres` maintenance database.
-  const adminUrl = new URL(baseUrl)
-  adminUrl.pathname = '/postgres'
-
-  return { url: testUrl.toString(), name, adminUrl: adminUrl.toString() }
-}
-
-const baseUrl = process.env['DATABASE_URL']
-if (baseUrl === undefined || baseUrl === '') {
-  throw new Error(
-    'DATABASE_URL is not set. Copy .env.example to .env and start the local database with `pnpm db:up`.',
-  )
-}
-
-const { url: testDatabaseUrl, name: testDatabaseName, adminUrl } = deriveTestDatabaseUrl(baseUrl)
-
-// The safety interlock. Everything below drops and recreates schemas, so refuse
-// to run at all unless the target is unmistakably a throwaway test database.
-if (!testDatabaseName.endsWith(TEST_DB_SUFFIX)) {
-  throw new Error(`refusing to run destructive tests against '${testDatabaseName}'`)
-}
+const testDatabaseUrl = inject('databaseUrl')
 
 async function withPool<T>(url: string, fn: (pool: Pool) => Promise<T>): Promise<T> {
   const pool = new Pool({ connectionString: url })
@@ -65,34 +36,20 @@ async function listTables(pool: Pool): Promise<string[]> {
 }
 
 beforeAll(async () => {
-  await withPool(adminUrl, async (pool) => {
-    const exists = await pool.query(`select 1 from pg_database where datname = $1`, [
-      testDatabaseName,
-    ])
-    if (exists.rowCount === 0) {
-      // Identifier cannot be parameterised; the name is derived from our own
-      // config and validated by the suffix guard above, not user input.
-      await pool.query(`create database "${testDatabaseName}"`)
-    }
-  })
-
-  // Reset to genuinely empty, so each run proves migration from nothing.
+  // The run's database arrives empty, so this is a no-op on a single-file run.
+  // It is kept so the file does not depend on being the first to execute:
+  // files within a run still share one database (fileParallelism: false).
   //
   // Both schemas must go. Drizzle records applied migrations in its own
   // `drizzle` schema, not in `public`; dropping only `public` leaves that
   // bookkeeping behind, so the migrator correctly concludes there is nothing
-  // to do and the tables are never recreated. The suite then passes on a fresh
-  // database and fails on every subsequent run.
+  // to do and the tables are never recreated. That bug made the suite pass on
+  // a fresh database and fail on every subsequent run.
   await withPool(testDatabaseUrl, async (pool) => {
     await pool.query('drop schema if exists drizzle cascade')
     await pool.query('drop schema public cascade')
     await pool.query('create schema public')
   })
-})
-
-afterAll(async () => {
-  // Left migrated rather than dropped: inspecting the result after a failure is
-  // useful, and the next run resets it anyway.
 })
 
 describe('migrations against an empty database', () => {

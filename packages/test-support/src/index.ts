@@ -9,6 +9,23 @@
  * boundary continues to forbid everything else.
  */
 
+export {
+  adminUrl,
+  createEphemeralDatabase,
+  databaseNameFromUrl,
+  dropTestDatabase,
+  formatTimestamp,
+  isStale,
+  KEEP_ENV_VAR,
+  listDatabases,
+  makeTestDatabaseName,
+  MAX_IDENTIFIER_BYTES,
+  parseTestDatabaseTimestamp,
+  STALE_AFTER_MS,
+  sweepStaleDatabases,
+  testDatabasePattern,
+  withDatabase,
+} from './db.js'
 export { findRepoRoot, loadRepoEnv } from './env.js'
 export {
   FIXTURES_ROOT,

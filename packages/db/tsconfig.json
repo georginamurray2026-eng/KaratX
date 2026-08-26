@@ -1,10 +1,13 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": "src",
+    // Not "src": test/global-setup.ts declares the `ProvidedContext` module
+    // augmentation that types `inject()`, so it must be typechecked too.
+    // Leaving it out silently typed `inject('databaseUrl')` as `never`.
+    "rootDir": ".",
     // Opts in to Node ambient types: this package talks to Postgres over the
     // network and its migration entry point reads process state.
     "types": ["node"]
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts"]
 }

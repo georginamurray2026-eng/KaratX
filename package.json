@@ -15,7 +15,7 @@
     "format:check": "prettier --check .",
     "typecheck": "pnpm -r --no-bail typecheck",
     "test": "pnpm -r --no-bail test",
-    "test:integration": "pnpm --filter @karatx/db test:integration",
+    "test:integration": "pnpm -r --no-bail test:integration",
     "db:up": "docker compose up -d --wait postgres",
     "db:down": "docker compose stop postgres",
     "db:reset": "docker compose down -v && docker compose up -d --wait postgres",
