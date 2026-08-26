@@ -33,7 +33,7 @@ pnpm install --frozen-lockfile   EXIT=0
 pnpm lint                        EXIT=0
 pnpm format:check                EXIT=0
 pnpm typecheck                   EXIT=0    7 projects
-pnpm test                        EXIT=0    180 tests, 9 files  (verified with PostgreSQL STOPPED)
+pnpm test                        EXIT=0    180 tests, 11 files, 18.2s  (verified with PostgreSQL STOPPED)
 pnpm test:integration            EXIT=0     24 tests, 2 files
 ```
 
@@ -62,7 +62,7 @@ Integration: `packages/test-support` 15 tests, `packages/db` 9 tests — against
 | T0.3 Configuration and secrets | **Done, two honest gaps** | Zod schema, `Secret<T>`, sanitised errors. See "Not proven" below |
 | T0.4 Database, Drizzle, first migration | **Done** | Docker Postgres 17, `system_events` + `config`, migration applied and idempotent, 9 integration tests |
 | T0.5 Logging and error model | **Done** | Pino JSON, 3-layer redaction, correlation IDs, 8-class error taxonomy |
-| T0.6 Test harness | **Done** | `@karatx/test-support`; unit runs exclude integration tests and are verified with PostgreSQL stopped; ephemeral database per integration run; fixture loader; core-boundary regression test |
+| T0.6 Test harness | **Done, two honest caveats** | `@karatx/test-support`; unit runs exclude integration tests and are verified with PostgreSQL stopped; ephemeral database per integration run; fixture loader; core-boundary regression test |
 | T0.7 Web skeleton + health endpoints | Not started | `apps/web` is a stub; no Next.js installed |
 | T0.8 Worker skeleton | Not started | `apps/worker` is a stub; no lifecycle |
 | T0.9 CI | Not started | No `.github/` directory exists |
@@ -135,6 +135,25 @@ These acceptance criteria are **partially** met. Do not record them as done.
   a guarantee. Verified experimentally: Drizzle does **not** detect tampering.
   An altered applied migration was re-run; it reported success, applied
   nothing, and left the recorded hash unchanged. See obligations.
+- **T0.6 "`pnpm test` runs unit tests FAST."** Database-free is fully met and
+  verified with PostgreSQL stopped. *Fast* is borderline and measured, not
+  assumed: **18.2s wall clock**. Only **5.45s** of that is actual test
+  execution, and no single test exceeds 258ms. The remaining ~11s is
+  per-package process startup, transform and import — `pnpm -r` spawns a
+  separate Vitest process for each of the four packages and pays that cost four
+  times. A further 4.9s is the boundary test resolving the ESLint config chain,
+  which is inherent to what it checks. **Proposed fix:** a single Vitest
+  workspace run instead of `pnpm -r`, sharing one process. Not done in T0.6
+  because it changes how every package's tests are invoked and deserves its own
+  change. It will matter more in Phase 2, when indicator tests multiply.
+- **T0.6 "fixture loading helper in place for the golden datasets."** The
+  helper exists, is tested, and loads text, CSV and JSON. But it is
+  **generic, not candle-aware** — typed candle loading needs the `Candle`
+  schema from `packages/contracts`, a stub until T1.2. More importantly,
+  **it has never been run against a real TradingView export**, because none
+  exists yet. Its inability to parse quoted fields containing commas
+  (obligation 10) is therefore an untested assumption about the file format.
+  Treat the helper as ready in principle and unproven in practice until T1.10.
 
 ---
 
