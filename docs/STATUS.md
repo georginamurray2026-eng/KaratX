@@ -158,6 +158,45 @@ These acceptance criteria are **partially** met. Do not record them as done.
 
 ---
 
+## Lessons — things that should shape later work
+
+Not obligations with an owner. Patterns worth applying deliberately rather than
+rediscovering.
+
+### First-boot states are real states, and they are missing from our criteria
+
+T0.7's acceptance criteria described `/api/ready` as reporting "DB connectivity
+and applied migration version". They did not mention the **unmigrated**
+database — and `checkDatabase` got it wrong as a result, reporting a perfectly
+reachable database as `connected: false` whenever migrations had not run.
+
+That is not an edge case. **It is the state every fresh deployment is in**,
+between the service starting and its release step completing. On Railway it
+would have meant debugging connectivity for an hour when the answer was
+`pnpm db:migrate`. The bug was a *wrong diagnosis*, not a crash — far harder to
+notice, because everything appeared to work as designed.
+
+It was findable only against a genuinely unmigrated PostgreSQL. A mock would
+have agreed with whatever the code did. That is the argument for real-database
+integration tests, demonstrated rather than asserted.
+
+**At T0.10 and Railway, check deliberately for other states that exist only at
+first boot**, rather than assuming the steady state is the only state:
+
+- empty database — no schema at all
+- migrated but no data — every table present, every one empty
+- no configuration yet — service started before its variables were set
+- first run after a rollback — schema ahead of the code (already reported as
+  `unknown` migrations)
+- *(this list was truncated in the source conversation — extend it when
+  reviewing T0.10)*
+
+The same question applies to T0.8's worker and to T1.7's feed: what does this
+component do the very first time it runs, before anything upstream has
+produced anything?
+
+---
+
 ## Carried-forward obligations
 
 | # | Obligation | Lands in |

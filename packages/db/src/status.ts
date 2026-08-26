@@ -110,6 +110,29 @@ function redact(message: string, url: string): string {
   return safe
 }
 
+/** Postgres SQLSTATE for "relation does not exist". */
+const UNDEFINED_TABLE = '42P01'
+
+/**
+ * Read the applied-migration timestamps, treating "no bookkeeping table" as
+ * "nothing applied".
+ *
+ * A database that has never been migrated has no `drizzle` schema at all. That
+ * is a normal, expected state - a fresh deployment before its release step ran
+ * - and it must be reported as zero migrations rather than as an error.
+ */
+async function readAppliedMigrations(client: Client): Promise<number[]> {
+  try {
+    const result = await client.query<{ created_at: string }>(
+      'select created_at from drizzle.__drizzle_migrations order by created_at',
+    )
+    return result.rows.map((row) => Number(row.created_at))
+  } catch (error) {
+    if ((error as { code?: string }).code === UNDEFINED_TABLE) return []
+    throw error
+  }
+}
+
 /**
  * Check the database and report what it finds.
  *
@@ -128,10 +151,15 @@ export async function checkDatabase(url: string, timeoutMs = 3_000): Promise<Dat
   try {
     await client.connect()
 
-    const result = await client.query<{ created_at: string }>(
-      'select created_at from drizzle.__drizzle_migrations order by created_at',
-    )
-    const appliedWhen = result.rows.map((row) => Number(row.created_at))
+    // Connectivity is established here, separately from the migration query
+    // below. An unmigrated database has no `drizzle.__drizzle_migrations`
+    // table, and treating that as a connection failure would report a
+    // perfectly reachable database as DOWN - sending someone to investigate
+    // the network when the answer is "run db:migrate". A health endpoint that
+    // misdirects is worse than one that says less.
+    await client.query('select 1')
+
+    const appliedWhen = await readAppliedMigrations(client)
 
     return { connected: true, migrations: compareMigrations(shippedMigrations(), appliedWhen) }
   } catch (error) {

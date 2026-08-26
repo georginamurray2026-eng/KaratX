@@ -60,6 +60,9 @@ importers:
         specifier: ^19.2.8
         version: 19.2.8(react@19.2.8)
     devDependencies:
+      '@karatx/test-support':
+        specifier: workspace:*
+        version: link:../../packages/test-support
       '@types/react':
         specifier: ^19.2.18
         version: 19.2.18
