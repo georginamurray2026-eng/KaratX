@@ -1,10 +1,15 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": "src",
+    // Not "src": test/global-setup.ts declares the `ProvidedContext` module
+    // augmentation that types `inject()`, so it must be typechecked too.
+    // Leaving it out silently typed `inject('migratedUrl')` as `never` - the
+    // same trap packages/db documented, hit again in a new package because a
+    // comment in one tsconfig is not a rule anywhere else.
+    "rootDir": ".",
     // Opts in to Node ambient types. This package legitimately reads process
     // state and uses Node globals; packages/core deliberately does not.
     "types": ["node"]
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts"]
 }

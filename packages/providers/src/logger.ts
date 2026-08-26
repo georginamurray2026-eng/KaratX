@@ -4,7 +4,7 @@ import { pino, type DestinationStream, type Logger } from 'pino'
 import { getCorrelationId } from './correlation'
 import { REDACTED, REDACTED_FIELD_PATHS, createSecretScrubber } from './redact'
 
-export type { Logger } from 'pino'
+export type { DestinationStream, Logger } from 'pino'
 
 export const LOG_LEVELS = ['trace', 'debug', 'info', 'warn', 'error', 'fatal'] as const
 export type LogLevel = (typeof LOG_LEVELS)[number]

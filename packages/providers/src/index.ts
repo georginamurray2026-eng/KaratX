@@ -13,6 +13,7 @@ export {
   createLogger,
   LOG_LEVELS,
   type CreateLoggerOptions,
+  type DestinationStream,
   type LogLevel,
   type Logger,
 } from './logger'

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { Lifecycle, type LifecycleEvent } from './lifecycle'
+import { Lifecycle, installSignalHandlers, type LifecycleEvent } from './lifecycle'
 
 /**
  * Shutdown behaviour, tested as pure logic with no process and no signals.
@@ -173,6 +173,82 @@ describe('a second signal', () => {
     expect(await lifecycle.shutdown('SIGTERM')).toBe(false)
     // The second call must not report success just because it did nothing.
     expect(await lifecycle.shutdown('SIGINT')).toBe(false)
+  })
+})
+
+describe('signal handlers', () => {
+  /**
+   * `process.emit` invokes the real registered listener, so everything from
+   * the handler to the exit code is exercised - only the kernel's delivery of
+   * the signal is simulated.
+   *
+   * That delivery cannot be tested on Windows at all: `process.kill(pid,
+   * 'SIGTERM')` there calls TerminateProcess, so a child dies with exit code 1
+   * and its listener never runs. Measured in T0.8. The end-to-end case lives
+   * in boot.integration.test.ts and is skipped on win32.
+   */
+  function emit(signal: 'SIGTERM' | 'SIGINT'): void {
+    process.emit(signal)
+  }
+
+  it('runs the shutdown hooks on SIGTERM and reports exit 0', async () => {
+    const exits: number[] = []
+    let released = false
+    const lifecycle = new Lifecycle()
+    lifecycle.onShutdown('pool', () => void (released = true))
+
+    const remove = installSignalHandlers(lifecycle, (code) => exits.push(code))
+    try {
+      emit('SIGTERM')
+      await vi.waitFor(() => expect(exits).toHaveLength(1))
+    } finally {
+      remove()
+    }
+
+    expect(released).toBe(true)
+    expect(exits).toEqual([0])
+  })
+
+  it('reports exit 1 when a hook failed, so a platform can tell the two apart', async () => {
+    const exits: number[] = []
+    const lifecycle = new Lifecycle()
+    lifecycle.onShutdown('broken', () => {
+      throw new Error('hook exploded')
+    })
+
+    const remove = installSignalHandlers(lifecycle, (code) => exits.push(code))
+    try {
+      emit('SIGTERM')
+      await vi.waitFor(() => expect(exits).toHaveLength(1))
+    } finally {
+      remove()
+    }
+
+    expect(exits).toEqual([1])
+  })
+
+  it('handles SIGINT too, so the shutdown path is exercised locally', async () => {
+    const exits: number[] = []
+    const lifecycle = new Lifecycle()
+
+    const remove = installSignalHandlers(lifecycle, (code) => exits.push(code))
+    try {
+      emit('SIGINT')
+      await vi.waitFor(() => expect(exits).toHaveLength(1))
+    } finally {
+      remove()
+    }
+
+    expect(exits).toEqual([0])
+  })
+
+  it('removes its listeners when uninstalled', () => {
+    const before = process.listeners('SIGTERM').length
+    const remove = installSignalHandlers(new Lifecycle(), () => undefined)
+
+    expect(process.listeners('SIGTERM')).toHaveLength(before + 1)
+    remove()
+    expect(process.listeners('SIGTERM')).toHaveLength(before)
   })
 })
 
