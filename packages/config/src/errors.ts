@@ -31,6 +31,10 @@ export interface ConfigProblem {
  * T0.3's tests pass without modification, which is the compatibility contract.
  */
 export class ConfigValidationError extends ConfigError {
+  // A string literal, not new.target.name - see the note in packages/core.
+  // A minified production bundle would otherwise report this as 'r'.
+  override readonly name: string = 'ConfigValidationError'
+
   readonly problems: readonly ConfigProblem[]
 
   constructor(problems: readonly ConfigProblem[]) {

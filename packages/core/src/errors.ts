@@ -93,6 +93,11 @@ export abstract class KaratxError extends Error {
  * same requirement of market data explicitly.
  */
 export class ValidationError extends KaratxError {
+  // A string literal, not new.target.name: a production bundle minifies class
+  // names, so new.target.name yields 'r' and every log line and boot message
+  // loses its classification. Measured in a Next.js build during T0.7.
+  override readonly name: string = 'ValidationError'
+
   constructor(message: string, options?: KaratxErrorOptions) {
     super('validation', 'quarantine', message, options)
   }
@@ -106,6 +111,11 @@ export class ValidationError extends KaratxError {
  * market-data provider.
  */
 export class ProviderError extends KaratxError {
+  // A string literal, not new.target.name: a production bundle minifies class
+  // names, so new.target.name yields 'r' and every log line and boot message
+  // loses its classification. Measured in a Next.js build during T0.7.
+  override readonly name: string = 'ProviderError'
+
   constructor(message: string, options?: KaratxErrorOptions) {
     super('provider', 'retry', message, options)
   }
@@ -118,6 +128,11 @@ export class ProviderError extends KaratxError {
  * and jitter, bounded, never an infinite tight loop.
  */
 export class NetworkError extends KaratxError {
+  // A string literal, not new.target.name: a production bundle minifies class
+  // names, so new.target.name yields 'r' and every log line and boot message
+  // loses its classification. Measured in a Next.js build during T0.7.
+  override readonly name: string = 'NetworkError'
+
   constructor(message: string, options?: KaratxErrorOptions) {
     super('network', 'retry', message, options)
   }
@@ -135,6 +150,11 @@ export class NetworkError extends KaratxError {
  * work depends on distinguishing a unique violation from a connection failure.
  */
 export class DatabaseError extends KaratxError {
+  // A string literal, not new.target.name: a production bundle minifies class
+  // names, so new.target.name yields 'r' and every log line and boot message
+  // loses its classification. Measured in a Next.js build during T0.7.
+  override readonly name: string = 'DatabaseError'
+
   constructor(message: string, options?: KaratxErrorOptions) {
     super('database', 'alert', message, options)
   }
@@ -149,6 +169,11 @@ export class DatabaseError extends KaratxError {
  * confidently emitting wrong trades.
  */
 export class StrategyError extends KaratxError {
+  // A string literal, not new.target.name: a production bundle minifies class
+  // names, so new.target.name yields 'r' and every log line and boot message
+  // loses its classification. Measured in a Next.js build during T0.7.
+  override readonly name: string = 'StrategyError'
+
   constructor(message: string, options?: KaratxErrorOptions) {
     super('strategy', 'stop', message, options)
   }
@@ -162,6 +187,11 @@ export class StrategyError extends KaratxError {
  * states that an LLM outage degrades the product's prose, not its function.
  */
 export class AiError extends KaratxError {
+  // A string literal, not new.target.name: a production bundle minifies class
+  // names, so new.target.name yields 'r' and every log line and boot message
+  // loses its classification. Measured in a Next.js build during T0.7.
+  override readonly name: string = 'AiError'
+
   constructor(message: string, options?: KaratxErrorOptions) {
     super('ai', 'degrade', message, options)
   }
@@ -176,6 +206,11 @@ export class AiError extends KaratxError {
  * `ConfigValidationError` in `packages/config` extends this class.
  */
 export class ConfigError extends KaratxError {
+  // A string literal, not new.target.name: a production bundle minifies class
+  // names, so new.target.name yields 'r' and every log line and boot message
+  // loses its classification. Measured in a Next.js build during T0.7.
+  override readonly name: string = 'ConfigError'
+
   constructor(message: string, options?: KaratxErrorOptions) {
     super('config', 'stop', message, options)
   }
@@ -189,6 +224,11 @@ export class ConfigError extends KaratxError {
  * less reliable rather than more.
  */
 export class UnexpectedError extends KaratxError {
+  // A string literal, not new.target.name: a production bundle minifies class
+  // names, so new.target.name yields 'r' and every log line and boot message
+  // loses its classification. Measured in a Next.js build during T0.7.
+  override readonly name: string = 'UnexpectedError'
+
   constructor(message: string, options?: KaratxErrorOptions) {
     super('unexpected', 'alert', message, options)
   }

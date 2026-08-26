@@ -186,14 +186,60 @@ first boot**, rather than assuming the steady state is the only state:
 - empty database — no schema at all
 - migrated but no data — every table present, every one empty
 - no configuration yet — service started before its variables were set
-- first run after a rollback — schema ahead of the code (already reported as
-  `unknown` migrations)
-- *(this list was truncated in the source conversation — extend it when
-  reviewing T0.10)*
+- first run after a rollback to an older image — the database carries
+  migrations the code does not ship (already reported as `unknown` migrations)
 
 The same question applies to T0.8's worker and to T1.7's feed: what does this
 component do the very first time it runs, before anything upstream has
 produced anything?
+
+### A start signal is not proof of a working boot
+
+With configuration validation throwing in `instrumentation.ts`, Next.js printed:
+
+```
+✓ Ready in 398ms
+Failed to prepare server: ... instrumentation hook: Invalid environment configuration
+```
+
+**"✓ Ready" prints before the failure.** Next caught the error and kept
+serving: process alive, port bound, HTTP 500 to every request indefinitely —
+including `/api/health`, an endpoint defined as touching nothing, contradicting
+its own contract.
+
+Every signal a platform uses to judge a deployment reported success. Railway
+would have shown a healthy service; a TCP check passes; a log scraper watching
+for the ready line finds it. Fixed by `process.exit(1)` in `register()`.
+
+**When T0.8 builds the worker and T0.10 reaches Railway, do not treat a start
+signal as proof of a working boot.** Ask what the process does when its
+dependencies are absent, and *verify the answer* rather than assuming it.
+
+**Specifically for T0.8:** the worker is a plain Node process, so a thrown
+error at boot probably does kill it — but "probably" is exactly what was just
+disproved for Next. Verify it the same way, by starting it with a broken
+environment and observing the exit code.
+
+### Runtime names are invisible to a suite that never sees a production build
+
+The boot message read `FATAL: r: Invalid environment configuration`. `r` was
+the **minified class name**: T0.5 set `this.name = new.target.name`, which
+yields the mangled constructor name in any production bundle.
+
+Every production log line would have carried `"type":"r"` — the entire error
+taxonomy silently useless in exactly the environment it exists for, while
+development looked perfect indefinitely. T0.5's tests all ran unminified, so
+the taxonomy was verified in precisely the conditions where the bug is
+invisible.
+
+That is a general problem, not a one-off. **Anything depending on runtime
+names — `error.name`, constructor identity, `Function.name`, class names in
+serialised output — is invisible to a test suite that never sees a production
+build.** This was found only because a test booted a real minified server.
+
+**Before T0.10, audit for other places where a minified build would behave
+differently from source, and treat "verified in development" as not covering
+it.**
 
 ---
 
@@ -216,6 +262,7 @@ produced anything?
 | 11 | **PHASE 2 PREREQUISITE — make the unit suite fast before Phase 2 begins.** Currently 18.2s, of which ~11s is `pnpm -r` spawning a separate Vitest process per package. Fix: a single Vitest workspace run sharing one process. **This is a prerequisite, not a nice-to-have.** In Phase 2 the unit suite runs constantly while fifteen TR rule definitions are tuned against TradingView parity data — an 18-second wait at that cadence changes behaviour, and people stop running it. That is §11's rotting risk applied to the *unit* suite rather than the integration suite. Fixing it after Phase 2 has started is fixing it after the damage | **before Phase 2** |
 | 10d | **Do not replace the crash-path test with a "more realistic" kill test.** `db.integration.test.ts` reproduces the post-crash state deterministically via `KEEP_TEST_DB=1`, which skips teardown and leaves exactly the database a crashed run leaves behind. Two attempts at a timing-based kill were tried first and neither was valid — one finished before the kill landed, the other killed a worker while Vitest's main process survived and cleaned up anyway. A timing-based test would be **flaky forever**, and a flaky test around destructive operations is worse than none. Reproducing the state that matters beats simulating the event that causes it | do not "fix" |
 | 10c | **A pre-T0.6 leftover database `karatx_test` exists on the local server.** It does not match the current anchored naming pattern, so the sweep will correctly never touch it — "unrecognised means untouched". It is harmless clutter from the T0.4 scheme and can be dropped manually whenever convenient | cosmetic |
+| 15 | **T0.9 must build `apps/web` BEFORE running integration tests.** Its boot tests spawn a real server with `next start`, which requires `.next` to exist. Locally the build is usually already there; a fresh CI checkout has nothing. The test asserts the build exists and says so explicitly rather than surfacing as a confusing timeout, but CI must order the steps: install, build, then integration tests | **T0.9 — firm** |
 | 14 | **`pnpm typecheck` has a blind spot — audit it.** `vitest.shared.ts` sat at the repository root with a type error (it imported `UserConfig` from `vitest/node`, which exports it as `TestUserConfig`) and **no package tsconfig included it**, so nothing checked it. It surfaced only by accident, when `apps/web` happened to pull it in through a relative import. Root-level and config files outside every package's `include` are unchecked today. **Audit which files are outside every package tsconfig and decide deliberately whether each should be covered.** A typecheck with unknown blind spots is worse than one whose shape is known | **audit — not urgent** |
 | 13 | **T0.9 must set `NEXT_TELEMETRY_DISABLED=1` in the CI environment.** Next.js collects anonymous build-time telemetry by default. It is declined via the environment variable rather than `next telemetry disable`, because the latter writes machine-global state a fresh CI runner would silently not have. Recorded in `.env.example`; CI needs it set independently | **T0.9** |
 | 12 | **C3 indicator parity still needs TradingView's own computed values, and there is no route to them yet.** TradingView's *Export chart data* is a paid feature the user does not have, so the golden CSV planned for T0.6/T1.10 could not be produced. Without TradingView's own EMA and Stoch RSI numbers there is nothing to assert engine output *against*, and audit finding C3 — parity within a documented tolerance — cannot be closed by inspection alone. **Routes being explored, in order:** (1) Pine Script `log.info()` output, which would let the chart emit its own indicator values; (2) one month of a paid TradingView plan purely to run the export; (3) manual transcription of ~20 bars, enough for a spot check but not a fixture. **Blocks nothing in Phase 0 or Phase 1.** Required before **Phase 2** indicator work begins | **before Phase 2** |
