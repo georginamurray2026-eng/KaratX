@@ -236,7 +236,23 @@ error at boot probably does kill it — but "probably" is exactly what was just
 disproved for Next. Verify it the same way, by starting it with a broken
 environment and observing the exit code.
 
-### A verification can pass while testing nothing — an absence check needs TWO assertions
+### An absence result needs a POSITIVE CONTROL — this is the strongest form of the rule
+
+**AN ABSENCE RESULT IS MEANINGFUL ONLY ALONGSIDE A POSITIVE CONTROL USING THE
+SAME QUERY SHAPE. If the query cannot demonstrate PRESENCE where presence is
+expected, its absence result proves nothing.**
+
+Before believing "there are no Saturday bars", run the identical query against a
+Wednesday. If Wednesday is also empty, the query is broken, not the market.
+
+**This subsumes everything below it.** It would have caught instance 7 (a 403
+returns zero rows on a weekday too) and it is the ONLY thing that caught
+instance 8, where the older rules all passed and the conclusion was still wrong.
+Reach for this first.
+
+---
+
+The earlier, weaker form is kept because it is cheap and catches the common case:
 
 **AN ABSENCE CHECK MUST FIRST ESTABLISH THAT THE OBSERVATION WAS VALID. Zero
 results means nothing until the request is confirmed to have succeeded. Every
@@ -258,7 +274,7 @@ fail on purpose" had nothing to catch. A deliberately-broken run and a
 denied-request run produce the same clean output when the check only looks at
 the count.
 
-Seven instances so far, all caught by reading the actual output rather than the
+Eight instances so far, all caught by reading the actual output rather than the
 exit code or the absence of an error:
 
 | Where | What looked fine | What was actually happening |
@@ -270,6 +286,7 @@ exit code or the absence of an error:
 | T0.8 `.env` precedence loop | A loop preserving explicitly-set variables over the file | Node's `loadEnvFile` **already** gives the environment precedence. Deleting the loop broke no test — because it had never done anything. Found by mutating it away, not by reading it |
 | T0.8 mutation probe, second attempt | 7 integration tests failing — the mutation "working" | The mutation itself was a syntax error, so the worker never started. Seven failures from a broken probe, none from the assertion under test. **The same escaping trap as the row above, two rows apart** |
 | **T1.1 EODHD Saturday sweep** | Seven years of Saturdays reported `0 bars   correct - market closed` | **Every one was HTTP 403 "Only EOD data allowed for free users".** The check tested `bars === 0` without testing whether the request succeeded. Zero rows because access was DENIED, rendered as a clean pass. **Written days after this lesson, inside the sweep designed to be rigorous** |
+| **T1.1 Massive Saturday check** | `0 bars, request OK -> VALID ABSENCE` — both assertions satisfied | `limit` in that API caps BASE AGGREGATES SCANNED, not results returned. `limit=200` examined **3.3 hours** of the Saturday it claimed to cover. The request genuinely succeeded and genuinely returned zero rows — **the conclusion was still wrong** |
 
 The leak probe is the sharpest: it produced confident reassurance from a code
 path that never executed. Its exit code and its output both looked like a pass.
@@ -296,8 +313,62 @@ follow it, was not enough. The rule itself was incomplete.
 Hence the two-assertion form above. The status code is not error handling; **it
 is half the assertion.**
 
+#### Instance 8 is a DIFFERENT FAILURE CLASS — the rules passed and the answer was wrong
+
+**Instances 1–7 were all "the check tested nothing". Instance 8 is "the check
+tested something real, but not the thing claimed".**
+
+The Massive Saturday query returned HTTP 200 and zero bars. Assertion 1
+satisfied: the observation succeeded. Assertion 2 satisfied: the thing was
+absent. The reported conclusion — "market correctly closed" — was still wrong,
+because `limit=200` meant the query had examined only the first 3.3 hours of
+that Saturday.
+
+**Strengthening the absence rule could not have caught this, because the rule
+was followed correctly.** What caught it was a control: asking whether a WEEKDAY
+was also sparse. A weekday returned 33 bars of 96 — visibly wrong — and that is
+what exposed the query defect.
+
+Hence the positive-control rule at the top of this section. It is stronger than
+the two-assertion rule and it subsumes it.
+
+#### The specific trap, because it will recur
+
+**A `limit` parameter may cap what is SCANNED rather than what is RETURNED.**
+Massive documents it plainly — *"Limits the number of base aggregates queried to
+create the aggregate results"* — and it had already been read during this very
+evaluation. `limit=200` scanned 200 one-minute base aggregates: 3.3 hours,
+yielding 13 fifteen-minute bars.
+
+**Read what a limit limits before trusting a short result.** A short result is a
+claim about the query at least as much as a claim about the data.
+
 **Apply it going forward: any assertion of absence gets a deliberate failure
 first.**
+
+### When a ratio lands near a threshold, find the confound — do not invoke the threshold
+
+**A number close to a decision boundary is not evidence. It is a signal that the
+measurement is not yet the right measurement.**
+
+T1.1 asked whether Twelve Data's weekday series changed when its weekend
+behaviour did. Raw divergence against an independent provider grew **2.91x**
+across the boundary, against a 3x threshold written into the script beforehand.
+Reading that as "under threshold, therefore fine" would have been luck, not
+analysis — and the decision it fed was which provider the whole system depends
+on.
+
+The confound was obvious once looked for: **volatility had grown 2.34x over the
+same period**, and two feeds sampling different tick streams diverge more when
+the bar moves more. Normalising divergence by bar range gave 9.0% before and
+11.2% after — a 1.25x change, clearly noise on a four-day sample.
+
+A borderline number became a clear one, and the answer did not depend on where
+the threshold sat. **If the conclusion would flip on a threshold chosen by
+judgement, the threshold is doing the work that the measurement should do.**
+
+Ask: what else changed between the two populations being compared, and can the
+comparison be normalised by it?
 
 ### Measure the platform before writing code that compensates for it
 
@@ -621,6 +692,57 @@ measure-before-committing, **a provider that requires payment before evaluation
 is disadvantaged on process grounds** — independently of how good its data turns
 out to be.
 
+### Massive — measured 2026-08-27, and the cross-provider validation
+
+| Fact | Value | How established |
+|---|---|---|
+| Gold exists | **YES** — `C:XAUUSD`, *"Gold (one troy ounce) - United States dollar"* | ticker metadata; resolves the earlier UNVERIFIED |
+| Host | `api.massive.com` (and `api.polygon.io` still responds) | both returned HTTP 200 |
+| Free 15min intraday | **YES** — though the pricing page says "End of day only" | measured; an entitlement more generous than documented, therefore a RISK |
+| Free depth | **~2 years, rolling** | 2024-08-26 OK; 2023-08-28 → HTTP 403 NOT_AUTHORIZED |
+| Trading calendar | **RESPECTED** | 0 Saturday bars on 2024-09-14, 2025-06-14, 2026-08-15, 2026-08-22 — all with successful requests AND a weekday positive control |
+| 17:00 NY boundary | **VISIBLE** | Fri last bar opens 20:45 UTC (closes 21:00 = 17:00 EDT); Sun opens 21:00 UTC = 17:00 EDT; weekdays 93 of 96 bars, the missing 45 min at the rollover |
+| Timestamps | **Unix epoch ms** | no timezone ambiguity possible |
+| Numbers | JSON numbers, real 2-decimal prices (`4538.93`) | occasional float64 artefacts (`4536.9400000000005`) |
+| Extras | `vw` (VWAP), `n` (trade count) | richer than Twelve Data |
+| Density | 24,342 bars/year | 69% of Twelve Data's 35,071 — matching the ~31% of TD bars outside market hours |
+| 2yr backfill | ~15 requests, ~3 min | ~50 calendar days per request at `limit=50000` |
+
+**C2 confirmed a THIRD time.** TradingView, Twelve Data's pre-2025 history, and
+now Massive's current data all place the daily boundary at 17:00
+America/New_York. Massive reopens the week at 17:00 NY; Twelve Data's 2024 data
+reopened at 18:00 NY — they agree on the daily boundary, differ by an hour on
+the weekly restart.
+
+### Cross-provider validation across the 2025 boundary — the retracted concern is now REFUTED
+
+The earlier "weekday series may have changed venue" claim was retracted for lack
+of evidence. With two independent series it became testable. Weekday 15M bars
+matched by exact UTC timestamp:
+
+| Era | Day | Matched bars | Mean bar range | Mean |Δclose| | Divergence as % of range |
+|---|---|---|---|---|---|
+| BEFORE | 2024-09-11 | 92 | 10.0bp | 0.97bp | 9.7% |
+| BEFORE | 2024-10-16 | 92 | 9.4bp | 0.78bp | 8.3% |
+| AFTER | 2026-06-17 | 93 | 24.6bp | 2.77bp | 11.2% |
+| AFTER | 2026-08-19 | 93 | 20.9bp | 2.33bp | 11.1% |
+
+Raw divergence grew **2.91x**. But volatility grew **2.34x** over the same
+period, and two feeds sampling different tick streams diverge more when the bar
+moves more. **Normalised, divergence changed 1.25x — 9.0% of bar range before,
+11.2% after.**
+
+**Conclusion: Twelve Data's WEEKDAY series is sound throughout, and its 6.6
+years of depth is real.** The 2025 change added weekend synthesis; it did not
+change the weekday instrument.
+
+**Method note.** The raw 2.91x sat just under an arbitrary 3x threshold — close
+enough that leaning on the threshold would have been luck rather than evidence.
+Normalising by the obvious confound turned a borderline number into a clear one.
+**When a ratio lands near a threshold, find the confound rather than invoking
+the threshold.**
+
+---
 ### ADR-008 inputs collected so far
 
 Assemble the ADR from these rather than from memory.
