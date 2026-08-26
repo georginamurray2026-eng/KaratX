@@ -20,7 +20,7 @@ import {
   toKaratxError,
   type ErrorCategory,
   type HandlingPolicy,
-} from './errors.js'
+} from './errors'
 
 /** Every class in the taxonomy, with the category and policy it must declare. */
 const TAXONOMY = [

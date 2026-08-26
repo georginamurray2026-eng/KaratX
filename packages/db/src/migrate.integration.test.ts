@@ -1,7 +1,7 @@
 import { Pool } from 'pg'
 import { beforeAll, describe, expect, inject, it } from 'vitest'
 
-import { runMigrations } from './migrate.js'
+import { runMigrations } from './migrate'
 
 /**
  * Migration proof against a real Postgres - not a mock.

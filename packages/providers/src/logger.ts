@@ -1,8 +1,8 @@
 import { categoryOf, isKaratxError, policyOf } from '@karatx/core'
 import { pino, type DestinationStream, type Logger } from 'pino'
 
-import { getCorrelationId } from './correlation.js'
-import { REDACTED, REDACTED_FIELD_PATHS, createSecretScrubber } from './redact.js'
+import { getCorrelationId } from './correlation'
+import { REDACTED, REDACTED_FIELD_PATHS, createSecretScrubber } from './redact'
 
 export type { Logger } from 'pino'
 

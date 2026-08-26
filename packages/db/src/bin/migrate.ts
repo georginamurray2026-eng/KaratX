@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 import { loadConfig } from '@karatx/config'
 
-import { runMigrations } from '../migrate.js'
+import { runMigrations } from '../migrate'
 
 /**
  * `pnpm db:migrate` - the deliberate release step required by OPS-2.

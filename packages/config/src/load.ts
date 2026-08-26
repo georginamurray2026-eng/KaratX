@@ -1,4 +1,4 @@
-import { parseConfig, type Config } from './parse.js'
+import { parseConfig, type Config } from './parse'
 
 let cached: Config | undefined
 

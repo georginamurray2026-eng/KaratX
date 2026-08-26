@@ -3,9 +3,9 @@ import { Writable } from 'node:stream'
 import { DatabaseError, NetworkError, ProviderError } from '@karatx/core'
 import { describe, expect, it } from 'vitest'
 
-import { withCorrelationId } from './correlation.js'
-import { createLogger, type Logger } from './logger.js'
-import { MIN_SECRET_LENGTH } from './redact.js'
+import { withCorrelationId } from './correlation'
+import { createLogger, type Logger } from './logger'
+import { MIN_SECRET_LENGTH } from './redact'
 
 /**
  * Every assertion below parses real Pino output captured from a stream. T0.5's

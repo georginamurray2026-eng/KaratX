@@ -8,20 +8,20 @@
  * The market-data adapter lands in T1.4/T1.7 against OANDA v20 (ADR-005).
  */
 
-export { getCorrelationId, withCorrelationId } from './correlation.js'
+export { getCorrelationId, withCorrelationId } from './correlation'
 export {
   createLogger,
   LOG_LEVELS,
   type CreateLoggerOptions,
   type LogLevel,
   type Logger,
-} from './logger.js'
+} from './logger'
 export {
   createSecretScrubber,
   MIN_SECRET_LENGTH,
   REDACTED,
   REDACTED_FIELD_PATHS,
   type SecretScrubber,
-} from './redact.js'
+} from './redact'
 
 export const PROVIDERS_PACKAGE_NAME = '@karatx/providers' as const

@@ -3,7 +3,7 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { findRepoRoot } from './env.js'
+import { findRepoRoot } from './env'
 
 describe('findRepoRoot', () => {
   it('finds the root from this package', () => {

@@ -15,9 +15,9 @@
  * The ESLint boundary added in T0.2 enforces that.
  */
 
-export { ConfigValidationError, formatProblems, type ConfigProblem } from './errors.js'
-export { loadConfig, resetConfigCache } from './load.js'
-export { parseConfig, type Config, type EnvSource } from './parse.js'
+export { ConfigValidationError, formatProblems, type ConfigProblem } from './errors'
+export { loadConfig, resetConfigCache } from './load'
+export { parseConfig, type Config, type EnvSource } from './parse'
 export {
   EXPECTED,
   LOG_LEVELS,
@@ -28,7 +28,7 @@ export {
   type LogLevel,
   type NodeEnv,
   type RawEnv,
-} from './schema.js'
-export { isSecret, Secret } from './secret.js'
+} from './schema'
+export { isSecret, Secret } from './secret'
 
 export const CONFIG_PACKAGE_NAME = '@karatx/config' as const

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { findRepoRoot } from './env.js'
+import { findRepoRoot } from './env'
 
 /**
  * Loading committed test fixtures.

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { ConfigValidationError } from './errors.js'
-import { loadConfig, resetConfigCache } from './load.js'
+import { ConfigValidationError } from './errors'
+import { loadConfig, resetConfigCache } from './load'
 
 const PASSWORD = 'p4ssw0rd-should-never-be-printed'
 const VALID_DATABASE_URL = `postgres://karatx:${PASSWORD}@localhost:5432/karatx`

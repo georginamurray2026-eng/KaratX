@@ -9,6 +9,108 @@ Decisions are numbered, dated, and immutable once accepted. To change one, write
 | **ADR-003** | **Migration policy** | **Accepted** | **2026-08-25** |
 | ADR-004 | Logging and error model | Accepted (pre-recorded, to be written in T0.10) | — |
 | **ADR-005** | **Market data provider** | **Accepted, conditional** | **2026-08-25** |
+| **ADR-006** | **Extensionless relative imports** | **Accepted** | **2026-08-26** |
+| **ADR-007** | **TypeScript pinned to 6.x** | **Accepted** | **2026-08-26** |
+
+---
+
+## ADR-006: Extensionless relative imports
+
+**Date:** 2026-08-26
+**Status:** Accepted
+**Task:** T0.7 (discovered while adding the first Next.js build that imports a workspace package)
+
+### Decision
+
+**Relative imports inside this repository carry no file extension.** Write `from './errors'`, never `from './errors.js'`. Enforced by a `no-restricted-syntax` rule in `eslint.config.js`, present in both the repo-wide block and the `packages/core` block.
+
+### Context
+
+T0.1 chose `moduleResolution: "Bundler"` and had packages export TypeScript source rather than compiled JavaScript. Internal imports were nevertheless written as `./errors.js` — a `.js` specifier resolving to an `errors.ts` file.
+
+That is a **NodeNext** convention. Under NodeNext, ESM requires a real extension and TypeScript asks you to write `.js` for a file that compiles to `.js`. Under `Bundler`, no extension is required and the bundler resolves.
+
+The mismatch was invisible for six tasks because every tool we used tolerated it: TypeScript resolves it under `Bundler`, Vitest resolves it, `tsx` resolves it. Nothing strict looked at it until `/api/ready` became the first Next.js code to import a workspace package:
+
+```
+Turbopack build failed with 7 errors:
+./packages/config/src/index.ts:18:1
+Error: Module not found: Can't resolve './errors.js'
+```
+
+Turbopack does not map `.js` specifiers onto `.ts` files, and Next 16 has no configuration for it — its Turbopack options are `root`, `rules`, `resolveAlias`, `resolveExtensions` and `debugIds`. There is no `extensionAlias` (webpack has one; Next 16 defaults to Turbopack).
+
+### Alternatives considered
+
+**Build packages to JavaScript and have Next consume `dist/`.** Rejected. It reverses T0.1's decision and taxes every loop for the life of the project: typecheck, test and dev would all need a prior build, and a stale `dist` becomes a new class of confusing bug.
+
+**Switch `next build` to webpack for its `extensionAlias`.** Rejected. It fights the framework default, and Turbopack is where Next is going — the cost grows with each release.
+
+**Stop importing workspace packages from the web app.** Rejected. It duplicates logic, violates F.1, and `/api/ready` genuinely needs `@karatx/db`.
+
+### Reasoning
+
+This is not a Turbopack workaround. It removes an inconsistency: `Bundler` resolution was chosen deliberately in T0.1, and `.js`-pointing-at-`.ts` belongs to a resolution mode this project does not use. Extensionless is what `Bundler` is designed for.
+
+It also removes an entire category of "which tool maps `.js` to `.ts`" surprises, rather than adding one workaround per tool.
+
+Measured before deciding: converting `packages/config` alone took the Turbopack error count from 7 to 3, with every remaining error a `.js` specifier in a package not yet converted, and `pnpm typecheck` continued to pass throughout.
+
+### Consequences
+
+- 44 specifiers across 24 files converted in one mechanical change.
+- A lint rule prevents drift. Its message explains *why* extensionless is correct here, because the failure mode is a build error in `apps/web` caused by an import in a package it merely depends on — maximum distance between cause and symptom — and someone arriving with NodeNext habits will otherwise assume the rule is stale.
+- The rule is duplicated into the `packages/core` block deliberately. Flat config **replaces** a rule's options rather than merging them; omitting it there would switch it off in the one package where correctness matters most. This has already happened once, in T0.5.
+
+### REVERSAL CONDITION
+
+**This decision is safe only because nothing in this repository currently wants extensions.** It inverts if either of these becomes true:
+
+1. **`moduleResolution` moves to `NodeNext` or `Node16`.** Those modes *require* an extension on relative ESM imports. Extensionless imports would stop resolving.
+2. **Any package emits real ESM to be consumed by Node directly**, without a bundler — for example publishing a package, or running compiled output under plain `node` rather than `tsx`. Node's ESM resolver requires extensions.
+
+If either happens, the correct move is to reverse this ADR — convert back to `.js` specifiers and delete the lint rule — **not** to add per-tool workarounds. Write a new ADR superseding this one.
+
+Neither trigger is close today: `tsconfig.base.json` sets `Bundler`, the worker runs through `tsx`, and the web app runs through Next.
+
+---
+
+## ADR-007: TypeScript pinned to 6.x
+
+**Date:** 2026-08-26
+**Status:** Accepted
+**Task:** Recorded during T0.7; the decision itself was made in T0.2 (commit `d41b2cb`)
+
+### Decision
+
+**TypeScript is pinned to `^6.0.3` and must not be upgraded to 7.x.**
+
+### Context
+
+T0.1 installed `typescript@^7.0.2` because that is what npm's `latest` tag points at. TypeScript 7 is the native rewrite. Adding ESLint in T0.2 failed immediately:
+
+```
+Error: typescript-eslint does not support TS 7.0.
+```
+
+This is an explicit runtime guard, not a soft peer warning — the package refuses to load. typescript-eslint's declared peer range is `>=4.8.4 <6.1.0`, and its tracking issue targets TS ≥ 7.1, which exists only as a dev build.
+
+### Reasoning
+
+Without the pin there is no `pnpm lint` at all, which would leave F.3 invariant 1 — `packages/core` performs no I/O — completely unenforced. That guarantee is what lets the backtest run the identical code path as live.
+
+6.0.3 is a stable release, not a dev build, and every strict flag T0.1 requires exists unchanged.
+
+Microsoft's documented side-by-side workaround (aliasing `typescript` to `@typescript/typescript6` for tooling while keeping TS 7 for `tsc`) was considered and rejected: it leaves two compilers and two binaries in the repository permanently, and every later task would need to know which resolves where. That is complexity for a speed benefit this project does not need.
+
+### Consequences
+
+- **A routine `pnpm update` that moves TypeScript to 7.x will silently break `pnpm lint`.** Until this ADR existed, the only record of why was a commit message.
+- The repository is one minor version behind npm's `latest` and will stay there for a while.
+
+### REVERSAL CONDITION
+
+Upgrade when **typescript-eslint ships support for TypeScript ≥ 7.1** — tracked at `https://github.com/typescript-eslint/typescript-eslint/issues/10940`. Verify by running `pnpm lint` after the bump; the failure is immediate and unmistakable, not subtle.
 
 ---
 

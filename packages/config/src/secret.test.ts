@@ -1,7 +1,7 @@
 import { inspect } from 'node:util'
 import { describe, expect, it } from 'vitest'
 
-import { isSecret, Secret } from './secret.js'
+import { isSecret, Secret } from './secret'
 
 // A password-shaped value. Not a real credential - it exists so the assertions
 // below can prove it never reaches the output.

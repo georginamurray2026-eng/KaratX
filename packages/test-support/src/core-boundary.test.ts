@@ -1,7 +1,7 @@
 import { ESLint } from 'eslint'
 import { beforeAll, describe, expect, it } from 'vitest'
 
-import { findRepoRoot } from './env.js'
+import { findRepoRoot } from './env'
 
 /**
  * ============================================================================

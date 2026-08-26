@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import { ConfigValidationError } from './errors.js'
-import { parseConfig, type EnvSource } from './parse.js'
-import { Secret } from './secret.js'
+import { ConfigValidationError } from './errors'
+import { parseConfig, type EnvSource } from './parse'
+import { Secret } from './secret'
 
 // Password-shaped test values. None of these are real credentials; they exist
 // so the assertions can prove they never reach the error output.

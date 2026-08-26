@@ -7,6 +7,6 @@
  * package - it is reached only via its own module path.
  */
 
-export * from './schema/index.js'
+export * from './schema/index'
 
 export const DB_PACKAGE_NAME = '@karatx/db' as const

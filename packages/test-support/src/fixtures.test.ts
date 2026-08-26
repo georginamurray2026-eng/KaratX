@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { fixturePath, readCsvFixture, readFixture, readJsonFixture } from './fixtures.js'
+import { fixturePath, readCsvFixture, readFixture, readJsonFixture } from './fixtures'
 
 describe('readFixture', () => {
   it('reads a committed fixture as text', () => {

@@ -34,6 +34,6 @@ export {
   type ErrorCategory,
   type HandlingPolicy,
   type KaratxErrorOptions,
-} from './errors.js'
+} from './errors'
 
 export const CORE_PACKAGE_NAME = '@karatx/core' as const

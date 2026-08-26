@@ -1,6 +1,6 @@
-import { ConfigValidationError, type ConfigProblem } from './errors.js'
-import { EXPECTED, envSchema, type LogLevel, type NodeEnv, type RawEnv } from './schema.js'
-import { Secret } from './secret.js'
+import { ConfigValidationError, type ConfigProblem } from './errors'
+import { EXPECTED, envSchema, type LogLevel, type NodeEnv, type RawEnv } from './schema'
+import { Secret } from './secret'
 
 /** The validated application configuration. */
 export interface Config {

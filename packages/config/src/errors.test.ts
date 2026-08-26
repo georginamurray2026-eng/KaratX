@@ -1,8 +1,8 @@
 import { ConfigError, KaratxError, categoryOf, policyOf } from '@karatx/core'
 import { describe, expect, it } from 'vitest'
 
-import { ConfigValidationError } from './errors.js'
-import { parseConfig } from './parse.js'
+import { ConfigValidationError } from './errors'
+import { parseConfig } from './parse'
 
 /**
  * T0.5: ConfigValidationError is re-homed under the core taxonomy.

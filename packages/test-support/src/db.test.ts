@@ -11,7 +11,7 @@ import {
   parseTestDatabaseTimestamp,
   testDatabasePattern,
   withDatabase,
-} from './db.js'
+} from './db'
 
 /**
  * The safety rules, tested without a database.

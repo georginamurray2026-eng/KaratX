@@ -25,8 +25,8 @@ export {
   sweepStaleDatabases,
   testDatabasePattern,
   withDatabase,
-} from './db.js'
-export { findRepoRoot, loadRepoEnv } from './env.js'
+} from './db'
+export { findRepoRoot, loadRepoEnv } from './env'
 export {
   FIXTURES_ROOT,
   fixturePath,
@@ -34,6 +34,6 @@ export {
   readFixture,
   readJsonFixture,
   type CsvFixture,
-} from './fixtures.js'
+} from './fixtures'
 
 export const TEST_SUPPORT_PACKAGE_NAME = '@karatx/test-support' as const

@@ -10,8 +10,8 @@ import {
   makeTestDatabaseName,
   sweepStaleDatabases,
   STALE_AFTER_MS,
-} from './db.js'
-import { loadRepoEnv } from './env.js'
+} from './db'
+import { loadRepoEnv } from './env'
 
 /**
  * The destructive machinery, exercised against a real PostgreSQL server.

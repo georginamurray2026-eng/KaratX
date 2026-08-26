@@ -67,6 +67,12 @@ export default tseslint.config(
           message:
             'Empty catch block. A swallowed error is how a system ends up confidently wrong: handle it, rethrow it, or log it - a comment alone is not handling it.',
         },
+        {
+          selector:
+            ':matches(ImportDeclaration, ExportNamedDeclaration, ExportAllDeclaration)[source.value=/^\\.\\.?\\/.*\\.js$/]',
+          message:
+            "Relative imports must be extensionless: write './errors', not './errors.js'. This repository uses moduleResolution 'Bundler'. A '.js' specifier pointing at a '.ts' file is a NodeNext convention, and Bundler-based tools are not required to resolve it - Turbopack does not, so this breaks `next build` with a module-not-found error in apps/web caused by an import in a package it merely depends on. TypeScript, Vitest and tsx all resolve it, which is why this stayed invisible until Next.js looked at it. This is deliberate and current: see ADR-006, which also records the condition that would reverse it.",
+        },
       ],
     },
   },
@@ -178,6 +184,12 @@ export default tseslint.config(
           selector: 'CatchClause > BlockStatement[body.length=0]',
           message:
             'Empty catch block. A swallowed error is how a system ends up confidently wrong: handle it, rethrow it, or log it - a comment alone is not handling it.',
+        },
+        {
+          selector:
+            ':matches(ImportDeclaration, ExportNamedDeclaration, ExportAllDeclaration)[source.value=/^\\.\\.?\\/.*\\.js$/]',
+          message:
+            "Relative imports must be extensionless: write './errors', not './errors.js'. This repository uses moduleResolution 'Bundler'. A '.js' specifier pointing at a '.ts' file is a NodeNext convention, and Bundler-based tools are not required to resolve it - Turbopack does not, so this breaks `next build` with a module-not-found error in apps/web caused by an import in a package it merely depends on. TypeScript, Vitest and tsx all resolve it, which is why this stayed invisible until Next.js looked at it. This is deliberate and current: see ADR-006, which also records the condition that would reverse it.",
         },
         {
           selector: "NewExpression[callee.name='Date'][arguments.length=0]",
