@@ -16,3 +16,4 @@ CREATE TABLE "system_events" (
 );
 --> statement-breakpoint
 CREATE INDEX "system_events_occurred_at_idx" ON "system_events" USING btree ("occurred_at" DESC NULLS LAST);
+-- CI PROOF ONLY: this line must never be merged.
