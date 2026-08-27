@@ -214,18 +214,30 @@ jobs:
         with:
           # Full history: gitleaks scans every commit, and the migration check
           # needs the merge base with main.
+          #
+          # NOTE, because it has bitten once: gitleaks scans EVERY REF in the
+          # clone, not the checked-out branch. A secret committed to any branch
+          # fails this job on every branch. That is correct - a leaked
+          # credential is leaked - but it means anything planted here has a
+          # repository-wide blast radius.
           fetch-depth: 0
 
-      # SEC-10, part 1. The Docker image rather than the marketplace action:
-      # gitleaks-action requires a licence key for organisations, and this needs
-      # to work unchanged if the repository ever moves.
+      # SETUP AND INSTALL COME FIRST, BEFORE THE CHECKS THEMSELVES.
       #
-      # --redact so a finding never prints the secret it found.
-      - name: Scan full git history for secrets
-        run: |
-          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
-            git /repo --redact --verbose
-
+      # Not cosmetic. The three checks below are independent and each carries
+      # an always() guard conditioned on install succeeding, so that one failing
+      # does not hide the others. That guard only works if `install` has
+      # actually run - and when gitleaks sat above it, a gitleaks failure
+      # skipped install, left `steps.install.outcome` empty, and skipped every
+      # remaining check. The guards evaluated false and reported nothing.
+      #
+      # The fix for the static job was written for a job whose install was
+      # already first, then applied here without re-reading the order. Same
+      # error as the defect it was fixing: correct reasoning, not carried into
+      # the specific case.
+      #
+      # gitleaks does not need Node. Paying ~10s for install anyway buys three
+      # uniformly-guarded checks that all report.
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
@@ -234,17 +246,28 @@ jobs:
       - id: install
         run: pnpm install --frozen-lockfile
 
+      # SEC-10, part 1. The Docker image rather than the marketplace action:
+      # gitleaks-action requires a licence key for organisations, and this needs
+      # to work unchanged if the repository ever moves.
+      #
+      # --redact so a finding never prints the secret it found.
+      - name: Scan full git history for secrets
+        if: always() && steps.install.outcome == 'success'
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+            git /repo --redact --verbose
+
       # STATUS.md obligation 2. ADR-003 makes applied migrations immutable, and
       # T0.4 proved experimentally that Drizzle does NOT detect tampering - it
       # reports success, applies nothing, and leaves the hash unchanged. CI is
       # the only place this can be enforced.
       #
-      # Runs even when the gitleaks step above failed. They check unrelated
-      # things, and in the deliberate-red exercise the planted secret masked
-      # the tampered migration entirely - one run reported one of the two
-      # problems that existed.
+      # Runs even when the gitleaks step failed. They check unrelated things,
+      # and in the deliberate-red exercise the planted secret masked the
+      # tampered migration entirely - one run reported one of the two problems
+      # that existed.
       - name: Migrations already on main must be unchanged
-        if: always()
+        if: always() && steps.install.outcome == 'success'
         run: node scripts/check-migrations-immutable.mjs
 
       # SEC-10, part 2. Fails on high and critical only.
