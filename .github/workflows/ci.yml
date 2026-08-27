@@ -39,12 +39,31 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - id: install
+        run: pnpm install --frozen-lockfile
 
-      # Ordered cheapest-failure-first. No real dependency between them.
-      - run: pnpm format:check
-      - run: pnpm lint
-      - run: pnpm typecheck
+      # INDEPENDENT CHECKS, EACH RUNNING EVEN AFTER AN EARLIER ONE FAILED.
+      #
+      # These three do not depend on each other, and leaving them sequential
+      # meant the first failure hid the rest. Found by the deliberate-red
+      # exercise: a Prettier violation stopped the job before `pnpm lint` ran,
+      # so the packages/core boundary rules - the most valuable check in the
+      # repository - were never demonstrated.
+      #
+      # That is the same argument that made these JOBS parallel, applied one
+      # level down. It was not carried down originally.
+      #
+      # Gated on install rather than a bare always(): after a failed install,
+      # running lint produces a confusing cascade rather than information.
+      - name: format:check
+        if: always() && steps.install.outcome == 'success'
+        run: pnpm format:check
+      - name: lint
+        if: always() && steps.install.outcome == 'success'
+        run: pnpm lint
+      - name: typecheck
+        if: always() && steps.install.outcome == 'success'
+        run: pnpm typecheck
 
   # ---------------------------------------------------------------------------
   unit:
@@ -133,6 +152,13 @@ jobs:
       - name: Build apps/web before integration tests
         run: pnpm --filter @karatx/web build
 
+      # THIS JOB'S STEPS STAY SEQUENTIAL, DELIBERATELY. Unlike the static and
+      # security jobs, these are genuine dependencies: migrate before build,
+      # build before the tests that spawn a server, and the assertion below
+      # reads a report the test run produces. `if: always()` here would produce
+      # a cascade of failures about missing prerequisites rather than
+      # information. The principle is "let INDEPENDENT steps run", not "let
+      # every step run".
       - run: pnpm test:integration
 
       # STATUS.md obligation 18. A GREEN SUITE DOES NOT MEAN THE TEST RAN: the
@@ -205,13 +231,20 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - id: install
+        run: pnpm install --frozen-lockfile
 
       # STATUS.md obligation 2. ADR-003 makes applied migrations immutable, and
       # T0.4 proved experimentally that Drizzle does NOT detect tampering - it
       # reports success, applies nothing, and leaves the hash unchanged. CI is
       # the only place this can be enforced.
+      #
+      # Runs even when the gitleaks step above failed. They check unrelated
+      # things, and in the deliberate-red exercise the planted secret masked
+      # the tampered migration entirely - one run reported one of the two
+      # problems that existed.
       - name: Migrations already on main must be unchanged
+        if: always()
         run: node scripts/check-migrations-immutable.mjs
 
       # SEC-10, part 2. Fails on high and critical only.
@@ -220,4 +253,5 @@ jobs:
       # published against an existing dependency. That is correct behaviour and
       # must not be "fixed" by lowering the threshold - see STATUS.md.
       - name: Audit dependencies (fails on high/critical)
+        if: always() && steps.install.outcome == 'success'
         run: pnpm audit --audit-level=high

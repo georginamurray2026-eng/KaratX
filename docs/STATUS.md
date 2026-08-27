@@ -411,7 +411,7 @@ fail on purpose" had nothing to catch. A deliberately-broken run and a
 denied-request run produce the same clean output when the check only looks at
 the count.
 
-Eight instances so far, all caught by reading the actual output rather than the
+Ten instances so far, all caught by reading the actual output rather than the
 exit code or the absence of an error:
 
 | Where | What looked fine | What was actually happening |
@@ -424,6 +424,8 @@ exit code or the absence of an error:
 | T0.8 mutation probe, second attempt | 7 integration tests failing — the mutation "working" | The mutation itself was a syntax error, so the worker never started. Seven failures from a broken probe, none from the assertion under test. **The same escaping trap as the row above, two rows apart** |
 | **T1.1 EODHD Saturday sweep** | Seven years of Saturdays reported `0 bars   correct - market closed` | **Every one was HTTP 403 "Only EOD data allowed for free users".** The check tested `bars === 0` without testing whether the request succeeded. Zero rows because access was DENIED, rendered as a clean pass. **Written days after this lesson, inside the sweep designed to be rigorous** |
 | **T1.1 Massive Saturday check** | `0 bars, request OK -> VALID ABSENCE` — both assertions satisfied | `limit` in that API caps BASE AGGREGATES SCANNED, not results returned. `limit=200` examined **3.3 hours** of the Saturday it claimed to cover. The request genuinely succeeded and genuinely returned zero rows — **the conclusion was still wrong** |
+| **T0.9 e2e password test** | "the readiness payload never leaks the password" — passing | Against a REACHABLE database no connection error occurs, so the redaction code never runs. The password was absent only because nothing had handled it. Asserting the 503 FIRST is what makes it real. **Caught while writing the test, not in a later audit — the first time** |
+| **T0.9 deliberate-red, first attempt** | A detailed prediction of which four jobs would go red, and why | **PRECONDITION NEVER VERIFIED.** The `push` trigger is filtered to `main` and the accompanying instruction was "do not open a pull request" — so nothing ran at all. The most confident output of the exercise was produced before anything could possibly happen |
 
 The leak probe is the sharpest: it produced confident reassurance from a code
 path that never executed. Its exit code and its output both looked like a pass.
@@ -512,6 +514,52 @@ operating, and it is the whole reason for writing them down.
 **Apply it going forward: any assertion of absence gets a deliberate failure
 first.**
 
+### DELETING A BRANCH DOES NOT REMOVE A SECRET
+
+**Commits referenced by a pull request stay reachable in GitHub's storage and
+remain visible in the closed PR's diff, permanently. Deleting the branch feels
+like cleanup and is not.**
+
+**If a real secret is ever committed and pushed, deletion is not the remedy.
+REVOKE AND ROTATE IT, then treat the exposure as permanent.** Rewriting history
+does not help either once GitHub has the objects.
+
+This gives the planted-value rule below a SECOND edge. Plant something the
+check rejects — and something that costs nothing to LEAVE BEHIND FOREVER.
+
+T0.9's deliberate-red exercise planted a GitHub PAT-shaped token in a branch
+that was always going to be deleted. It was fake and matches no account, so the
+permanence costs nothing. **A real credential would have been retrievable
+indefinitely while appearing to have been cleaned up** — which is worse than
+not cleaning up at all, because it looks handled.
+
+### A principle applied at one level should be checked at EVERY level it applies to
+
+**The reasoning that produced a decision usually applies further down than it
+was applied. Carry it down explicitly, or it stops at the level you happened
+to be thinking about.**
+
+T0.9 made the CI jobs PARALLEL, with an argued rationale: sequential surfaces
+one bug per cycle, and paid on every red run that trains people to stop
+reading CI. **The same commit then wrote sequential STEPS inside each job.**
+The commit message argued the principle while the config violated it one level
+down.
+
+It was not theoretical. In the deliberate-red exercise a Prettier violation
+stopped the static job before `pnpm lint` ran, so the packages/core boundary
+rules — the most valuable check in the repository — were never demonstrated.
+A planted secret masked a tampered migration in the same way. **Two of four
+deliberate breaks proved nothing, because of a defect the exercise itself
+exposed.**
+
+It would have bitten hardest during a genuine red build, when nobody is in the
+mood to wonder whether a second failure is hidden behind the first.
+
+**Applied, not blanket.** The integration job stays sequential because its
+steps are REAL dependencies — migrate, then build, then test, then read the
+report the test produced. The rule is "let INDEPENDENT steps run", not "let
+every step run".
+
 ### A self-reported success count is not evidence the work landed where intended
 
 **A tool saying it succeeded is a claim about what it DID, not about whether it
@@ -535,7 +583,20 @@ with pipe-delimited tables, and every scripted edit to it uses regex anchors.
 A short numeric anchor will match several tables.
 
 **Anchor on start-of-line PLUS distinctive row text**, and **read back the
-region you changed** rather than trusting the substitution count. The repair
+region you changed** rather than trusting the substitution count.
+
+**THIS HAS NOW HAPPENED THREE TIMES IN ONE TASK.** A numeric anchor
+(`| 11 |`) matched a table row before reaching the obligation. A heading anchor
+(`### When planting…`) matched INSIDE a longer heading (`#### When planting…`),
+consuming one `#` and shifting two heading levels. The repair for that then
+orphaned a section, caught by the same read-back.
+
+**It is a property of the FILE, not of any one script.** STATUS.md is over a
+thousand lines of nested headings and pipe-delimited tables, dense with repeated
+structural text, so short anchors keep matching the wrong thing.
+
+**Prefer exact whole-line matching over regex, and always read back the region
+changed. If this happens again, the file is telling us it needs splitting.** The repair
 here was found by grepping for the new text and discovering it on line 61
 instead of line 773.
 
@@ -741,6 +802,52 @@ them is the same error as reading "no restriction found" as "available".
 exit 0.** And the scanner was proven capable of firing first — see the
 planted-value lesson, where the initial control failed because the planted key
 was one gitleaks allowlists by design.
+
+### The deliberate-red exercise — 2 of 4 breaks proved their check
+
+**"CI goes red when you break something" is worth nothing without a run where it
+did.** Four commits on `ci/verify-red`, one cause each, opened as a PR and never
+merged.
+
+**First attempt did not run at all.** The `push` trigger is filtered to `main`,
+and the instruction accompanying the branch was "do not open a pull request" —
+so nothing fired. A confident, detailed prediction of four red jobs had been
+written for a process never checked could start. No check was wrong; the
+precondition was never verified.
+
+| # | Break | Check under test | Result |
+|---|---|---|---|
+| 1 | `Date.now()` in `packages/core` | F.3 invariant-1 lint rules | **MASKED** by `format:check` failing first |
+| 2 | Tampered an applied migration | obligation 2 immutability script | **MASKED** by gitleaks failing first |
+| 3 | Planted a GitHub PAT-shaped token | gitleaks | **PROVED** — RuleID `github-pat`, value REDACTED |
+| 4 | Forced the SIGTERM test to skip | obligation 18 detector | **PROVED — the headline** |
+
+Unit and Playwright jobs stayed GREEN, confirming the breakage was
+**attributable** rather than a pipeline collapsing generally.
+
+**BREAK 4 IS THE RESULT THAT MATTERS.** `pnpm test:integration` reported GREEN,
+and the job went red at the *next* step:
+
+```
+FAILED: "shuts down cleanly and exits 0" was SKIPPED
+```
+
+A skipped test hiding inside a passing suite, caught by the check built for
+exactly that, in the exact failure mode it was designed for. **Obligation 18 now
+has both a positive and a negative demonstration** — more than most obligations
+here have.
+
+**Breaks 1 and 2 were masked by a real defect the exercise exposed** — sequential
+steps inside a job, see the lesson on carrying a principle down every level. The
+pipeline was amended rather than the exercise worked around.
+
+**PROOF CONDITIONS DIFFER, AND THIS MUST NOT BE SMOOTHED OVER.** Breaks 3 and 4
+were proved under the ORIGINAL pipeline. Breaks 1 and 2 were proved under the
+AMENDED one, after `if: always() && steps.install.outcome` was added. Those are
+not identical conditions, and the four results should not be quoted as though
+they were.
+
+---
 
 ### Dependabot: works, and the grouping was half-done
 
