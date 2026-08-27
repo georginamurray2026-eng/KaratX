@@ -238,6 +238,16 @@ export class UnexpectedError extends KaratxError {
 // Classification helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * CI PROOF ONLY - never merged.
+ *
+ * Violates F.3 invariant 1: packages/core performs no I/O and reads no clock.
+ * Present to prove the boundary lint rules run in CI, not merely locally.
+ */
+export function deliberatelyBrokenForCiProof(): number {
+  return Date.now()
+}
+
 export function isKaratxError(error: unknown): error is KaratxError {
   return error instanceof KaratxError
 }
