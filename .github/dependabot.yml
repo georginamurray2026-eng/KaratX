@@ -31,3 +31,17 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    # GROUPED, after measuring. The first push opened five PRs at once and hit
+    # the limit exactly - so it capped rather than settled - because this
+    # ecosystem was left ungrouped while npm was grouped. Every action bump
+    # opened its own PR.
+    #
+    # Action version bumps are low-risk and near-identical to each other;
+    # reviewing four separate PRs of them is noise, and a review queue nobody
+    # reads fails the same way a CI pipeline nobody reads does.
+    #
+    # npm MAJORS are deliberately left ungrouped: a major bump warrants its own
+    # review and its own CI run. That is signal, not noise.
+    groups:
+      actions:
+        patterns: ['*']

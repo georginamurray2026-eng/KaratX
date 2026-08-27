@@ -270,7 +270,13 @@ never live in this repository.
 These acceptance criteria are **partially** met. Do not record them as done.
 
 - **T0.3 "config fails before any other work."** **NOW PROVEN FOR BOTH PROCESSES.** `apps/web` in T0.7 (`instrumentation.ts` validates at server start and calls `process.exit(1)`; 4 integration tests boot a real built server with a broken environment and assert a non-zero exit). `apps/worker` in T0.8, proven by ORDER in the real process's log rather than by reading the source: `configuration validated` must be log line 0 and must precede `database schema verified`. A broken environment produces **no JSON log line at all**, because the logger's level and secret list come from the configuration that just failed — asserted, and confirmed capable of failing by planting an early line and watching three tests break.
-- **OPS-3 "SIGTERM stops accepting work, finishes in flight, closes connections, exits 0" — PARTIAL after the T0.8 close-out.** Of four sub-clauses: *finishes in flight* is proven with a synthetic in-flight task; *closes connections* is unverified against a real pool (obligation 21); *stops accepting work* is a seam with no consumer (obligation 22); *exits 0* is unproven on Windows, which cannot deliver a catchable SIGTERM, and the end-to-end test is skipped here (obligation 18). **Do not tick OPS-3 until CI has run it on Linux and the pool assertion exists.**
+- **OPS-3 "SIGTERM stops accepting work, finishes in flight, closes connections, exits 0" — PARTIAL, and one sub-clause closed 2026-08-27.** Of four:
+  - *finishes in flight* — **proven** (synthetic in-flight task, T0.8)
+  - *exits 0* — **PROVEN 2026-08-27 by CI #1 on Linux.** The end-to-end SIGTERM test ran and passed, confirmed from the assertion step's output rather than from a green suite. Obligation 18 discharged
+  - *closes connections* — **still unverified against a real pool** (obligation 21)
+  - *stops accepting work* — **still a seam with no consumer** (obligation 22, T1.7)
+
+  **Do not tick OPS-3.** Two of four sub-clauses remain.
 - **T0.8 "crash-loops are visible in logs, not silent" — PARTIAL.** Proven for the handler in isolation: the rethrow, the fatal level, and the `category`/`policy` fields are all unit-tested, and removing the rethrow fails 5 tests. **Not proven for the process** — no test starts a real worker, crashes it, and reads its stdout. Obligation 20.
 - **T0.3 "no secret ever appears in a log line."** T0.5 added the logger and
   three redaction layers, so this is now largely covered — but only for output
@@ -463,6 +469,23 @@ what exposed the query defect.
 Hence the positive-control rule at the top of this section. It is stronger than
 the two-assertion rule and it subsumes it.
 
+#### When planting a value to prove a check fires, plant one the check REJECTS
+
+**Canonical examples, documentation samples and well-formed placeholders are
+frequently allowlisted or valid — which is precisely why they are reached for.**
+
+Two instances, both probes that reported success from a code path that never
+executed:
+
+| Probe | Planted | Why it proved nothing |
+|---|---|---|
+| T0.7 secret-leak check | a **valid** postgres URL | `loadConfig` succeeded, so no error path ran and nothing could have leaked |
+| T0.9 gitleaks control | `AKIAIOSFODNN7EXAMPLE` | AWS's canonical documentation key, **allowlisted by gitleaks by design**. "no leaks found" from a scanner that could not have found it |
+
+The gitleaks one was caught before the history scan was cited as evidence.
+Re-planted with a GitHub PAT and an RSA private key: exit 1, two findings,
+values redacted. Only then was the clean history result worth anything.
+
 #### The specific trap, because it will recur
 
 **A `limit` parameter may cap what is SCANNED rather than what is RETURNED.**
@@ -474,8 +497,61 @@ yielding 13 fifteen-minute bars.
 **Read what a limit limits before trusting a short result.** A short result is a
 claim about the query at least as much as a claim about the data.
 
+#### Instance 9 was caught DURING the work, not in a later audit
+
+The T0.9 e2e password test originally passed under mutation: against a
+reachable database no connection error occurs, so the redaction code never
+runs, and "the password is absent" is true only because nothing handled it.
+Asserting the 503 first is what turns it red.
+
+**Instances 1–8 were all found forensically — during a close-out, an audit, or
+a later reading. This one was found while writing the test.** That is the
+difference between a rule that documents past mistakes and one that is
+operating, and it is the whole reason for writing them down.
+
 **Apply it going forward: any assertion of absence gets a deliberate failure
 first.**
+
+### A self-reported success count is not evidence the work landed where intended
+
+**A tool saying it succeeded is a claim about what it DID, not about whether it
+did the right thing. Verify the edit landed where intended.**
+
+A T0.9 edit script reported *"4 substitutions"* and one of them rewrote the
+wrong row: the regex `| 11 |` matched a row in the unit-test-count table
+(`| `packages/db` | 1 | 11 |`) before ever reaching obligation 11. It
+silently corrupted the test counts while reporting complete success.
+
+**`format:check` passed.** The file was still valid Markdown — just wrong. No
+linter, formatter or test could have caught it, because nothing was malformed.
+
+**THIS IS A NEW VARIANT.** Every prior instance in this file was a CHECK that
+tested nothing, or tested the wrong thing. This is a TOOL reporting success for
+work it did incorrectly, with no check involved at all. The absence rules and
+the positive-control rule are both silent here.
+
+**It is a live hazard for this repository specifically.** STATUS.md is dense
+with pipe-delimited tables, and every scripted edit to it uses regex anchors.
+A short numeric anchor will match several tables.
+
+**Anchor on start-of-line PLUS distinctive row text**, and **read back the
+region you changed** rather than trusting the substitution count. The repair
+here was found by grepping for the new text and discovering it on line 61
+instead of line 773.
+
+### Never run `git commit -am` on a throwaway branch
+
+**It sweeps unrelated uncommitted work into a commit that is then deleted with
+the branch. Stage explicitly by path when working on a branch you intend to
+destroy.**
+
+Two trivial edits were lost this way in T0.9 — a Vitest reporter config and a
+`.gitignore` line — while probing the migration-immutability check on a scratch
+branch. Both took a minute to redo. **It could as easily have been an hour of
+work, and nothing would have warned at the moment of typing.**
+
+This belongs alongside §41 command safety: the same class of problem, a
+routine command whose destructive interaction is not visible while typing it.
 
 ### A close-out must be ADVERSARIAL, and performed against the artefact
 
@@ -520,6 +596,13 @@ so.
 This is the counterpart to recording measurements so they need not be re-bought:
 **an undated measurement is not a saved cost, it is a trap.** Every figure in
 this file now carries the date or commit it was taken against.
+
+**A FIGURE WITHOUT ITS PLATFORM IS THE SAME TRAP.** T0.9 measured the unit
+suite at **4.3 s on Linux** against **18.2 s on Windows** — roughly 4x faster on
+nearly twice the tests. Either number quoted bare would mislead, and they
+support opposite conclusions about whether obligation 11 is urgent.
+
+Record platform alongside date and commit, for anything measuring execution.
 
 ### When a ratio lands near a threshold, find the confound — do not invoke the threshold
 
@@ -621,6 +704,56 @@ it.**
 
 ---
 
+## T0.9 — CI evidence, recorded 2026-08-27
+
+Run history: https://github.com/georginamurray2026-eng/KaratX/actions
+
+### CI #1 — green on the FIRST Linux run
+
+All five jobs passed. Job totals include checkout, pnpm setup and install:
+
+| Job | Job total |
+|---|---|
+| format, lint, typecheck | 30 s |
+| unit tests (no database) | 21 s |
+| integration tests (PostgreSQL) | 56 s |
+| Playwright smoke | 48 s |
+| secrets, dependencies, immutability | 21 s |
+
+**The instrumented unit figure is 4,292 ms**, not the 21 s job total — the
+difference is setup, and quoting the job total would have overstated the suite
+by 5x. See obligation 11, now reframed on the strength of it.
+
+### CI #2 — the `pull_request` trigger works, demonstrated incidentally
+
+A Dependabot PR ran the full pipeline and passed. That satisfies the
+"on push and PR" half of T0.9's first criterion — **met incidentally rather
+than deliberately**, which is worth recording as such: nobody designed that
+test, it happened.
+
+### "No secrets in Git history" — GATE ITEM NOW VERIFIED
+
+Previously believed on the strength of `git ls-files`, which answers a
+different question: what is TRACKED, not what was ever COMMITTED. Conflating
+them is the same error as reading "no restriction found" as "available".
+
+**gitleaks over full history, 2026-08-27: 41 commits scanned, no leaks found,
+exit 0.** And the scanner was proven capable of firing first — see the
+planted-value lesson, where the initial control failed because the planted key
+was one gitleaks allowlists by design.
+
+### Dependabot: works, and the grouping was half-done
+
+Five PRs opened within minutes of the first push, hitting the limit of 5
+exactly — so it capped rather than settled. Cause: `github-actions` was left
+UNGROUPED while npm was grouped, so every action bump opens its own PR.
+
+Fixed by grouping `github-actions` fully. npm **majors stay individual** on
+purpose: a major bump warrants its own review and its own CI run, which is
+signal rather than noise.
+
+---
+
 ## Carried-forward obligations
 
 
@@ -664,14 +797,14 @@ wondering whether it was ever considered.
 | 10c | **A pre-T0.6 leftover database `karatx_test` exists on the local server.** It does not match the current anchored naming pattern, so the sweep will correctly never touch it — "unrecognised means untouched". It is harmless clutter from the T0.4 scheme and can be dropped manually whenever convenient | cosmetic |
 | 10d | **Do not replace the crash-path test with a "more realistic" kill test.** `db.integration.test.ts` reproduces the post-crash state deterministically via `KEEP_TEST_DB=1`, which skips teardown and leaves exactly the database a crashed run leaves behind. Two attempts at a timing-based kill were tried first and neither was valid — one finished before the kill landed, the other killed a worker while Vitest's main process survived and cleaned up anyway. A timing-based test would be **flaky forever**, and a flaky test around destructive operations is worse than none. Reproducing the state that matters beats simulating the event that causes it | do not "fix" |
 | 10e | **Vitest cleans up after a worker crash — the orphan window is narrower than assumed.** Measured during T0.6: killing a test *worker* leaves Vitest's main process alive, which reports `Worker exited unexpectedly` and still runs `globalSetup` teardown, dropping the database. So a crashed test does not usually orphan anything. **The 24-hour floor is still justified**, because it covers the cases teardown genuinely cannot run: machine reboot, a cancelled CI job, SIGKILL of the whole process tree, and Docker stopping underneath a running suite. Those are the real orphan sources | rationale |
-| 11 | **PHASE 2 PREREQUISITE — make the unit suite fast before Phase 2 begins.** 18.2s **measured at `66be0e4` (T0.6) over 4 packages; the suite has since grown to 7 packages and 235 tests, so re-measure first**, of which ~11s is `pnpm -r` spawning a separate Vitest process per package. Fix: a single Vitest workspace run sharing one process. **This is a prerequisite, not a nice-to-have.** In Phase 2 the unit suite runs constantly while fifteen TR rule definitions are tuned against TradingView parity data — an 18-second wait at that cadence changes behaviour, and people stop running it. That is §11's rotting risk applied to the *unit* suite rather than the integration suite. Fixing it after Phase 2 has started is fixing it after the damage | **before Phase 2** |
+| 11 | **PHASE 2 PREREQUISITE — but REFRAMED 2026-08-27: it is Windows process-spawn cost, not suite size.** Measured wall clock: **18.2 s on Windows** (`66be0e4`, 4 packages, 132 tests) vs **4.3 s on Linux** (CI #1, 7 packages, 235 tests) — roughly **4x faster on nearly twice the tests**. Per-package Vitest durations in the Linux log total well under 4 s, so almost none of it is process spawn there. **The problem is `pnpm -r` spawning a Vitest process per package ON WINDOWS, and adding packages is not the threat we assumed.** That changes the fix: a single Vitest workspace run sharing one process targets exactly the right thing. **Still a Phase 2 prerequisite** — the edit-run loop happens on Windows, which is what affects daily work — but **re-measure locally first**, and record both numbers with their platform | **before Phase 2** |
 | 12 | **C3 indicator parity still needs TradingView's own computed values, and there is no route to them yet.** TradingView's *Export chart data* is a paid feature the user does not have, so the golden CSV planned for T0.6/T1.10 could not be produced. Without TradingView's own EMA and Stoch RSI numbers there is nothing to assert engine output *against*, and audit finding C3 — parity within a documented tolerance — cannot be closed by inspection alone. **Routes being explored, in order:** (1) Pine Script `log.info()` output, which would let the chart emit its own indicator values; (2) one month of a paid TradingView plan purely to run the export; (3) manual transcription of ~20 bars, enough for a spot check but not a fixture. **Blocks nothing in Phase 0 or Phase 1.** Required before **Phase 2** indicator work begins | **before Phase 2** |
 | 13 | **T0.9 must set `NEXT_TELEMETRY_DISABLED=1` in the CI environment.** Next.js collects anonymous build-time telemetry by default. It is declined via the environment variable rather than `next telemetry disable`, because the latter writes machine-global state a fresh CI runner would silently not have. Recorded in `.env.example`; CI needs it set independently | **T0.9** |
 | 14 | **`pnpm typecheck` has a blind spot — audit it.** `vitest.shared.ts` sat at the repository root with a type error (it imported `UserConfig` from `vitest/node`, which exports it as `TestUserConfig`) and **no package tsconfig included it**, so nothing checked it. It surfaced only by accident, when `apps/web` happened to pull it in through a relative import. Root-level and config files outside every package's `include` are unchecked today. **Audit which files are outside every package tsconfig and decide deliberately whether each should be covered.** A typecheck with unknown blind spots is worse than one whose shape is known | **audit — not urgent** |
 | 15 | **T0.9 must build `apps/web` BEFORE running integration tests.** Its boot tests spawn a real server with `next start`, which requires `.next` to exist. Locally the build is usually already there; a fresh CI checkout has nothing. The test asserts the build exists and says so explicitly rather than surfacing as a confusing timeout, but CI must order the steps: install, build, then integration tests | **T0.9 — firm** |
 | 16 | **`apps/web` computing strategy is unenforced.** F.1 says the web app reads what the worker wrote and never computes. That holds today by inspection only — no rule prevents `apps/web` importing an indicator from `packages/core` and calculating in the dashboard, producing two implementations that drift. The fix has a proven shape: an ESLint boundary plus a regression test, exactly as T0.2/T0.6 did for `packages/core`. Cheap now, and the reason to do it before Phase 6 builds the real dashboard | **before Phase 6** |
 | 17 | **T0.10 must re-measure worker boot-failure behaviour against however the worker actually runs on Railway.** T0.8 measured six failure modes under `tsx` **at commit `f9a75a5`** and all exited non-zero, so the worker needs no explicit `process.exit(1)`. **That result is valid for `tsx` only.** If production runs compiled output, a different entry point, or a process supervisor that wraps execution, the measurement must be repeated — believing a tsx result about production would be the minified-name mistake in a different costume. **Also check what Railway does with each exit code**: the lifecycle exits 0 on a clean shutdown and 1 when a hook failed or timed out, and that distinction is only useful if the platform acts on it | **T0.10 — firm** |
-| 18 | **OPS-3 end to end is unproven, and CI is the only place it can run.** Windows cannot deliver a catchable SIGTERM to a Node child, so `apps/worker/src/boot.integration.test.ts` skips that case on win32. The CI job must run integration tests on Linux, and this test must be confirmed as RUN rather than skipped — a skipped test reported as green is the "verification that tests nothing" failure in its most ordinary form | **T0.9 — firm** |
+| ~~18~~ | ~~**OPS-3 end to end is unproven, and CI is the only place it can run.**~~ **DISCHARGED 2026-08-27 by CI #1, on the step output rather than on a green job** — that distinction is the whole point of the obligation. The *Assert the SIGTERM test actually ran* step printed: `Total assertions in report: 10` / `PASSED: "shuts down cleanly and exits 0" ran and passed (/home/runner/work/KaratX/KaratX/apps/worker/src/boot.integration.test.ts)`. **Ten assertions — the same count as the Windows report where that test showed as `skipped`. The contrast is the evidence.** Run: https://github.com/georginamurray2026-eng/KaratX/actions | done |
 | 19 | **`apps/web` resolves the repository root from a BUNDLED module.** Its instrumentation hook now calls the shared `loadEnvFileIfPresent`, which walks up from the module's own location looking for `pnpm-workspace.yaml`. Under Turbopack that module is bundled, so `import.meta.url` points inside `.next/`. It resolves correctly today — verified by a real build, 9 integration tests and 2 Playwright tests — but a `standalone` output that copies files elsewhere would break it silently, and the failure mode is "no .env found", not an error. Re-verify if the web deployment mode changes | **T0.10** |
 | 20 | **Crash logging has never run in a real worker process.** `installCrashLogging` is unit-tested by invoking the registered listener directly, which proves the rethrow and the taxonomy fields but not that a fatal JSON line reaches stdout from a spawned worker. The T0.8 tsx measurement does not cover it — that ran BEFORE `crash-logging.ts` existed. Needs an integration test that starts a real worker, crashes it, and asserts one fatal line with `category` and `policy` | **T0.9** |
 | 21 | **Pool closure is unverified against a real database.** The lifecycle tests use a hook *named* `database-pool` that pushes to an array. Nothing asserts `pool.end()` released connections. Verify by checking `pg_stat_activity` after a shutdown, against a real PostgreSQL — the same "assert the observable changed" discipline that caught `verifyNotInTransaction` | **T0.9** |
