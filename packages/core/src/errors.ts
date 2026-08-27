@@ -238,6 +238,11 @@ export class UnexpectedError extends KaratxError {
 // Classification helpers
 // ---------------------------------------------------------------------------
 
+export function deliberatelyBrokenForCiProof(): number {
+  // CI PROOF ONLY - violates F.3 invariant 1. Never merged.
+  return Date.now()
+}
+
 export function isKaratxError(error: unknown): error is KaratxError {
   return error instanceof KaratxError
 }
