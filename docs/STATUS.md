@@ -273,7 +273,9 @@ These acceptance criteria are **partially** met. Do not record them as done.
   nothing, and left the recorded hash unchanged. See obligations.
 - **T0.6 "`pnpm test` runs unit tests FAST."** Database-free is fully met and
   verified with PostgreSQL stopped. *Fast* is borderline and measured, not
-  assumed: **18.2s wall clock**. Only **5.45s** of that is actual test
+  assumed: **18.2s wall clock, measured at `66be0e4` (T0.6, 2026-08-26) across
+  4 packages and 132 tests.** The suite is now 7 packages and 235 tests, so this
+  figure is a FLOOR, not a current reading — re-measure before acting on it. Only **5.45s** of that is actual test
   execution, and no single test exceeds 258ms. The remaining ~11s is
   per-package process startup, transform and import — `pnpm -r` spawns a
   separate Vitest process for each of the four packages and pays that cost four
@@ -467,6 +469,50 @@ claim about the query at least as much as a claim about the data.
 **Apply it going forward: any assertion of absence gets a deliberate failure
 first.**
 
+### A close-out must be ADVERSARIAL, and performed against the artefact
+
+**A session that has just built something assesses it more favourably than the
+code supports, and it does not feel like bias at the time.**
+
+The evidence is T0.8. Its pre-assessment — written from memory at the end of a
+long session — got **two of three verdicts wrong, and BOTH IN THE SAME
+DIRECTION.** Criterion 3 was marked MET when crash logging had never run in a
+real process. Criterion 2 was described as "mechanism fully covered by 33 unit
+tests" when two of its four sub-clauses were not mechanism questions at all.
+
+Neither error was random. **Errors that are directional are bias, not noise.**
+
+So: **the close-out is a separate step from the implementation, performed
+against the code, and treated as adversarial rather than as confirmation.** Its
+question is not "does this look done" but "what would I have to find to call
+this unfinished". Grep for the consumers of a flag. Check whether a test named
+after a resource actually touches one.
+
+**The sharpest instance:** a shutdown hook NAMED `database-pool` that pushes a
+string to an array, with 33 passing tests, none of which touch a real
+connection. It reads as coverage of connection handling. It is coverage of
+ordering. Same family as `verifyNotInTransaction` and the `limit=200` Saturday
+query: **a thing that looks like the check you want, standing where that check
+should be.**
+
+### A measurement's validity EXPIRES when the code it measured changes
+
+**Record what a measurement was taken against — a commit or a date — or a later
+session will cite stale evidence as current.**
+
+T0.8 measured six boot-failure modes under `tsx` and found all six exit 1, which
+is why the worker has no explicit `process.exit(1)`. During the close-out that
+result was nearly cited as covering the crash handlers. **It does not: it was
+measured at `f9a75a5`, and `crash-logging.ts` did not exist until `1b12823`.**
+
+The measurement is still valid for what it measured. It is silently invalid for
+the thing it was about to be used for, and nothing in the number itself says
+so.
+
+This is the counterpart to recording measurements so they need not be re-bought:
+**an undated measurement is not a saved cost, it is a trap.** Every figure in
+this file now carries the date or commit it was taken against.
+
 ### When a ratio lands near a threshold, find the confound — do not invoke the threshold
 
 **A number close to a decision boundary is not evidence. It is a signal that the
@@ -501,7 +547,7 @@ which the next reader believes.
 | Assumed | Actually | Consequence |
 |---|---|---|
 | Next.js would surface an instrumentation failure as a failed start | It prints `✓ Ready`, then serves 500s forever | T0.7 needed `process.exit(1)` — the compensation was **necessary** |
-| The worker would likewise need an explicit exit | Every one of six failure modes already exits 1 under tsx | T0.8 wrote **no** exit. An unnecessary one would imply Node does not crash on unhandled rejections |
+| The worker would likewise need an explicit exit | Every one of six failure modes already exits 1 under tsx — **measured at `f9a75a5`; `crash-logging.ts` did not exist until `1b12823`, so this does NOT cover the crash handlers** | T0.8 wrote **no** exit. An unnecessary one would imply Node does not crash on unhandled rejections |
 | `process.loadEnvFile` overwrites already-set variables | It gives the environment precedence, and always did (documented for `--env-file`, measured on v24.19.0) | A hand-rolled precedence loop that could never change an outcome, in the repository since T0.7, copied forward in T0.8 before being caught |
 
 The third is the instructive one, because it was written twice: once in T0.7's
@@ -532,7 +578,7 @@ deletes databases, and was not one. Removed rather than left in place.
 unavailable in the Edge runtime. Adding `if (process.env.NEXT_RUNTIME !==
 'nodejs') return` looked like the fix and silenced **nothing**: Turbopack's
 analysis is static, not a reachability check. Only physically moving the Node
-APIs into a separate module removed the warnings — 6 → 0, measured.
+APIs into a separate module removed the warnings — 6 → 0, measured at `0a95c5f` (T0.7, 2026-08-26) against a real `next build`.
 
 **The rule: when a fix targets something observable — a warning count, a log
 line, a refusal, an exit code — check that the observable actually changed.**
@@ -610,13 +656,13 @@ wondering whether it was ever considered.
 | 10c | **A pre-T0.6 leftover database `karatx_test` exists on the local server.** It does not match the current anchored naming pattern, so the sweep will correctly never touch it — "unrecognised means untouched". It is harmless clutter from the T0.4 scheme and can be dropped manually whenever convenient | cosmetic |
 | 10d | **Do not replace the crash-path test with a "more realistic" kill test.** `db.integration.test.ts` reproduces the post-crash state deterministically via `KEEP_TEST_DB=1`, which skips teardown and leaves exactly the database a crashed run leaves behind. Two attempts at a timing-based kill were tried first and neither was valid — one finished before the kill landed, the other killed a worker while Vitest's main process survived and cleaned up anyway. A timing-based test would be **flaky forever**, and a flaky test around destructive operations is worse than none. Reproducing the state that matters beats simulating the event that causes it | do not "fix" |
 | 10e | **Vitest cleans up after a worker crash — the orphan window is narrower than assumed.** Measured during T0.6: killing a test *worker* leaves Vitest's main process alive, which reports `Worker exited unexpectedly` and still runs `globalSetup` teardown, dropping the database. So a crashed test does not usually orphan anything. **The 24-hour floor is still justified**, because it covers the cases teardown genuinely cannot run: machine reboot, a cancelled CI job, SIGKILL of the whole process tree, and Docker stopping underneath a running suite. Those are the real orphan sources | rationale |
-| 11 | **PHASE 2 PREREQUISITE — make the unit suite fast before Phase 2 begins.** Currently 18.2s, of which ~11s is `pnpm -r` spawning a separate Vitest process per package. Fix: a single Vitest workspace run sharing one process. **This is a prerequisite, not a nice-to-have.** In Phase 2 the unit suite runs constantly while fifteen TR rule definitions are tuned against TradingView parity data — an 18-second wait at that cadence changes behaviour, and people stop running it. That is §11's rotting risk applied to the *unit* suite rather than the integration suite. Fixing it after Phase 2 has started is fixing it after the damage | **before Phase 2** |
+| 11 | **PHASE 2 PREREQUISITE — make the unit suite fast before Phase 2 begins.** 18.2s **measured at `66be0e4` (T0.6) over 4 packages; the suite has since grown to 7 packages and 235 tests, so re-measure first**, of which ~11s is `pnpm -r` spawning a separate Vitest process per package. Fix: a single Vitest workspace run sharing one process. **This is a prerequisite, not a nice-to-have.** In Phase 2 the unit suite runs constantly while fifteen TR rule definitions are tuned against TradingView parity data — an 18-second wait at that cadence changes behaviour, and people stop running it. That is §11's rotting risk applied to the *unit* suite rather than the integration suite. Fixing it after Phase 2 has started is fixing it after the damage | **before Phase 2** |
 | 12 | **C3 indicator parity still needs TradingView's own computed values, and there is no route to them yet.** TradingView's *Export chart data* is a paid feature the user does not have, so the golden CSV planned for T0.6/T1.10 could not be produced. Without TradingView's own EMA and Stoch RSI numbers there is nothing to assert engine output *against*, and audit finding C3 — parity within a documented tolerance — cannot be closed by inspection alone. **Routes being explored, in order:** (1) Pine Script `log.info()` output, which would let the chart emit its own indicator values; (2) one month of a paid TradingView plan purely to run the export; (3) manual transcription of ~20 bars, enough for a spot check but not a fixture. **Blocks nothing in Phase 0 or Phase 1.** Required before **Phase 2** indicator work begins | **before Phase 2** |
 | 13 | **T0.9 must set `NEXT_TELEMETRY_DISABLED=1` in the CI environment.** Next.js collects anonymous build-time telemetry by default. It is declined via the environment variable rather than `next telemetry disable`, because the latter writes machine-global state a fresh CI runner would silently not have. Recorded in `.env.example`; CI needs it set independently | **T0.9** |
 | 14 | **`pnpm typecheck` has a blind spot — audit it.** `vitest.shared.ts` sat at the repository root with a type error (it imported `UserConfig` from `vitest/node`, which exports it as `TestUserConfig`) and **no package tsconfig included it**, so nothing checked it. It surfaced only by accident, when `apps/web` happened to pull it in through a relative import. Root-level and config files outside every package's `include` are unchecked today. **Audit which files are outside every package tsconfig and decide deliberately whether each should be covered.** A typecheck with unknown blind spots is worse than one whose shape is known | **audit — not urgent** |
 | 15 | **T0.9 must build `apps/web` BEFORE running integration tests.** Its boot tests spawn a real server with `next start`, which requires `.next` to exist. Locally the build is usually already there; a fresh CI checkout has nothing. The test asserts the build exists and says so explicitly rather than surfacing as a confusing timeout, but CI must order the steps: install, build, then integration tests | **T0.9 — firm** |
 | 16 | **`apps/web` computing strategy is unenforced.** F.1 says the web app reads what the worker wrote and never computes. That holds today by inspection only — no rule prevents `apps/web` importing an indicator from `packages/core` and calculating in the dashboard, producing two implementations that drift. The fix has a proven shape: an ESLint boundary plus a regression test, exactly as T0.2/T0.6 did for `packages/core`. Cheap now, and the reason to do it before Phase 6 builds the real dashboard | **before Phase 6** |
-| 17 | **T0.10 must re-measure worker boot-failure behaviour against however the worker actually runs on Railway.** T0.8 measured six failure modes under `tsx` and all exited non-zero, so the worker needs no explicit `process.exit(1)`. **That result is valid for `tsx` only.** If production runs compiled output, a different entry point, or a process supervisor that wraps execution, the measurement must be repeated — believing a tsx result about production would be the minified-name mistake in a different costume. **Also check what Railway does with each exit code**: the lifecycle exits 0 on a clean shutdown and 1 when a hook failed or timed out, and that distinction is only useful if the platform acts on it | **T0.10 — firm** |
+| 17 | **T0.10 must re-measure worker boot-failure behaviour against however the worker actually runs on Railway.** T0.8 measured six failure modes under `tsx` **at commit `f9a75a5`** and all exited non-zero, so the worker needs no explicit `process.exit(1)`. **That result is valid for `tsx` only.** If production runs compiled output, a different entry point, or a process supervisor that wraps execution, the measurement must be repeated — believing a tsx result about production would be the minified-name mistake in a different costume. **Also check what Railway does with each exit code**: the lifecycle exits 0 on a clean shutdown and 1 when a hook failed or timed out, and that distinction is only useful if the platform acts on it | **T0.10 — firm** |
 | 18 | **OPS-3 end to end is unproven, and CI is the only place it can run.** Windows cannot deliver a catchable SIGTERM to a Node child, so `apps/worker/src/boot.integration.test.ts` skips that case on win32. The CI job must run integration tests on Linux, and this test must be confirmed as RUN rather than skipped — a skipped test reported as green is the "verification that tests nothing" failure in its most ordinary form | **T0.9 — firm** |
 | 19 | **`apps/web` resolves the repository root from a BUNDLED module.** Its instrumentation hook now calls the shared `loadEnvFileIfPresent`, which walks up from the module's own location looking for `pnpm-workspace.yaml`. Under Turbopack that module is bundled, so `import.meta.url` points inside `.next/`. It resolves correctly today — verified by a real build, 9 integration tests and 2 Playwright tests — but a `standalone` output that copies files elsewhere would break it silently, and the failure mode is "no .env found", not an error. Re-verify if the web deployment mode changes | **T0.10** |
 | 20 | **Crash logging has never run in a real worker process.** `installCrashLogging` is unit-tested by invoking the registered listener directly, which proves the rethrow and the taxonomy fields but not that a fatal JSON line reaches stdout from a spawned worker. The T0.8 tsx measurement does not cover it — that ran BEFORE `crash-logging.ts` existed. Needs an integration test that starts a real worker, crashes it, and asserts one fatal line with `category` and `policy` | **T0.9** |
