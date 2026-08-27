@@ -533,6 +533,67 @@ permanence costs nothing. **A real credential would have been retrievable
 indefinitely while appearing to have been cleaned up** — which is worse than
 not cleaning up at all, because it looks handled.
 
+### The T0.8 close-out lesson, operating rather than remembered
+
+**T0.9 was NOT recorded as complete when its pipeline went green.** Its
+acceptance criteria were met and a linkable red run existed, but two of its own
+obligations — 20 and 21 — were still unwritten. Declaring it done would have been
+precisely the optimistic close-out recorded from T0.8, where two of three
+pre-assessed verdicts were wrong and both in the same direction.
+
+Worth recording as a distinct kind of entry: **a lesson that changed a decision
+at the moment it applied, rather than being cited afterwards.** The refusal came
+before the close-out, not during a later audit of it.
+
+
+### A risk identified and left unmitigated is not risk management, it is NARRATION
+
+**Predicting a failure and then watching it happen LOOKS like rigour and is not.**
+**When a risk is flagged, either mitigate it, or state explicitly that it is
+being accepted and why. Silence between prediction and outcome is the failure.**
+
+Before T0.9's first deliberate-red push, this was written verbatim:
+
+> it may fail at `format:check` first instead, since that step runs earlier — my
+> inserted code may not be Prettier-clean. If so the lint proof is hidden behind
+> an earlier failure.
+
+It happened exactly as described. `format:check` tripped on the planted-secret
+file, `lint` was skipped, and break 1 — the F.3 boundary violation, the most
+valuable check in the repository — went unproven for two more runs.
+
+**The information to prevent it was available and unused.** Reformatting one file
+would have cost seconds.
+
+**This applies to the reviewer too.** The prediction was read, understood, and
+acted on by neither party. A flagged risk that both sides acknowledge and neither
+owns is worse than an unflagged one, because everyone believes it is handled.
+
+**APPLIED, NOT ONLY LEARNED.** The narrow re-run mitigated it within the hour:
+`format:check` and `typecheck` were both run locally and confirmed exit 0
+BEFORE the branch was pushed, so neither could mask the check under test. Both
+breaks then proved cleanly. The difference between a lesson recorded and a lesson
+operating is exactly this, and it is the entire value of this file.
+
+### Reasoning from a symptom without checking the precondition — THREE TIMES
+
+**Before concluding that a fix failed, check that the run contained the fix.**
+
+CI #7 showed the static job aborting at `format:check` with `lint` skipped.
+Author and reviewer independently concluded the always() guards were broken. They
+were not: **the run was on `d209b50`, which predates the amendment `a9395d3`.**
+The guards were absent from that commit, not defective.
+
+That is the third instance in one task of reasoning from output without checking
+the precondition — after the trigger finding (a prediction written for a process
+that could not start) and the blast radius ("main will stay red forever", derived
+from a lesson's wording rather than from what checkout fetches).
+
+**All three were settled the same way: by measuring rather than arguing.** Which
+commit did the run contain; does a branch push fire anything; what does a fresh
+clone actually fetch.
+
+
 ### A principle applied at one level should be checked at EVERY level it applies to
 
 **The reasoning that produced a decision usually applies further down than it
@@ -803,49 +864,108 @@ exit 0.** And the scanner was proven capable of firing first — see the
 planted-value lesson, where the initial control failed because the planted key
 was one gitleaks allowlists by design.
 
-### The deliberate-red exercise — 2 of 4 breaks proved their check
+### The deliberate-red exercise — ALL FOUR BREAKS PROVED, across two runs
 
 **"CI goes red when you break something" is worth nothing without a run where it
-did.** Four commits on `ci/verify-red`, one cause each, opened as a PR and never
-merged.
+did.** T0.9's final acceptance criterion, met with linkable evidence.
 
-**First attempt did not run at all.** The `push` trigger is filtered to `main`,
-and the instruction accompanying the branch was "do not open a pull request" —
-so nothing fired. A confident, detailed prediction of four red jobs had been
-written for a process never checked could start. No check was wrong; the
-precondition was never verified.
+#### Attempt 0 — nothing ran at all
+
+Four commits pushed to a branch, with the instruction "do not open a pull
+request". The `push` trigger is filtered to `main`, so **nothing fired.** A
+detailed prediction of four red jobs had already been written for a process
+nobody had checked could start. Recorded as instance 10.
+
+**THE TRIGGER FINDING, which is a permanent property of this pipeline: a branch
+push alone fires NOTHING. Opening a pull request is what runs CI** — and after
+that, pushes to the branch fire `synchronize` on the open PR. Confirmed from the
+remote: `refs/pull/6/merge` existed, which GitHub maintains only for open
+PRs.
+
+#### Attempt 1 — PR #6, CI #7. Two of four breaks proved.
 
 | # | Break | Check under test | Result |
 |---|---|---|---|
-| 1 | `Date.now()` in `packages/core` | F.3 invariant-1 lint rules | **MASKED** by `format:check` failing first |
-| 2 | Tampered an applied migration | obligation 2 immutability script | **MASKED** by gitleaks failing first |
+| 1 | `Date.now()` in `packages/core` | F.3 invariant-1 lint rules | **MASKED** — `format:check` tripped on break 3's file first |
+| 2 | Tampered an applied migration | obligation 2 immutability | **MASKED** — gitleaks failed first |
 | 3 | Planted a GitHub PAT-shaped token | gitleaks | **PROVED** — RuleID `github-pat`, value REDACTED |
 | 4 | Forced the SIGTERM test to skip | obligation 18 detector | **PROVED — the headline** |
 
-Unit and Playwright jobs stayed GREEN, confirming the breakage was
-**attributable** rather than a pipeline collapsing generally.
-
-**BREAK 4 IS THE RESULT THAT MATTERS.** `pnpm test:integration` reported GREEN,
-and the job went red at the *next* step:
-
-```
-FAILED: "shuts down cleanly and exits 0" was SKIPPED
-```
-
+**Break 4 is the result that matters.** `pnpm test:integration` reported GREEN,
+and the job went red at the *next* step: `FAILED: "shuts down cleanly and exits 0" was SKIPPED`.
 A skipped test hiding inside a passing suite, caught by the check built for
-exactly that, in the exact failure mode it was designed for. **Obligation 18 now
-has both a positive and a negative demonstration** — more than most obligations
-here have.
+exactly that.
 
-**Breaks 1 and 2 were masked by a real defect the exercise exposed** — sequential
-steps inside a job, see the lesson on carrying a principle down every level. The
-pipeline was amended rather than the exercise worked around.
+#### Attempt 2 — PR #8, run 33103674481. The remaining two proved.
 
-**PROOF CONDITIONS DIFFER, AND THIS MUST NOT BE SMOOTHED OVER.** Breaks 3 and 4
-were proved under the ORIGINAL pipeline. Breaks 1 and 2 were proved under the
-AMENDED one, after `if: always() && steps.install.outcome` was added. Those are
-not identical conditions, and the four results should not be quoted as though
-they were.
+Narrow: breaks 1 and 2 only, **and no planted secret** — its check was already
+proved, it was what masked break 1, and it carried the blast radius below.
+
+**THE STEP-LEVEL EVIDENCE IS THE POINT, not the job colours.** A job that aborted
+at its first failure would show later steps as skipped with no duration. Both
+red jobs recorded **seven step durations** and collected everything:
+
+```
+static    2s 1s 1s 3s 3s 2s 1s     "2 errors and 1 warning" across the run
+          errors.ts 248:10  packages/core reads no clock (F.3 invariant 1).
+                            Pass the timestamp in as a parameter
+                            no-restricted-syntax
+
+security  1s 1s 2s 6s 4s 4s 0s     migration failing AFTER gitleaks ran,
+                                    audit running AFTER the failure
+          Comparing migrations against 3cd3f930085f
+          FAILED: migrations already on main were changed.
+            MODIFIED: packages/db/migrations/0000_init_system_events_and_config.sql
+```
+
+**So `a9395d3` and `3cd3f93` are both proven** — independent steps now report
+independently, in both jobs. A green run could never have shown this.
+
+**The F.3 boundary rules are confirmed running in CI, not only locally.** That is
+the single most valuable check in this repository and it had never been
+demonstrated remotely.
+
+**Obligation 2 ran against a REAL `origin/main` for the first time** — the script
+had only ever been tested against explicit local refs.
+
+#### PROOF CONDITIONS DIFFER, and this must not be smoothed over
+
+**Breaks 3 and 4 were proved under the ORIGINAL pipeline. Breaks 1 and 2 under
+the AMENDED one.** Those are not identical conditions and the four results should
+not be quoted as though they were. Nothing suggests the amendment would have
+changed 3 or 4 — but that is reasoning, not evidence.
+
+#### The blast radius — predicted wrongly, then tested
+
+Pushing a branch containing a planted secret **turned `main` red**, and every
+Dependabot PR with it. Cause: `gitleaks git /repo` scans **every ref in the
+clone**, not the checked-out branch, and `actions/checkout` with
+`fetch-depth: 0` fetches all branches. The commit was never reachable from
+`main` and the file never existed in its tree.
+
+**That is the security control working correctly** — a leaked credential is
+leaked, and confining the alarm to one branch would be the weaker design. The
+error was planting a secret into a repo-wide scan without accounting for the
+blast radius.
+
+**BOTH OF US THEN CONCLUDED "main will stay red forever", REASONING FROM THE
+WORDING OF A LESSON RATHER THAN FROM WHAT CHECKOUT ACTUALLY FETCHES.** The claim
+conflated two different things:
+
+| Claim | True? |
+|---|---|
+| The secret stays retrievable via the closed PR's web UI, permanently | **Yes.** Nothing fixes this |
+| The secret keeps breaking CI after branch deletion | **No** |
+
+**Settled empirically, not by argument.** A fresh `git clone` fetched
+`refs/heads/*` and **zero** `refs/pull/*` refs; the planted commit was
+present only because the branch still existed. Deleting the branch made it
+invisible to CI, and **CI #10 on `main` went green at `3cd3f93`, all five jobs**.
+
+No `.gitleaks.toml` allowlist was added. Narrowing a security control to
+accommodate a temporary condition would have outlived the condition by years,
+and created the first entry in a file whose whole purpose is listing secrets to
+ignore.
 
 ---
 
@@ -890,7 +1010,7 @@ wondering whether it was ever considered.
 | # | Obligation | Lands in |
 |---|---|---|
 | ~~1~~ | ~~**`packages/core` import-boundary regression test.**~~ **DISCHARGED in T0.6.** `packages/test-support/src/core-boundary.test.ts` lints snippets through the ESLint API against a virtual `packages/core` path and asserts each rule fires. Proven by deliberately weakening `eslint.config.js` two ways: changing the core block glob failed 11 of 15 tests, removing the empty-catch selector failed exactly 1. Both reverted, confirmed with `git diff`. **Its failure messages explain why the boundary exists and say not to delete the test** — the real risk is removal by someone who does not know what it protects | done |
-| 2 | **Prevent modification of existing migration files on `main`.** Drizzle does not detect tampering (see above), so CI must fail when a commit alters a migration already on `main`. This is the only thing that will actually enforce ADR-003's immutability rule | **T0.9** |
+| ~~2~~ | ~~**Prevent modification of existing migration files on `main`.**~~ **DISCHARGED 2026-08-28.** `scripts/check-migrations-immutable.mjs` runs in CI and was proven by a deliberate break (run 33103674481): `FAILED: migrations already on main were changed. MODIFIED: packages/db/migrations/0000_init_system_events_and_config.sql`, compared against a REAL `origin/main` at `3cd3f930085f`. The rule is deliberately not "nothing under migrations/ may change" — `.sql` and snapshots are byte-immutable, `_journal.json` is append-only, because a blunt rule would reject every legitimate new migration | done |
 | 3 | **Verify Railway's pre-deploy/release migration mechanism.** Migrations must be a release step, never the service start command (OPS-2). How Railway expresses that is `[VERIFY]` — unconfirmed, `ARCHITECTURE-AND-STACK.md` U-7 | **T0.10** |
 | 4 | **Railway backup and restore (OPS-7).** Requires a *tested* restore, not just a configured backup. Entirely outstanding | **T0.10** |
 | 5 | **"Avoid infinite retry loops" (§23).** T0.5 defines the `retry` policy but **nothing consumes it**. It lands in T1.4 backfill and T1.7 reconnection, both of which specify bounded exponential backoff with jitter | **T1.4, T1.7** |
@@ -899,16 +1019,16 @@ wondering whether it was ever considered.
 | ~~8~~ | ~~**`ARCHITECTURE-AND-STACK.md` §D is wrong and needs correcting.**~~ **DISCHARGED in T0.8.** §D no longer says "holding a websocket" and carries a dated correction note; §E/U-1's matrix row now records that the question is resolved for OANDA and that its original answer ("websocket is better for sweep detection") was exactly backwards for this provider — kept as a criterion because it still applies to evaluating a replacement. The F.2 amendment, which had flagged both as uncorrected, now says both were fixed | done |
 | 9 | **Migration CLI duplicates redaction logic.** `packages/db/src/bin/migrate.ts` hand-rolls error redaction predating T0.5's logger. **Its `.env` loading was deduplicated in T0.8** — that copy and three others now share `loadEnvFileIfPresent` in `@karatx/config` — but the redaction itself is untouched | low priority |
 | 10 | **The CSV fixture loader does not handle quoted fields containing commas.** `readCsvFixture` in `@karatx/test-support` splits on `,` with no quote handling. The TradingView exports it serves are not believed to use quoted fields, and a half-implemented quote parser that looks correct is worse than none — but **this fails as silently wrong numbers, not as an error**, because a quoted `"4,637.29"` would split into two values and either throw a column-count error or, worse, shift every subsequent column. **When real golden data arrives, check whether any field contains a quoted comma before trusting the loader.** **STAYS OPEN, and may become moot:** TradingView's export is a paid feature we do not have (obligation 12). If golden values instead arrive via Pine Script `log.info()`, the format is one we control rather than TradingView's, and this limitation stops mattering. Do not close it on the assumption that the format will be CSV | **open — may become moot** |
-| 10a | **REQUIRED, not optional: a CI job that runs unit tests with NO PostgreSQL service attached.** Stopping the database by hand is a spot check that proves it today; only CI makes it a property that cannot silently regress. **This has already regressed once.** During T0.6 `packages/test-support` gained integration tests, its unit script had no config, Vitest's default `include` swept them into `pnpm test`, and the unit suite silently began requiring a database — passing only because Postgres happened to be running. `vitest.shared.ts` now excludes `*.integration.test.ts`, but nothing prevents a future package from being wired up without it. T0.9 must attach no database service to the unit job | **T0.9 — firm** |
+| ~~10a~~ | ~~**REQUIRED, not optional: a CI job that runs unit tests with NO PostgreSQL service attached.**~~ **DISCHARGED 2026-08-27.** The `unit` job declares no `services:` block AND asserts nothing is listening on 5432 before running — omission is invisible, an assertion fails loudly if someone adds one. Green on CI #1 and every run since | done |
 | 10b | **Integration isolation is per *run*, not per *file*.** Each run gets its own ephemeral database, so two runs — CI and local, or two CI jobs — cannot collide. **Within** a run, files still share that one database and rely on `fileParallelism: false`. Revisit per-worker schemas if the integration suite becomes slow in Phase 1 | if suite slows |
 | 10c | **A pre-T0.6 leftover database `karatx_test` exists on the local server.** It does not match the current anchored naming pattern, so the sweep will correctly never touch it — "unrecognised means untouched". It is harmless clutter from the T0.4 scheme and can be dropped manually whenever convenient | cosmetic |
 | 10d | **Do not replace the crash-path test with a "more realistic" kill test.** `db.integration.test.ts` reproduces the post-crash state deterministically via `KEEP_TEST_DB=1`, which skips teardown and leaves exactly the database a crashed run leaves behind. Two attempts at a timing-based kill were tried first and neither was valid — one finished before the kill landed, the other killed a worker while Vitest's main process survived and cleaned up anyway. A timing-based test would be **flaky forever**, and a flaky test around destructive operations is worse than none. Reproducing the state that matters beats simulating the event that causes it | do not "fix" |
 | 10e | **Vitest cleans up after a worker crash — the orphan window is narrower than assumed.** Measured during T0.6: killing a test *worker* leaves Vitest's main process alive, which reports `Worker exited unexpectedly` and still runs `globalSetup` teardown, dropping the database. So a crashed test does not usually orphan anything. **The 24-hour floor is still justified**, because it covers the cases teardown genuinely cannot run: machine reboot, a cancelled CI job, SIGKILL of the whole process tree, and Docker stopping underneath a running suite. Those are the real orphan sources | rationale |
 | 11 | **PHASE 2 PREREQUISITE — but REFRAMED 2026-08-27: it is Windows process-spawn cost, not suite size.** Measured wall clock: **18.2 s on Windows** (`66be0e4`, 4 packages, 132 tests) vs **4.3 s on Linux** (CI #1, 7 packages, 235 tests) — roughly **4x faster on nearly twice the tests**. Per-package Vitest durations in the Linux log total well under 4 s, so almost none of it is process spawn there. **The problem is `pnpm -r` spawning a Vitest process per package ON WINDOWS, and adding packages is not the threat we assumed.** That changes the fix: a single Vitest workspace run sharing one process targets exactly the right thing. **Still a Phase 2 prerequisite** — the edit-run loop happens on Windows, which is what affects daily work — but **re-measure locally first**, and record both numbers with their platform | **before Phase 2** |
 | 12 | **C3 indicator parity still needs TradingView's own computed values, and there is no route to them yet.** TradingView's *Export chart data* is a paid feature the user does not have, so the golden CSV planned for T0.6/T1.10 could not be produced. Without TradingView's own EMA and Stoch RSI numbers there is nothing to assert engine output *against*, and audit finding C3 — parity within a documented tolerance — cannot be closed by inspection alone. **Routes being explored, in order:** (1) Pine Script `log.info()` output, which would let the chart emit its own indicator values; (2) one month of a paid TradingView plan purely to run the export; (3) manual transcription of ~20 bars, enough for a spot check but not a fixture. **Blocks nothing in Phase 0 or Phase 1.** Required before **Phase 2** indicator work begins | **before Phase 2** |
-| 13 | **T0.9 must set `NEXT_TELEMETRY_DISABLED=1` in the CI environment.** Next.js collects anonymous build-time telemetry by default. It is declined via the environment variable rather than `next telemetry disable`, because the latter writes machine-global state a fresh CI runner would silently not have. Recorded in `.env.example`; CI needs it set independently | **T0.9** |
+| ~~13~~ | ~~**T0.9 must set `NEXT_TELEMETRY_DISABLED=1` in the CI environment.**~~ **DISCHARGED 2026-08-27.** Set at workflow level so no job can forget it, and also pinned in `playwright.config.ts`'s webServer env | done |
 | 14 | **`pnpm typecheck` has a blind spot — audit it.** `vitest.shared.ts` sat at the repository root with a type error (it imported `UserConfig` from `vitest/node`, which exports it as `TestUserConfig`) and **no package tsconfig included it**, so nothing checked it. It surfaced only by accident, when `apps/web` happened to pull it in through a relative import. Root-level and config files outside every package's `include` are unchecked today. **Audit which files are outside every package tsconfig and decide deliberately whether each should be covered.** A typecheck with unknown blind spots is worse than one whose shape is known | **audit — not urgent** |
-| 15 | **T0.9 must build `apps/web` BEFORE running integration tests.** Its boot tests spawn a real server with `next start`, which requires `.next` to exist. Locally the build is usually already there; a fresh CI checkout has nothing. The test asserts the build exists and says so explicitly rather than surfacing as a confusing timeout, but CI must order the steps: install, build, then integration tests | **T0.9 — firm** |
+| ~~15~~ | ~~**T0.9 must build `apps/web` BEFORE running integration tests.**~~ **DISCHARGED 2026-08-27.** The integration job applies migrations, then builds `apps/web`, then runs the suite. Both are real dependencies: `apps/web`'s readiness tests read DATABASE_URL directly rather than creating an ephemeral database, and its instrumentation test spawns `next start`, which needs `.next` | done |
 | 16 | **`apps/web` computing strategy is unenforced.** F.1 says the web app reads what the worker wrote and never computes. That holds today by inspection only — no rule prevents `apps/web` importing an indicator from `packages/core` and calculating in the dashboard, producing two implementations that drift. The fix has a proven shape: an ESLint boundary plus a regression test, exactly as T0.2/T0.6 did for `packages/core`. Cheap now, and the reason to do it before Phase 6 builds the real dashboard | **before Phase 6** |
 | 17 | **T0.10 must re-measure worker boot-failure behaviour against however the worker actually runs on Railway.** T0.8 measured six failure modes under `tsx` **at commit `f9a75a5`** and all exited non-zero, so the worker needs no explicit `process.exit(1)`. **That result is valid for `tsx` only.** If production runs compiled output, a different entry point, or a process supervisor that wraps execution, the measurement must be repeated — believing a tsx result about production would be the minified-name mistake in a different costume. **Also check what Railway does with each exit code**: the lifecycle exits 0 on a clean shutdown and 1 when a hook failed or timed out, and that distinction is only useful if the platform acts on it | **T0.10 — firm** |
 | ~~18~~ | ~~**OPS-3 end to end is unproven, and CI is the only place it can run.**~~ **DISCHARGED 2026-08-27 by CI #1, on the step output rather than on a green job** — that distinction is the whole point of the obligation. The *Assert the SIGTERM test actually ran* step printed: `Total assertions in report: 10` / `PASSED: "shuts down cleanly and exits 0" ran and passed (/home/runner/work/KaratX/KaratX/apps/worker/src/boot.integration.test.ts)`. **Ten assertions — the same count as the Windows report where that test showed as `skipped`. The contrast is the evidence.** Run: https://github.com/georginamurray2026-eng/KaratX/actions | done |
