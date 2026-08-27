@@ -185,8 +185,9 @@ New obligations 20, 21 and 22 record them.
 
 ## THE EXACT NEXT TASK
 
-**T0.9 — CI.** It carries the largest cluster of outstanding obligations, and
-it discharges two of T0.8's three gaps by running the suite on Linux.
+**T0.9 — CI.** It carries the largest cluster of outstanding obligations, and it
+closes three of the four sub-clauses T0.8 left unproven — one of them simply by
+running the suite on Linux.
 
 BUILD-PLAN acceptance criteria: install → format check → lint → typecheck →
 unit tests → integration tests (with a Postgres service) → build → Playwright
@@ -196,10 +197,17 @@ deliberately broken commit turning CI red, verified once on purpose.**
 That last one is the positive-control rule applied to the pipeline itself: a
 green CI that has never been observed failing has not been shown to work.
 
-Obligations landing in T0.9: **10a** (unit job with NO database service),
+Obligations landing in T0.9 — **seven**: **2** (fail on modification of
+migrations already on `main`), **10a** (unit job with NO database service),
 **13** (`NEXT_TELEMETRY_DISABLED=1`), **15** (build web before integration
 tests), **18** (confirm the SIGTERM test RUNS, not that the suite is green),
-and **2** (fail on modification of migrations already on `main`).
+**20** (crash logging exercised in a real spawned worker), and **21** (pool
+closure verified against `pg_stat_activity`).
+
+**20 and 21 are the two T0.8 gaps that are ordinary test-writing rather than
+platform limits** — they need a Linux runner no more than they need a decision,
+but they belong with the CI work because that is when the suite gets its next
+deliberate pass.
 
 **There is a manual step:** creating the GitHub repository and connecting it.
 Exact click-by-click instructions when we get there.
