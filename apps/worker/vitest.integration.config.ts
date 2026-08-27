@@ -20,5 +20,14 @@ export default defineConfig({
     fileParallelism: false,
     testTimeout: 60_000,
     hookTimeout: 60_000,
+    // In CI, also emit a machine-readable report so the pipeline can assert
+    // that the SIGTERM test RAN rather than trusting a green suite (STATUS.md
+    // obligation 18). It skips on win32 - Windows cannot deliver a catchable
+    // SIGTERM to a Node child - so on Linux its absence is a real failure.
+    //
+    // Conditional on CI so a local run does not litter the working tree.
+    reporters: process.env['CI']
+      ? ['default', ['json', { outputFile: './integration-report.json' }]]
+      : ['default'],
   },
 })

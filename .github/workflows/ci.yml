@@ -1,0 +1,223 @@
+name: CI
+
+# BUILD-PLAN writes the criterion as a chain: install -> format check -> lint ->
+# typecheck -> unit -> integration -> build -> smoke. That describes COVERAGE,
+# not required ordering, and it is implemented here as five PARALLEL jobs.
+#
+# Sequential-across-jobs surfaces one bug per cycle: a lint error hides a broken
+# integration test until the next push. Paid on every red run, that trains
+# people to stop reading CI, which is the failure this pipeline exists to
+# prevent. Ordering that is a REAL dependency is kept, as steps inside a job.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A superseded run tells you about code nobody is looking at any more.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: nothing in this pipeline writes to the repository.
+permissions:
+  contents: read
+
+env:
+  # STATUS.md obligation 13. Set once at workflow level so no job can forget it.
+  NEXT_TELEMETRY_DISABLED: '1'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  static:
+    name: format, lint, typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Ordered cheapest-failure-first. No real dependency between them.
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+
+  # ---------------------------------------------------------------------------
+  unit:
+    name: unit tests (no database)
+    runs-on: ubuntu-latest
+    # DELIBERATELY NO `services:` BLOCK. STATUS.md obligation 10a: `pnpm test`
+    # must be database-free, and this already regressed once - during T0.6
+    # `packages/test-support` gained integration tests with no config, Vitest's
+    # default include swept them into the unit run, and the suite silently began
+    # requiring a database. It passed only because Postgres happened to be up.
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # ASSERT the absence rather than relying on having omitted `services:`.
+      # Omission is invisible; an assertion fails loudly if someone adds one.
+      - name: Assert no database is reachable
+        run: |
+          if timeout 2 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/5432' 2>/dev/null; then
+            echo "FAILED: something is listening on 127.0.0.1:5432."
+            echo "This job must prove the unit suite needs no database."
+            exit 1
+          fi
+          echo "Confirmed: nothing is listening on 127.0.0.1:5432."
+
+      # Timed because STATUS.md obligation 11 gates Phase 2 on unit-suite speed,
+      # and its 18.2s figure was measured at 66be0e4 over FOUR packages and 132
+      # tests. The suite is now seven packages and 235 tests, so that number is
+      # a floor, not a reading. This produces a current one, on Linux.
+      - name: Run unit tests, timed
+        run: |
+          START=$(date +%s%N)
+          pnpm test
+          STATUS=$?
+          ELAPSED=$(( ($(date +%s%N) - START) / 1000000 ))
+          echo "unit suite wall clock: ${ELAPSED} ms"
+          echo "### Unit suite: ${ELAPSED} ms (obligation 11 baseline)" >> "$GITHUB_STEP_SUMMARY"
+          exit $STATUS
+
+  # ---------------------------------------------------------------------------
+  integration:
+    name: integration tests (PostgreSQL)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Pinned to match docker-compose.yml. A CI database on a different major
+        # version tests something the developer never runs.
+        image: postgres:17
+        env:
+          POSTGRES_USER: karatx
+          POSTGRES_PASSWORD: karatx_local_dev
+          POSTGRES_DB: karatx
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U karatx -d karatx"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Not a secret. This is the throwaway credential for an ephemeral CI
+      # container, identical in kind to the one in .env.example.
+      DATABASE_URL: postgresql://karatx:karatx_local_dev@127.0.0.1:5432/karatx
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # A REAL dependency: apps/web's readiness tests read DATABASE_URL directly
+      # rather than creating an ephemeral database, so the base schema must
+      # exist. Also exercises the release step itself (OPS-2 / ADR-003).
+      - name: Apply migrations (the real release step)
+        run: pnpm db:migrate
+
+      # STATUS.md obligation 15, and a REAL dependency: apps/web's
+      # instrumentation test spawns `next start`, which needs .next to exist.
+      # A fresh checkout has nothing, so this cannot be left to chance.
+      - name: Build apps/web before integration tests
+        run: pnpm --filter @karatx/web build
+
+      - run: pnpm test:integration
+
+      # STATUS.md obligation 18. A GREEN SUITE DOES NOT MEAN THE TEST RAN: the
+      # SIGTERM case skips on win32, and a skip reported inside a green suite is
+      # the failure family recorded nine times in STATUS.md. This asserts the
+      # named test ran AND passed, and fails if the title is absent entirely -
+      # otherwise it would pass once the test was renamed away.
+      - name: Assert the SIGTERM test actually ran
+        run: |
+          node scripts/assert-test-ran.mjs \
+            apps/worker/integration-report.json \
+            "shuts down cleanly and exits 0"
+
+  # ---------------------------------------------------------------------------
+  e2e:
+    name: Playwright smoke
+    runs-on: ubuntu-latest
+    # NO database service, and that is asserted rather than assumed:
+    # apps/web/e2e/no-database.spec.ts pins DATABASE_URL to a port nothing
+    # listens on and checks /api/ready returns 503 with connected:false. A green
+    # run therefore proves the database was absent, instead of being compatible
+    # with either condition.
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Chromium only - see playwright.config.ts on why cross-browser coverage
+      # is not worth its cost for a four-paragraph page.
+      - run: pnpm --filter @karatx/web exec playwright install --with-deps chromium
+
+      # The Playwright webServer runs `pnpm build && pnpm start`, so the build
+      # happens inside the run rather than as a separate step.
+      - run: pnpm --filter @karatx/web test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  security:
+    name: secrets, dependencies, migration immutability
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Full history: gitleaks scans every commit, and the migration check
+          # needs the merge base with main.
+          fetch-depth: 0
+
+      # SEC-10, part 1. The Docker image rather than the marketplace action:
+      # gitleaks-action requires a licence key for organisations, and this needs
+      # to work unchanged if the repository ever moves.
+      #
+      # --redact so a finding never prints the secret it found.
+      - name: Scan full git history for secrets
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+            git /repo --redact --verbose
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # STATUS.md obligation 2. ADR-003 makes applied migrations immutable, and
+      # T0.4 proved experimentally that Drizzle does NOT detect tampering - it
+      # reports success, applies nothing, and leaves the hash unchanged. CI is
+      # the only place this can be enforced.
+      - name: Migrations already on main must be unchanged
+        run: node scripts/check-migrations-immutable.mjs
+
+      # SEC-10, part 2. Fails on high and critical only.
+      #
+      # THIS CAN GO RED ON A DAY NOTHING CHANGED, because a new CVE was
+      # published against an existing dependency. That is correct behaviour and
+      # must not be "fixed" by lowering the threshold - see STATUS.md.
+      - name: Audit dependencies (fails on high/critical)
+        run: pnpm audit --audit-level=high

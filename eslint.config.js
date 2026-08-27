@@ -38,6 +38,21 @@ export default tseslint.config(
     },
   },
 
+  // Repository maintenance scripts run under plain Node and legitimately write
+  // to the console - reporting IS their output, so `console` is the interface
+  // rather than a debugging leftover.
+  //
+  // Deliberately a SEPARATE block scoped to `scripts/**`. Flat config REPLACES
+  // a rule's options rather than merging them (STATUS.md obligation 7), so
+  // widening an existing block to cover these files could silently switch off
+  // rules elsewhere. A non-overlapping glob cannot.
+  {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: { console: 'readonly', process: 'readonly' },
+    },
+  },
+
   // T0.5 acceptance criterion: "Zero empty catch blocks anywhere in the repo."
   //
   // `no-empty` already arrives via js.configs.recommended and already covers

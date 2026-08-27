@@ -1,0 +1,33 @@
+version: 2
+
+# SEC-10, the proactive half. `pnpm audit` in CI reports vulnerabilities that
+# already exist; this opens pull requests to remove them.
+#
+# Grouped deliberately. Ungrouped updates across a seven-package workspace
+# produce a stream of individual PRs, and a review queue nobody reads is the
+# same failure as a CI pipeline nobody reads.
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # One PR for routine patch and minor bumps across the workspace.
+      routine:
+        patterns: ['*']
+        update-types: ['minor', 'patch']
+    ignore:
+      # ADR-007 pins TypeScript to 6.x: typescript-eslint does not support
+      # TypeScript 7 and hard-errors on load, so a major bump here would break
+      # `pnpm lint` repository-wide. The pin is lifted deliberately, by editing
+      # the ADR, not by merging a bot PR.
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday

@@ -56,3 +56,6 @@ Thumbs.db
 # Local scratch
 tmp/
 scratch/
+
+# Machine-readable CI test report (obligation 18). Generated only when CI=1.
+apps/worker/integration-report.json
