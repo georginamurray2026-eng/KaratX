@@ -1351,7 +1351,7 @@ signal rather than noise.
 ## Carried-forward obligations
 
 
-**21 open, 9 discharged.** Where the open ones land:
+**22 open, 9 discharged.** Where the open ones land:
 
 - **T0.10** — 3
 - **before Phase 2** — 2
@@ -1363,6 +1363,7 @@ signal rather than noise.
 - **do not "fix"** — 1
 - **if suite slows** — 1
 - **low priority** — 1
+- **next `main` run** — 1
 - **ongoing** — 1
 - **open — may become moot** — 1
 - **rationale** — 1
