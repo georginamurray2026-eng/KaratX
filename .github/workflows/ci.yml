@@ -280,12 +280,18 @@ jobs:
         run: |
           # REPORT EVERYTHING FIRST, then apply the threshold.
           #
-          # A gate that passes silently cannot be distinguished from one that
-          # found nothing. On 2026-08-28 this step was green while
-          # GHSA-67mh-4wv8-2f99 sat in the lockfile against esbuild@0.18.20.
-          # Audit had SEEN it and reported it in its own output, and the
-          # threshold correctly declined to block - but CI showed nothing at
-          # all, and it surfaced only because a human opened the Security tab.
+          # On 2026-08-28 this step was green while GHSA-67mh-4wv8-2f99 sat in
+          # the lockfile against esbuild@0.18.20, and it surfaced only because
+          # a human opened the Security tab.
+          #
+          # PRECISELY: the step was NOT silent. `--audit-level=high` prints
+          # "1 vulnerabilities found / Severity: 1 moderate" and exits 0. But a
+          # two-line count, with no package, no version, no path and no link,
+          # inside the collapsed log of a green job, is functionally invisible.
+          # Reporting that nobody can act on is not reporting.
+          #
+          # So this prints the FULL advisory - package, affected and patched
+          # ranges, dependency path, GHSA link - before the threshold runs.
           #
           # DO NOT REMOVE THE `|| true`. It is not sloppiness.
           #

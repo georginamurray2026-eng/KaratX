@@ -398,7 +398,6 @@ never live in this repository.
 
 These acceptance criteria are **partially** met. Do not record them as done.
 
-- **The audit step's reporting fix is UNVERIFIED IN CI.** It behaves correctly locally — run both ways under `bash -e`, the step exits 0 with `|| true` and 1 without — but the first real run is the proof. **Expected: the moderate esbuild advisory appears in the security job's log while the job stays GREEN.** If it goes red instead, the `|| true` did not survive contact with the runner and the threshold has moved without anyone deciding to move it. Check the next `main` run before treating this as done.
 - **T0.9 "build" as a pipeline step — PARTIAL.** `apps/web` is genuinely built on every run, twice, so the production build succeeds or CI fails. But no job exists whose PURPOSE is verifying it: the integration build step exists to make the instrumentation test work, and would read as deletable if that test went. And `apps/worker` has no build at all — obligation 24.
 - **T0.9 "on push AND PR" — NARROWED, deliberately.** `push` is filtered to `main`; `pull_request` is not filtered. Every path into `main` is covered, so nothing reaches the default branch unverified. But a push to any other branch fires nothing, which is a real narrowing chosen to keep CI off scratch branches. The cost has already been paid once: it cost two attempts of the deliberate-red exercise and produced instance 10.
 - **T0.3 "config fails before any other work."** **NOW PROVEN FOR BOTH PROCESSES.** `apps/web` in T0.7 (`instrumentation.ts` validates at server start and calls `process.exit(1)`; 4 integration tests boot a real built server with a broken environment and assert a non-zero exit). `apps/worker` in T0.8, proven by ORDER in the real process's log rather than by reading the source: `configuration validated` must be log line 0 and must precede `database schema verified`. A broken environment produces **no JSON log line at all**, because the logger's level and secret list come from the configuration that just failed — asserted, and confirmed capable of failing by planting an early line and watching three tests break.
@@ -804,8 +803,28 @@ every step run".
 does it say what it examined and what it chose not to act on?**
 
 `pnpm audit --audit-level=high` correctly did not block on a moderate advisory,
-and correctly printed nothing. So CI was **green and silent while a real
-vulnerability sat in the lockfile** — GHSA-67mh-4wv8-2f99 against `esbuild@0.18.20`.
+and GHSA-67mh-4wv8-2f99 sat in the lockfile against `esbuild@0.18.20` while CI
+stayed green. **The finding only surfaced because a human opened the Security
+tab**, which nobody had a reason to open.
+
+**CORRECTED 2026-08-28. The original wording of this lesson said the step
+"correctly printed nothing" and that "CI showed nothing at all". THAT WAS
+FALSE, and it was written into both this lesson and a code comment.** Measured
+afterwards: `pnpm audit --audit-level=high` on its own prints
+
+```
+1 vulnerabilities found
+Severity: 1 moderate          exit=0
+```
+
+**Silence was inferred from the fact that nobody noticed** — reasoning from a
+symptom to a cause without checking the precondition, which is the error this
+file already records three times.
+
+**The real defect is sharper than "silent", and more useful: a two-line count,
+with no package, no version, no path and no link, inside the collapsed log of a
+green job, is functionally invisible. Reporting that nobody can act on is not
+reporting.**
 
 **The finding only surfaced because a human opened the Security tab**, which
 nobody had a reason to open. Without that it would have sat unseen indefinitely.
@@ -1174,6 +1193,26 @@ is unchanged; visibility was the defect, not sensitivity.**
 **Do not "fix" this by lowering the threshold to moderate.** That reverses the
 design and mutes the gate.
 
+#### Better than expected: the threshold run reports too
+
+CI #14 showed both blocks. The second — `pnpm audit --audit-level=high` — **also
+reports the moderate finding and still exits 0**:
+
+```
+--- applying the blocking threshold: high and critical only ---
+1 vulnerabilities found
+Severity: 1 moderate
+```
+
+**So the gate sees it, says so, and declines to block — and that design is now
+legible in the OUTPUT rather than only in a comment.** Anyone reading the log can
+see the threshold making a decision, instead of having to infer from a green tick
+that nothing was found.
+
+That is a better outcome than the fix was aiming for. The fix was meant to add
+detail; it also made the policy visible.
+
+
 ---
 
 ### GitHub repository settings — VERIFIED 2026-08-28, stop asking
@@ -1351,7 +1390,7 @@ signal rather than noise.
 ## Carried-forward obligations
 
 
-**22 open, 9 discharged.** Where the open ones land:
+**21 open, 10 discharged.** Where the open ones land:
 
 - **T0.10** — 3
 - **before Phase 2** — 2
@@ -1363,7 +1402,6 @@ signal rather than noise.
 - **do not "fix"** — 1
 - **if suite slows** — 1
 - **low priority** — 1
-- **next `main` run** — 1
 - **ongoing** — 1
 - **open — may become moot** — 1
 - **rationale** — 1
@@ -1408,7 +1446,7 @@ wondering whether it was ever considered.
 | 23 | **Nothing proves `index.ts` WIRES the crash handlers in.** Obligation 20 proves the module in a real process; delete `installCrashLogging(logger)` from `main()` and all four of its tests still pass. Two closure options, with costs: **(1)** an integration test that boots the real worker and kills its database mid-run — behavioural, but expensive and potentially flaky; **(2)** a static assertion that `index.ts` contains the call — cheap, and "index.ts calls installCrashLogging" is a fact about text that genuinely matters. **Preference recorded 2026-08-28: option 2**, on condition its failure message SAYS it tests text rather than behaviour, so nobody mistakes it for the stronger check. Decide when scheduled | unassigned |
 | 24 | **`apps/worker` has NO build step, so nothing verifies it becomes a deployable artefact.** It has no `build` script and runs `tsx src/index.ts`. CI therefore cannot check that it compiles, and T0.9's "build" criterion is unmeetable for it rather than merely narrowed. **T0.10 must decide whether production runs `tsx` or a compiled artefact** — and that decision drives obligation 17 (re-measure boot-failure behaviour against however it actually runs) and the pino-flush scope limit (buffered crash output was proven to survive under `tsx` only). Three findings, one underlying question | **T0.10 — firm** |
 | 25 | **Split STATUS.md.** Its own anchor lesson set the trigger "if this happens again, the file is telling us it needs splitting" — and it has now happened four times, most recently miscounting obligations by 11 because a regex matched three other tables. The file is past 1,200 lines of nested headings and pipe-delimited tables. **Proposed split: `docs/LESSONS.md` and `docs/OBLIGATIONS.md`**, both read independently of the rest and both edited most often by script; STATUS.md stays the handoff document. Makes scripted edits scope-safe by construction rather than by discipline | **before T1.2** |
-| 26 | **Confirm the audit step reports without blocking, IN CI.** The visibility fix is proven locally only. On the next `main` run, the security job must stay GREEN while the moderate `esbuild` advisory appears in the *Audit dependencies* step log. Red means `|| true` failed under the runner and a REPORTING change silently became a THRESHOLD change | **next `main` run** |
+| ~~26~~ | ~~**Confirm the audit step reports without blocking, IN CI.**~~ **DISCHARGED 2026-08-28 by CI #14 at `91b0a55`, on the printed advisory rather than the job colour** — a green security job would have looked identical if the report line had produced nothing. The step printed the full advisory (package, `<=0.24.2`, `>=0.25.0`, the full dependency path, the GHSA link) and then `--- applying the blocking threshold ---`, and the job stayed green. **The `|| true` survived the runner: reporting changed, threshold did not** | done |
 
 ---
 
