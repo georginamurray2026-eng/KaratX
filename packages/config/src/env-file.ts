@@ -75,8 +75,43 @@ export function findRepoRoot(
  *
  * @returns the path loaded, or undefined if there was no file.
  */
-export function loadEnvFileIfPresent(repoRoot: string = findRepoRoot()): string | undefined {
-  const envPath = path.join(repoRoot, '.env')
+export function loadEnvFileIfPresent(repoRoot?: string, startDir?: string): string | undefined {
+  let root = repoRoot
+
+  if (root === undefined) {
+    try {
+      // `startDir` exists so a test can force the walk to FAIL without changing
+      // the process working directory. The failure path is the one that
+      // matters here and it is otherwise unreachable from inside the repo.
+      root = startDir === undefined ? findRepoRoot() : findRepoRoot(startDir)
+    } catch {
+      // NOT FATAL, AND NOT SILENT.
+      //
+      // The `.env` is optional by design - a deployed environment has none and
+      // injects variables directly. "I could not locate a repository root" and
+      // "there is no .env here" therefore have the same correct outcome:
+      // proceed with whatever the platform injected.
+      //
+      // But they are not the same EVENT, and the difference is diagnostic. On
+      // Railway this line's presence says the upward walk failed, which is
+      // exactly what STATUS.md obligation 19 exists to detect: `apps/web`
+      // resolves the root from a module Next has bundled, so `import.meta.url`
+      // points inside `.next/`. Without this notice, a failed walk and a
+      // correctly-absent file are indistinguishable.
+      //
+      // `findRepoRoot` itself still THROWS. Its contract is "find this or
+      // fail", @karatx/test-support depends on that, and only this
+      // optional-file wrapper softens it.
+      process.stderr.write(
+        'No repository root found (no pnpm-workspace.yaml above this module), ' +
+          'so no .env was loaded. Proceeding with injected environment variables only. ' +
+          'This is expected on a deployed platform and unexpected locally.\n',
+      )
+      return undefined
+    }
+  }
+
+  const envPath = path.join(root, '.env')
   if (!existsSync(envPath)) return undefined
 
   process.loadEnvFile(envPath)

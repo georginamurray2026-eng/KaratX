@@ -92,6 +92,39 @@ describe('loadEnvFileIfPresent', () => {
     expect(process.env['KARATX_TEST_FROM_FILE']).toBe('from-file')
   })
 
+  it('does NOT THROW when the repository root cannot be found, and says so', () => {
+    // THE FAILURE THIS PREVENTS IS NOT A CRASH, IT IS A LIE. `findRepoRoot`
+    // throws when its upward walk fails. In apps/web that call sat outside the
+    // boot try/catch, so the throw propagated out of Next's `register()`, Next
+    // SWALLOWED it, and the server printed "✓ Ready" and then served 500s from
+    // every endpoint - including /api/health, which is defined as touching
+    // nothing. The exact T0.7 failure, through a path the T0.7 fix did not
+    // cover.
+    //
+    // An absent `.env` is the normal deployed case, so an unfindable root must
+    // mean the same thing: proceed with what the platform injected.
+    const orphan = path.parse(sandbox).root
+
+    const written: string[] = []
+    const original = process.stderr.write.bind(process.stderr)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- narrowing stderr.write's overloads adds nothing to a two-line spy
+    process.stderr.write = ((chunk: any) => {
+      written.push(String(chunk))
+      return true
+    }) as typeof process.stderr.write
+
+    try {
+      expect(loadEnvFileIfPresent(undefined, orphan)).toBeUndefined()
+    } finally {
+      process.stderr.write = original
+    }
+
+    // NOT SILENT. A failed walk and a correctly-absent file have the same
+    // outcome but are different events, and only the notice distinguishes
+    // them - which is the whole point on Railway (obligation 19).
+    expect(written.join('')).toContain('No repository root found')
+  })
+
   it('does nothing, and reports nothing, when there is no .env at all', () => {
     // A deployed environment has no file and injects variables directly.
     // Requiring the file would work locally and fail on deploy.

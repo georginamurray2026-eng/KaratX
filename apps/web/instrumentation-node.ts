@@ -8,21 +8,38 @@
  * build train people to stop reading build output.
  */
 export async function validateConfiguration(): Promise<void> {
-  // Local development keeps the connection string in a git-ignored `.env` at
-  // the repository root. Deployed environments have no such file and inject
-  // variables directly, so this loads it only if present rather than requiring
-  // it - and an explicitly-set variable wins over the file, which is Node's
-  // own `loadEnvFile` precedence.
+  // ---------------------------------------------------------------------
+  // THE TRY WRAPS THE WHOLE BOOT SEQUENCE, NOT ONE CALL INSIDE IT.
   //
-  // The implementation lives in @karatx/config, which is where the db:migrate
-  // CLI and the test harness now get it too. It used to be copied here, along
-  // with a loop that re-applied that precedence by hand; T0.8 measured Node
-  // and found the loop could never change an outcome, so it is gone.
-  const { loadConfig, loadEnvFileIfPresent } = await import('@karatx/config')
-
-  loadEnvFileIfPresent()
-
+  // A GUARD AROUND ONE CALL IS NOT A GUARD AROUND A CONTRACT. The contract
+  // here is "any failure in boot exits non-zero". An earlier version guarded
+  // `loadConfig()` specifically, because a bad environment was the failure
+  // being thought about when it was written - and left everything else in the
+  // same function unprotected.
+  //
+  // That was not theoretical. `loadEnvFileIfPresent()` sat OUTSIDE the try,
+  // and `findRepoRoot` throws when its upward walk fails. Under Next's
+  // bundling `import.meta.url` points inside `.next/`, so the walk can fail -
+  // and the throw propagated out of `register()`, where Next SWALLOWS it. The
+  // result is the exact T0.7 failure the exit below exists to prevent,
+  // reached by a path the T0.7 fix did not cover.
+  //
+  // Guard the SCOPE the property covers, not the line that prompted it.
+  // ---------------------------------------------------------------------
   try {
+    // Local development keeps the connection string in a git-ignored `.env` at
+    // the repository root. Deployed environments have no such file and inject
+    // variables directly, so this loads it only if present rather than
+    // requiring it - and an explicitly-set variable wins over the file, which
+    // is Node's own `loadEnvFile` precedence.
+    //
+    // It no longer throws when the repository root cannot be found: an absent
+    // `.env` is the normal deployed case. It writes an explicit notice to
+    // stderr instead, so a failed walk stays distinguishable from a correctly
+    // absent file (STATUS.md obligation 19).
+    const { loadConfig, loadEnvFileIfPresent } = await import('@karatx/config')
+
+    loadEnvFileIfPresent()
     loadConfig()
   } catch (error) {
     // ConfigValidationError lists every problem at once and never echoes a
