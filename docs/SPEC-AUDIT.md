@@ -239,7 +239,7 @@ The spec defines the happy path (Part 12) and cancellation (Part 19). Missing:
 - **Simultaneous conflicting setups.** A long at support and a short at resistance can both be live. Allowed? Which alerts?
 - **Max concurrent setups**, to prevent alert flooding in choppy conditions.
 - **Re-entry after cancel.** Part 12's sequence can immediately re-trigger. §13's invariant ("READY cannot follow CANCELLED without a new setup instance") is correct — but the rule for *when a new instance may be created* is undefined. Without it you get an infinite alert loop on a chopping level.
-- **`DETERIORATING` is not a state.** It is a *grade delta on an existing state*. Modelling it as a state creates ambiguous transitions (deteriorating → back to ready? → deteriorating again?). See the state machine proposal in `ARCHITECTURE-AND-STACK.md`.
+- **`DETERIORATING` is not a state.** It is a *grade delta on an existing state*. Modelling it as a state creates ambiguous transitions (deteriorating → back to ready? → deteriorating again?). See the state machine proposal in `ARCHITECTURE.md`.
 
 ---
 
@@ -271,7 +271,7 @@ The spec defines the happy path (Part 12) and cancellation (Part 19). Missing:
 
 **L1 — Don't take a dependency for session times.** The closing note suggests "babypips API or similar" for a timezone tracker. I'm not aware of a supported public market-hours API from that source `[VERIFY]`, and it isn't needed: session boundaries are computed from IANA timezone data in about fifty lines with `luxon` or `date-fns-tz`, which you need anyway for §8. Adding a third-party dependency for arithmetic you can do locally adds an outage surface for no benefit. **Recommendation: reject.**
 
-**L2 — "OpenAI or Claude for reasoning?"** Answered in `ARCHITECTURE-AND-STACK.md` §D. Short version: it's a smaller decision than it feels, the provider abstraction matters more than the choice, and you should decide it with a measurement in Phase 7 rather than an opinion in Phase 0.
+**L2 — "OpenAI or Claude for reasoning?"** Answered in `ARCHITECTURE.md` §D. Short version: it's a smaller decision than it feels, the provider abstraction matters more than the choice, and you should decide it with a measurement in Phase 7 rather than an opinion in Phase 0.
 
 **L3 — Inconsistent vocabulary.** "Zone", "level", "support/resistance", "area" are used interchangeably; "liquidity pool", "liquidity", "liquidity level" likewise. Pick one term per concept and enforce it in code, docs and alert copy. Cheap now, annoying later.
 

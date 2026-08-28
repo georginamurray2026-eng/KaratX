@@ -97,7 +97,7 @@ export default tseslint.config(
   //   "No fetch, no database, no clock reads. Time is passed in."
   //
   // This is what lets the backtest run the identical code path as live, and
-  // ARCHITECTURE-AND-STACK.md calls it the single strongest defence against a
+  // ARCHITECTURE.md calls it the single strongest defence against a
   // backtest that lies. It also underwrites NFR-12 (backtests reproducible
   // byte-for-byte) and closes T0.1's line-26 criterion.
   //

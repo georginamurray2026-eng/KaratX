@@ -1,7 +1,7 @@
 /**
  * `@karatx/core` - pure domain logic.
  *
- * INVARIANT (ARCHITECTURE-AND-STACK.md F.3.1): this package performs no I/O.
+ * INVARIANT (ARCHITECTURE.md F.3.1): this package performs no I/O.
  * No fetch, no database, no filesystem, and no clock reads - time is passed
  * in. That is what lets the backtest run the identical code path as live,
  * and it is the strongest defence against a backtest that lies.

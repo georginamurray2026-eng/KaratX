@@ -88,7 +88,7 @@ export abstract class KaratxError extends Error {
 /**
  * Input failed validation at a boundary.
  *
- * Derived policy `quarantine`: ARCHITECTURE-AND-STACK.md F.2 requires
+ * Derived policy `quarantine`: ARCHITECTURE.md F.2 requires
  * malformed input to be quarantined and never repaired, and T1.5 makes the
  * same requirement of market data explicitly.
  */

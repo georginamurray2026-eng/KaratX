@@ -33,7 +33,7 @@ A Thailand-resident **live** OANDA account is routed to OANDA Global Markets (BV
 
 ## 2. Evaluation matrix
 
-Criteria are those from `ARCHITECTURE-AND-STACK.md` §E/U-1. `—` means the documentation does not state it.
+Criteria are those from `ARCHITECTURE.md` §E/U-1. `—` means the documentation does not state it.
 
 | Criterion | **OANDA v20** (reference candidate) | **Twelve Data** (reconciliation candidate) | **Massive** (ex-Polygon.io) (reconciliation candidate) |
 |---|---|---|---|
@@ -196,7 +196,7 @@ The 5-second heartbeat is the silent-death detector T1.7 needs. A stream with an
 > "you cannot create OHLC candlestick data using the REST v20 Stream endpoint, since open, high, low, and close data of the period are not guaranteed to be returned in the response packets."
 > — [REST v20 API troubleshooting guide](https://help.oanda.com/us/en/faqs/rest-v20-api-troubleshooting-guide.htm)
 
-**Architectural consequence for T1.7:** the live feed consumer is a **poller**, not a stream consumer, for candles. Poll `.../candles?granularity=M15&count=2&includeFirst=false` shortly after each 15-minute boundary and trust the `complete` flag. The price stream is used only for (a) current bid/ask for the dashboard and the DR-7 spread record, and (b) liveness detection via heartbeat. This is a change of emphasis from `ARCHITECTURE-AND-STACK.md` F.2, which assumed a websocket-fed candle path; the diagram should be amended.
+**Architectural consequence for T1.7:** the live feed consumer is a **poller**, not a stream consumer, for candles. Poll `.../candles?granularity=M15&count=2&includeFirst=false` shortly after each 15-minute boundary and trust the `complete` flag. The price stream is used only for (a) current bid/ask for the dashboard and the DR-7 spread record, and (b) liveness detection via heartbeat. This is a change of emphasis from `ARCHITECTURE.md` F.2, which assumed a websocket-fed candle path; the diagram should be amended.
 
 ### Reconnection semantics
 

@@ -13,7 +13,7 @@
     // T0.1 acceptance criteria. `noUncheckedIndexedAccess` is not optional
     // here: candle arrays are indexed constantly and this is the setting that
     // catches the off-by-one class of bug that would otherwise produce
-    // silently wrong indicator values (ARCHITECTURE-AND-STACK.md section D).
+    // silently wrong indicator values (ARCHITECTURE.md section D).
     "strict": true,
     "noUncheckedIndexedAccess": true,
 

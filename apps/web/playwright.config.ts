@@ -3,7 +3,7 @@ import { defineConfig, devices } from '@playwright/test'
 /**
  * End-to-end tests (§11 requires Playwright for important user workflows).
  *
- * Deliberately tiny for now. ARCHITECTURE-AND-STACK.md is explicit: set
+ * Deliberately tiny for now. ARCHITECTURE.md is explicit: set
  * Playwright up in Phase 0 with one smoke test, and write almost nothing more
  * until Phase 6. Writing end-to-end tests before there is a dashboard worth
  * testing is wasted effort that then rots.

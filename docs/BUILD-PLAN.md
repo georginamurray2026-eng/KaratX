@@ -204,7 +204,7 @@ Each phase has a **quality gate**. Do not start the next phase until the gate is
 **Files:** `docs/DATA_SOURCES.md`, `docs/DECISIONS.md` (ADR-005)
 **Depends on:** your answers to decisions 1–4
 **Acceptance criteria:**
-- The full evaluation matrix from `ARCHITECTURE-AND-STACK.md` §E/U-1 filled in for at least three candidates, from **current official documentation** — no remembered facts
+- The full evaluation matrix from `ARCHITECTURE.md` §E/U-1 filled in for at least three candidates, from **current official documentation** — no remembered facts
 - Explicit findings on: daily boundary convention, timestamp timezone, candle revision policy, historical depth and its cost, redistribution licence
 - ADR-005 records decision, alternatives, reasoning, consequences, reversibility
 **Tests:** none — this is a research task

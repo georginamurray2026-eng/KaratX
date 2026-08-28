@@ -31,7 +31,7 @@ import { findRepoRoot } from './env'
  *   guarantee is gone - and nothing will announce it. The backtest will keep
  *   producing numbers. They will simply stop being true.
  *
- * See ARCHITECTURE-AND-STACK.md F.3 invariant 1, and NFR-12.
+ * See ARCHITECTURE.md F.3 invariant 1, and NFR-12.
  *
  * T0.2 proved these rules fire using a one-shot manual probe which was then
  * deleted, leaving nothing to catch a regression. This test is that probe made

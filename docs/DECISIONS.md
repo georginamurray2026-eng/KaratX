@@ -196,7 +196,7 @@ Consequences, recorded so this is not rediscovered the hard way:
 
 **Costs and obligations**
 
-- Applying is a manual step someone must remember. On Railway (T0.10) it must be wired as a pre-deploy/release command, **not** into the service start command — and `[VERIFY]` how Railway expresses that, since `ARCHITECTURE-AND-STACK.md` U-7 lists it as unconfirmed.
+- Applying is a manual step someone must remember. On Railway (T0.10) it must be wired as a pre-deploy/release command, **not** into the service start command — and `[VERIFY]` how Railway expresses that, since `ARCHITECTURE.md` U-7 lists it as unconfirmed.
 - Immutability is unenforced until the T0.9 check exists.
 - A migration that is slow or takes heavy locks will block a release. Not a concern at Phase 0's two tables; it becomes one around the Phase 1 candle tables and their indexes.
 - OPS-7 (backup with a *tested* restore) is untouched by this ADR and remains open for T0.10.
@@ -324,7 +324,7 @@ A second, smaller condition rides along: `XAU_USD` must actually appear in `GET 
 | **No DXY instrument** | Synthesise the ICE six-currency index from OANDA's own `EUR_USD`, `USD_JPY`, `GBP_USD`, `USD_CAD`, `USD_SEK`, `USD_CHF`. One pure function in `packages/core`; same feed, same boundaries, 15M granularity. Store as `USDX_SYNTHETIC`, never as "DXY". Cross-check daily against FRED `DTWEXBGS`. **The exact ICE coefficients are UNVERIFIED (U7) and must be read from ICE's published methodology before implementation.** | ~half a day | FR-1.5 |
 | **No Treasury yields** (bond *price* CFDs only) | US Treasury daily XML feed, `daily_treasury_yield_curve`, free, no key, history from 1990, all needed tenors. | ~one day | FR-1.6, DR-3 |
 | **Yields are daily EOD, business days only** | Model per-series exchange hours and cadence in `macro_observations`. The gold watchdog must not run over yield series or it will fire every night and all weekend. **Any TR rule requiring intraday yield reaction cannot be built on this source** — a Phase 8 constraint to record now, not discover later. | design constraint | FR-8.4, DR-3, T1.5 |
-| **No candle stream** | Poll `.../candles?granularity=M15&count=2&includeFirst=false` after each 15M boundary; trust `complete`. Stream used only for bid/ask and heartbeat liveness. **`ARCHITECTURE-AND-STACK.md` F.2 should be amended** — it currently implies a websocket-fed candle path. | design change | FR-1.4, T1.7 |
+| **No candle stream** | Poll `.../candles?granularity=M15&count=2&includeFirst=false` after each 15M boundary; trust `complete`. Stream used only for bid/ask and heartbeat liveness. **`ARCHITECTURE.md` F.2 should be amended** — it currently implies a websocket-fed candle path. | design change | FR-1.4, T1.7 |
 | **No documented reconnection semantics** | Our own bounded exponential backoff with jitter (T1.7). The 5-second heartbeat is the silent-death detector. | already planned | T1.7 |
 | **No documented candle revision policy** | Do not assume immutability. T1.3's conflicting-upsert rule already raises a `data_quality_event` rather than overwriting. Re-fetch the trailing 7 days nightly for the first month and count events — that measurement is the answer. | already planned | T1.3, U3 |
 | **No public status page** (`status.oanda.com` does not resolve) | We cannot distinguish "our bug" from "their outage" externally. T1.8 (staleness watchdog) and T1.9 (reconciliation) become the only such signal, and their priority rises accordingly. | none | OPS-8, T1.8, T1.9 |
@@ -374,7 +374,7 @@ What makes it costly to reverse later:
 |---|---|---|
 | 1 | User opens fxTrade Practice account, generates token, runs the three verification calls (`DATA_SOURCES.md` §11) | **Before T1.2** |
 | 2 | Measure `XAU_USD` M15 and D history depth and interior gaps (`DATA_SOURCES.md` §12); record in `DATA_SOURCES.md` | Before T1.4 |
-| 3 | Amend `ARCHITECTURE-AND-STACK.md` F.2 — candles are polled, not streamed | Before T1.7 |
+| 3 | Amend `ARCHITECTURE.md` F.2 — candles are polled, not streamed | Before T1.7 |
 | 4 | Move `REQUIREMENTS.md` FR-10.6 from BLOCKED to PLANNED, citing the licence | Next requirements revision |
 | 5 | Add per-series exchange hours and cadence to the `macro_observations` design | T1.10 |
 | 6 | Read ICE's published USDX coefficients from their methodology PDFs (U7) | Before the synthetic index is implemented |
