@@ -398,6 +398,7 @@ never live in this repository.
 
 These acceptance criteria are **partially** met. Do not record them as done.
 
+- **The audit step's reporting fix is UNVERIFIED IN CI.** It behaves correctly locally — run both ways under `bash -e`, the step exits 0 with `|| true` and 1 without — but the first real run is the proof. **Expected: the moderate esbuild advisory appears in the security job's log while the job stays GREEN.** If it goes red instead, the `|| true` did not survive contact with the runner and the threshold has moved without anyone deciding to move it. Check the next `main` run before treating this as done.
 - **T0.9 "build" as a pipeline step — PARTIAL.** `apps/web` is genuinely built on every run, twice, so the production build succeeds or CI fails. But no job exists whose PURPOSE is verifying it: the integration build step exists to make the instrumentation test work, and would read as deletable if that test went. And `apps/worker` has no build at all — obligation 24.
 - **T0.9 "on push AND PR" — NARROWED, deliberately.** `push` is filtered to `main`; `pull_request` is not filtered. Every path into `main` is covered, so nothing reaches the default branch unverified. But a push to any other branch fires nothing, which is a real narrowing chosen to keep CI off scratch branches. The cost has already been paid once: it cost two attempts of the deliberate-red exercise and produced instance 10.
 - **T0.3 "config fails before any other work."** **NOW PROVEN FOR BOTH PROCESSES.** `apps/web` in T0.7 (`instrumentation.ts` validates at server start and calls `process.exit(1)`; 4 integration tests boot a real built server with a broken environment and assert a non-zero exit). `apps/worker` in T0.8, proven by ORDER in the real process's log rather than by reading the source: `configuration validated` must be log line 0 and must precede `database schema verified`. A broken environment produces **no JSON log line at all**, because the logger's level and secret list come from the configuration that just failed — asserted, and confirmed capable of failing by planting an early line and watching three tests break.
@@ -797,6 +798,42 @@ steps are REAL dependencies — migrate, then build, then test, then read the
 report the test produced. The rule is "let INDEPENDENT steps run", not "let
 every step run".
 
+### A passing gate should still REPORT what it saw
+
+**Detection without reporting is invisible. Ask of every gate: when it passes,
+does it say what it examined and what it chose not to act on?**
+
+`pnpm audit --audit-level=high` correctly did not block on a moderate advisory,
+and correctly printed nothing. So CI was **green and silent while a real
+vulnerability sat in the lockfile** — GHSA-67mh-4wv8-2f99 against `esbuild@0.18.20`.
+
+**The finding only surfaced because a human opened the Security tab**, which
+nobody had a reason to open. Without that it would have sat unseen indefinitely.
+
+This is not a detection failure, and the distinction matters: audit SAW it and
+reported it in its own output. The gap is that the gate, in passing, discarded
+everything it had chosen not to act on. **A check that is silent when it passes
+tells you nothing about the difference between "found nothing" and "found
+something and decided it did not matter".**
+
+Fixed by printing the full report before applying the threshold. The threshold
+is unchanged — visibility was the defect, not sensitivity.
+
+**AND NOTE HOW IT WAS ACTUALLY FOUND: by looking somewhere unprompted.** A badge
+appeared in the GitHub navigation that no process we had designed pointed at, and
+the user opened the Security tab for no reason other than curiosity. **A green
+pipeline and an unnoticed advisory coexisted quite comfortably.**
+
+The fix makes it visible in CI from now on, which is the right response. But the
+finding itself came from curiosity, not from any mechanism — and that is worth
+recording honestly rather than filing it under "the process worked". **Every
+process has a boundary, and the only thing that finds what falls outside it is
+someone looking where they were not told to.**
+
+Applies to reviewing this project generally: the surfaces nobody has been given a
+reason to check are exactly where the next unnoticed thing is.
+
+
 ### When a rule keeps being broken by someone TRYING to follow it, the fix is STRUCTURAL
 
 **Repeated failure to follow a rule, by someone who knows it and is actively
@@ -1059,6 +1096,86 @@ All five jobs passed. Job totals include checkout, pnpm setup and install:
 difference is setup, and quoting the job total would have overstated the suite
 by 5x. See obligation 11, now reframed on the strength of it.
 
+### SEC-10 — OBSERVED WORKING 2026-08-28, and the esbuild advisory it surfaced
+
+**SEC-10 was in the same position CI was before the deliberate-red exercise:
+configured, plausible, unobserved. It has now been watched, and the division of
+labour held.**
+
+| Layer | Role | What it did |
+|---|---|---|
+| Dependabot alerts | the **broad net** — surfaces everything for a human | **found it** |
+| `pnpm audit --audit-level=high` | the **blocking gate** — stops the build only for what is worth stopping it for | reported it, correctly did **not** block |
+
+That is the intended behaviour, not a hole. A gate that fails on every moderate
+advisory in a transitive dev dependency gets muted within a month.
+
+#### The advisory: GHSA-67mh-4wv8-2f99, and why we are NOT exposed
+
+**Do not redo this work when the alert resurfaces.** Moderate, CVSS 5.3.
+Affected ≤ 0.24.2, patched 0.25.0. Three copies of esbuild are installed and
+**only one is affected**:
+
+```
+esbuild@0.18.20   AFFECTED   @esbuild-kit/core-utils -> @esbuild-kit/esm-loader
+                             -> drizzle-kit -> @karatx/db (devDependencies)
+esbuild@0.25.12   patched    drizzle-kit direct dependency
+esbuild@0.28.2    patched    tsx, and vite/vitest
+```
+
+**THE VULNERABLE FEATURE IS NOT PRESENT IN THE INSTALLED CODE.** This is not
+"probably unaffected" — it is verified absence:
+
+- The advisory is specific to the **`serve`** feature: *"Users using the serve
+  feature may get the source code stolen by malicious websites."*
+- `@esbuild-kit/core-utils@3.3.2` ships **two files**, `index.js` and `index.d.ts`.
+- The only esbuild API it references is **`transform(`** — one occurrence.
+- **The string `serve` appears nowhere in the package at all**, in code or types.
+
+Reachability is narrower still: that chain loads only under `drizzle-kit`, which
+this repository invokes in exactly one place — `db:generate`, run deliberately
+by a developer. **Not in CI** (which runs `db:migrate` via `tsx`) and not in
+either deployable process.
+
+#### Why CI stayed green — the threshold, not a detection gap
+
+Two possibilities had to be separated, and only one would have been a problem.
+Settled by testing all three thresholds:
+
+```
+pnpm audit (default)               exit=1
+pnpm audit --audit-level=moderate  exit=1
+pnpm audit --audit-level=high      exit=0   <- what CI runs
+```
+
+And audit reports it in full: *`[moderate] esbuild vulnerable: <=0.24.2 patched:
+>=0.25.0`*, with the complete dependency path. **The gate deliberately did not
+block. Audit did not miss it.** That difference is invisible without the test.
+
+#### Decision: NO OVERRIDE. Watch upstream instead.
+
+`drizzle-kit@0.31.10` is the latest release; there is no fixed version to move
+to. A pnpm override forcing `esbuild@>=0.25` is possible but `@esbuild-kit/core-utils`
+declares `^0.18` — three years of API drift — and it would fix an unexploitable
+path. **An unverified override is worse than a known-unexploitable transitive.**
+
+**UPSTREAM CONDITION TO WATCH:** drizzle-kit dropping `@esbuild-kit/esm-loader`
+in favour of the `tsx` it **already depends on**. Its `dependencies` currently
+list both, and the `@esbuild-kit/*` packages are deprecated — their functionality
+was folded into `tsx`. When that lands, this resolves with a routine bump.
+
+#### The real finding was the reporting gap
+
+CI showed **nothing**. Without a human opening the Security tab this would have
+sat unseen indefinitely. Fixed by printing the full audit report before applying
+the threshold — see the lesson on gates reporting what they saw. **The threshold
+is unchanged; visibility was the defect, not sensitivity.**
+
+**Do not "fix" this by lowering the threshold to moderate.** That reverses the
+design and mutes the gate.
+
+---
+
 ### GitHub repository settings — VERIFIED 2026-08-28, stop asking
 
 Confirmed by the user in the repository settings UI, not inferred:
@@ -1290,6 +1407,7 @@ wondering whether it was ever considered.
 | 23 | **Nothing proves `index.ts` WIRES the crash handlers in.** Obligation 20 proves the module in a real process; delete `installCrashLogging(logger)` from `main()` and all four of its tests still pass. Two closure options, with costs: **(1)** an integration test that boots the real worker and kills its database mid-run — behavioural, but expensive and potentially flaky; **(2)** a static assertion that `index.ts` contains the call — cheap, and "index.ts calls installCrashLogging" is a fact about text that genuinely matters. **Preference recorded 2026-08-28: option 2**, on condition its failure message SAYS it tests text rather than behaviour, so nobody mistakes it for the stronger check. Decide when scheduled | unassigned |
 | 24 | **`apps/worker` has NO build step, so nothing verifies it becomes a deployable artefact.** It has no `build` script and runs `tsx src/index.ts`. CI therefore cannot check that it compiles, and T0.9's "build" criterion is unmeetable for it rather than merely narrowed. **T0.10 must decide whether production runs `tsx` or a compiled artefact** — and that decision drives obligation 17 (re-measure boot-failure behaviour against however it actually runs) and the pino-flush scope limit (buffered crash output was proven to survive under `tsx` only). Three findings, one underlying question | **T0.10 — firm** |
 | 25 | **Split STATUS.md.** Its own anchor lesson set the trigger "if this happens again, the file is telling us it needs splitting" — and it has now happened four times, most recently miscounting obligations by 11 because a regex matched three other tables. The file is past 1,200 lines of nested headings and pipe-delimited tables. **Proposed split: `docs/LESSONS.md` and `docs/OBLIGATIONS.md`**, both read independently of the rest and both edited most often by script; STATUS.md stays the handoff document. Makes scripted edits scope-safe by construction rather than by discipline | **before T1.2** |
+| 26 | **Confirm the audit step reports without blocking, IN CI.** The visibility fix is proven locally only. On the next `main` run, the security job must stay GREEN while the moderate `esbuild` advisory appears in the *Audit dependencies* step log. Red means `|| true` failed under the runner and a REPORTING change silently became a THRESHOLD change | **next `main` run** |
 
 ---
 

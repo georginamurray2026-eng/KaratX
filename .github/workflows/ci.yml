@@ -275,6 +275,27 @@ jobs:
       # THIS CAN GO RED ON A DAY NOTHING CHANGED, because a new CVE was
       # published against an existing dependency. That is correct behaviour and
       # must not be "fixed" by lowering the threshold - see STATUS.md.
-      - name: Audit dependencies (fails on high/critical)
+      - name: Audit dependencies (reports everything, fails on high/critical)
         if: always() && steps.install.outcome == 'success'
-        run: pnpm audit --audit-level=high
+        run: |
+          # REPORT EVERYTHING FIRST, then apply the threshold.
+          #
+          # A gate that passes silently cannot be distinguished from one that
+          # found nothing. On 2026-08-28 this step was green while
+          # GHSA-67mh-4wv8-2f99 sat in the lockfile against esbuild@0.18.20.
+          # Audit had SEEN it and reported it in its own output, and the
+          # threshold correctly declined to block - but CI showed nothing at
+          # all, and it surfaced only because a human opened the Security tab.
+          #
+          # DO NOT REMOVE THE `|| true`. It is not sloppiness.
+          #
+          # GitHub runs this block under `bash -e`. Without it, the first
+          # `pnpm audit` aborts the step at exit 1 on ANY moderate finding, and
+          # the build goes red - silently converting this REPORTING fix into a
+          # THRESHOLD change, which is the exact thing it exists not to do.
+          #
+          # The line below is the gate. Its threshold is unchanged.
+          pnpm audit || true
+
+          echo "--- applying the blocking threshold: high and critical only ---"
+          pnpm audit --audit-level=high
