@@ -3,7 +3,7 @@
 Handoff file between Claude Code sessions (§27, §44). The repository is the
 project memory — do not rely on conversation history.
 
-**Last verified:** 2026-08-27, by inspecting the repository and running the
+**Last verified:** 2026-08-28, by inspecting the repository and running the
 commands below. Every figure here came from an actual run, not from a
 handover document.
 
@@ -14,10 +14,10 @@ handover document.
 | | |
 |---|---|
 | Phase | **Phase 0 — Engineering Foundation** |
-| Complete | **T0.1 – T0.8** (8 of 10). T0.8 closed 2026-08-27 with three recorded gaps |
-| Next task | **T0.9 — CI** (not started) |
+| Complete | **T0.1 – T0.9** (9 of 10). T0.9 closed 2026-08-28 with two partials |
+| Next task | **T0.10 — Railway deploy + project documentation** (not started) |
 | Branch | `main`, working tree clean. (Commit count deliberately not stated — a self-referential number in a committed file is stale the moment it lands. Use `git log --oneline`.) |
-| Remote | none configured. Nothing has been pushed |
+| Remote | `origin` = `github.com/georginamurray2026-eng/KaratX` (**private**). `main` is pushed and CI runs on it |
 
 Phase 1 task **T1.1** (provider evaluation) was completed early, then **REOPENED
 and RE-RUN on 2026-08-27** when OANDA v20 proved unavailable. **It is now
@@ -44,7 +44,7 @@ pnpm lint                        EXIT=0
 pnpm format:check                EXIT=0
 pnpm typecheck                   EXIT=0
 pnpm test                        EXIT=0    235 tests  (PostgreSQL CONFIRMED STOPPED)
-pnpm test:integration            EXIT=0     52 tests + 1 deliberate skip
+pnpm test:integration            EXIT=0     57 tests + 1 deliberate skip
 ```
 
 Every exit code above is from a run on 2026-08-27, not recalled. PostgreSQL
@@ -88,7 +88,7 @@ unproven** — see "Not proven" and obligation 18.
 | T0.6 Test harness | **Done, two honest caveats** | `@karatx/test-support`; unit runs exclude integration tests and are verified with PostgreSQL stopped; ephemeral database per integration run; fixture loader; core-boundary regression test |
 | T0.7 Web skeleton + health endpoints | **Done, one honest caveat** | Next 16 + React 19; /api/health and /api/ready; boot-time config validation that refuses to start; Playwright smoke test. See "Not proven" for the unenforced criterion |
 | T0.8 Worker skeleton | **Done, three honest gaps** | Boot sequence, ordered shutdown, crash logging, heartbeat. 33 unit + 9 integration tests. Criterion 1 met; criteria 2 and 3 partial — see the close-out assessment. Obligations 20, 21, 22 |
-| T0.9 CI | Not started | No `.github/` directory exists |
+| T0.9 CI | **Done, two partials** | Five parallel jobs on GitHub Actions, green on the first Linux run. Secret scanning, dependency scanning, migration immutability. Four deliberate breaks proved across two exercises. Partials: `build` is verified only incidentally and not at all for the worker (obligation 24); `on push` is narrowed to `main` |
 | T0.10 Railway deploy + docs | Not started | — |
 
 `packages/contracts` is still a stub. It is populated in T1.2.
@@ -183,36 +183,163 @@ New obligations 20, 21 and 22 record them.
 
 ---
 
-## THE EXACT NEXT TASK
+## T0.9 CLOSED OUT — assessed 2026-08-28, two criteria met of four
 
-**T0.9 — CI.** It carries the largest cluster of outstanding obligations, and it
-closes three of the four sub-clauses T0.8 left unproven — one of them simply by
-running the suite on Linux.
+**Assessed against the repository, separately from the implementation, and
+treated as adversarial.** The question asked was not "does this look done" but
+"what would I have to find to call this unfinished".
 
-BUILD-PLAN acceptance criteria: install → format check → lint → typecheck →
-unit tests → integration tests (with a Postgres service) → build → Playwright
-smoke; secret scanning; dependency vulnerability scanning (SEC-10); and **a
-deliberately broken commit turning CI red, verified once on purpose.**
+| # | Criterion | Verdict |
+|---|---|---|
+| 1 | install → format → lint → typecheck → unit → integration (Postgres) → build → Playwright, on push AND PR | **PARTIAL** — 7 of 9 sub-parts met; `build` and `on push` both narrowed |
+| 2 | Secret scanning enabled | **MET**, with a recorded limitation |
+| 3 | Dependency vulnerability scanning (SEC-10) | **MET** |
+| 4 | A deliberately broken commit turns CI red, verified once on purpose | **MET, and exceeded** |
 
-That last one is the positive-control rule applied to the pipeline itself: a
-green CI that has never been observed failing has not been shown to work.
+### Criterion 1 — PARTIAL. Do not tick.
 
-Obligations landing in T0.9 — **seven**: **2** (fail on modification of
-migrations already on `main`), **10a** (unit job with NO database service),
-**13** (`NEXT_TELEMETRY_DISABLED=1`), **15** (build web before integration
-tests), **18** (confirm the SIGTERM test RUNS, not that the suite is green),
-**20** (crash logging exercised in a real spawned worker), and **21** (pool
-closure verified against `pg_stat_activity`).
+| Sub-part | State |
+|---|---|
+| install | **met** — every job, `--frozen-lockfile` |
+| format check | **met** — `static` job |
+| lint | **met** — and proven running in CI by a deliberate break, not merely present |
+| typecheck | **met** — `static` job |
+| unit tests | **met** — `unit` job, no `services:` block, and asserts nothing listens on 5432 |
+| integration with a Postgres service | **met** — `postgres:17`, pinned to match `docker-compose.yml` |
+| **build** | **PARTIAL — see below** |
+| Playwright smoke | **met** — `e2e` job, Chromium |
+| **on push AND PR** | **NARROWED — see below** |
 
-**20 and 21 are the two T0.8 gaps that are ordinary test-writing rather than
-platform limits** — they need a Linux runner no more than they need a decision,
-but they belong with the CI work because that is when the suite gets its next
-deliberate pass.
+#### `build` — verified, but incidentally, and not at all for the worker
 
-**There is a manual step:** creating the GitHub repository and connecting it.
-Exact click-by-click instructions when we get there.
+**`apps/web` IS built on every run, twice**: explicitly in the integration job,
+and again inside Playwright's `webServer` for e2e. The production build genuinely
+succeeds or the pipeline fails.
+
+**But no job exists whose PURPOSE is to verify the build.** The integration
+build step exists to make apps/web's instrumentation test work — it spawns
+`next start`, which needs `.next`. Remove that test and the step reads as
+deletable, leaving the only build inside a Playwright config. A criterion met as
+a side effect of something else is one commit away from not being met.
+
+**And `apps/worker` HAS NO BUILD AT ALL.** It has no `build` script; it runs
+`tsx src/index.ts`. So for the worker this is not narrowed — **nothing verifies it
+compiles into a deployable artefact, because there is no artefact.** Obligation
+24.
+
+#### `on push AND PR` — deliberately narrowed, with a cost already paid
+
+```yaml
+on:
+  push:
+    branches: [main]     # <- filtered
+  pull_request:          # <- unfiltered
+```
+
+**Every path INTO `main` is covered**: a pull request is checked, and the merge
+to `main` is checked. Nothing reaches the default branch unverified.
+
+**But the literal criterion says "on push", and pushes to any other branch fire
+nothing.** That is a real narrowing, chosen so CI does not run on every scratch
+branch — including the throwaway probe branches this project uses.
+
+**The cost is not hypothetical: it cost two attempts of the deliberate-red
+exercise** and produced instance 10, a confident prediction written for a process
+nobody had checked could start. Recorded rather than smoothed, and revisit if
+branch-push CI is ever wanted.
+
+### Criterion 2 — MET, with a limitation worth stating
+
+gitleaks scans full history on every run, proven by a deliberate break (RuleID
+`github-pat`, value REDACTED), and proven capable of firing before the clean
+history result was trusted.
+
+**It DETECTS; it does not PREVENT.** GitHub push protection would block a secret
+before it lands, but on private repositories that needs paid Secret Protection.
+The deliberate-red exercise demonstrated the consequence directly: a planted
+token entered the repository permanently, broke `main` until the branch was
+deleted, and remains visible in the closed PR forever.
+
+### Criterion 3 — MET
+
+`pnpm audit --audit-level=high` fails the build on high and critical.
+Dependabot alerts and security updates verified enabled 2026-08-28. Grouped
+weekly update PRs configured, after the first push opened five at once.
+
+### Criterion 4 — MET, and exceeded
+
+The criterion asks for one deliberately broken commit verified once. **Four
+breaks were proved across two exercises**, with linkable runs, plus step-level
+evidence that independent steps report independently. See the deliberate-red
+section.
+
+### Also assessed
+
+- **Manual step — creating and connecting the repository:** done. Settings
+  verified 2026-08-28.
+- **"Tests: the pipeline is the test":** met, and unusually well - the pipeline
+  has been observed both green and deliberately red, at step level.
+- **Obligations 2, 10a, 13, 15, 18, 20, 21 — all discharged**, each with
+  evidence. **20 and 21 were proven at the ASSERTION level rather than the test
+  level**: one mutation per assertion, because a test with three assertions and
+  one mutation has proven one assertion.
+- **Obligation 23 is newly NAMED, not owed by T0.9.**
+
+### Quality gate — real exit codes, 2026-08-28
+
+```
+pnpm install --frozen-lockfile   EXIT=0
+pnpm lint                        EXIT=0
+pnpm format:check                EXIT=0
+pnpm typecheck                   EXIT=0
+pnpm test                        EXIT=0   235 tests, PostgreSQL CONFIRMED STOPPED
+pnpm test:integration            EXIT=0    57 tests + 1 deliberate skip
+pnpm --filter @karatx/web build  EXIT=0
+pnpm --filter @karatx/web test:e2e EXIT=0
+```
+
+### Verdict
+
+**T0.9 is CLOSED with two partials, neither of which blocks T0.10 — and both of
+which T0.10 is the right place to resolve**, since they are questions about how
+the thing is deployed rather than how it is checked.
 
 ---
+
+## THE EXACT NEXT TASK
+
+**T0.10 — Railway deployment and project documentation.** The last task in Phase
+0, and the one that turns a verified repository into a running system.
+
+BUILD-PLAN acceptance criteria:
+
+- `web` and `worker` deploy from the same repo as separate Railway services, both healthy
+- Migrations run as a deliberate release step (OPS-2 / ADR-003)
+- Secrets configured in Railway, absent from Git
+- **Rollback procedure documented AND PERFORMED ONCE to prove it works**
+- `CLAUDE.md` states the project, the three F.3 invariants, the stack, the commands, and where docs live
+- `docs/STATUS.md` accurately reflects reality
+- ADRs written: ADR-001 monorepo + worker split, ADR-002 Postgres + Drizzle, ADR-003 migration policy, ADR-004 logging + error model
+
+**The rollback criterion is the positive-control rule applied to deployment: a
+documented rollback nobody has performed has not been shown to work.**
+
+**Obligations landing in T0.10 — six:** **3** (verify Railway's pre-deploy
+release mechanism), **4** (backup AND a TESTED restore), **17** (re-measure
+worker boot-failure behaviour against however Railway runs it), **19**
+(`apps/web` resolves the repo root from a bundled module), **24** (the worker
+has no build artefact), and **6** (no ADR records the TypeScript 6.x pin).
+
+**Obligations 17, 24 and the pino-flush scope limit are ONE UNDERLYING QUESTION:
+does production run `tsx` or a compiled artefact?** Every measurement of the
+worker's crash and boot behaviour was taken under `tsx`. Answer that first and
+three findings resolve together; answer it late and all three need re-measuring.
+
+**Risk from BUILD-PLAN:** OPS-5 — verify nothing depends on local filesystem
+persistence.
+
+---
+
 ## Architecture in brief
 
 Two deployable processes, one repository (ADR-001, audit H6).
@@ -269,6 +396,8 @@ never live in this repository.
 
 These acceptance criteria are **partially** met. Do not record them as done.
 
+- **T0.9 "build" as a pipeline step — PARTIAL.** `apps/web` is genuinely built on every run, twice, so the production build succeeds or CI fails. But no job exists whose PURPOSE is verifying it: the integration build step exists to make the instrumentation test work, and would read as deletable if that test went. And `apps/worker` has no build at all — obligation 24.
+- **T0.9 "on push AND PR" — NARROWED, deliberately.** `push` is filtered to `main`; `pull_request` is not filtered. Every path into `main` is covered, so nothing reaches the default branch unverified. But a push to any other branch fires nothing, which is a real narrowing chosen to keep CI off scratch branches. The cost has already been paid once: it cost two attempts of the deliberate-red exercise and produced instance 10.
 - **T0.3 "config fails before any other work."** **NOW PROVEN FOR BOTH PROCESSES.** `apps/web` in T0.7 (`instrumentation.ts` validates at server start and calls `process.exit(1)`; 4 integration tests boot a real built server with a broken environment and assert a non-zero exit). `apps/worker` in T0.8, proven by ORDER in the real process's log rather than by reading the source: `configuration validated` must be log line 0 and must precede `database schema verified`. A broken environment produces **no JSON log line at all**, because the logger's level and secret list come from the configuration that just failed — asserted, and confirmed capable of failing by planting an early line and watching three tests break.
 - **OPS-3 "SIGTERM stops accepting work, finishes in flight, closes connections, exits 0" — PARTIAL, and one sub-clause closed 2026-08-27.** Of four:
   - *finishes in flight* — **proven** (synthetic in-flight task, T0.8)
@@ -613,6 +742,30 @@ from a lesson's wording rather than from what checkout fetches).
 **All three were settled the same way: by measuring rather than arguing.** Which
 commit did the run contain; does a branch push fire anything; what does a fresh
 clone actually fetch.
+
+
+### When several findings share a PRECONDITION, resolve the precondition first
+
+**Look for the shared precondition before working through a list of findings in
+order. Answered first, several resolve together; answered late, all of them need
+redoing against whatever the answer turns out to be.**
+
+Three separate T0.9/T0.10 findings looked independent:
+
+| Finding | Recorded as |
+|---|---|
+| Re-measure worker boot-failure behaviour against however Railway runs it | obligation 17 |
+| `apps/worker` has no build artefact, so the build criterion is unmeetable for it | obligation 24 |
+| Pino crash output survives a crash — measured under `tsx` only | scope limit on the T0.9 evidence |
+
+**All three reduce to one question: does production run `tsx` or a compiled
+artefact?** Every measurement of the worker's crash and boot behaviour was taken
+under `tsx`. Settle that in T0.10 and three findings resolve at once. Work
+through them in list order and each is re-measured separately against an answer
+that was available at the start.
+
+The habit is cheap: before starting a list, ask what would have to be true for
+several of these to collapse into one.
 
 
 ### A principle applied at one level should be checked at EVERY level it applies to
@@ -1095,6 +1248,7 @@ wondering whether it was ever considered.
 | 21 | **Pool closure is unverified against a real database.** The lifecycle tests use a hook *named* `database-pool` that pushes to an array. Nothing asserts `pool.end()` released connections. Verify by checking `pg_stat_activity` after a shutdown, against a real PostgreSQL — the same "assert the observable changed" discipline that caught `verifyNotInTransaction` | **T0.9** |
 | 22 | **`isShuttingDown` has no production consumer.** OPS-3's "stops accepting work" is a SEAM, not a behaviour — `grep` finds it referenced only by `lifecycle.ts` and its own tests. Correct today, since there is no work until the feed exists. **T1.7 must wire the feed consumer to check it**, or the clause is never actually satisfied | **T1.7 — firm** |
 | 23 | **Nothing proves `index.ts` WIRES the crash handlers in.** Obligation 20 proves the module in a real process; delete `installCrashLogging(logger)` from `main()` and all four of its tests still pass. Two closure options, with costs: **(1)** an integration test that boots the real worker and kills its database mid-run — behavioural, but expensive and potentially flaky; **(2)** a static assertion that `index.ts` contains the call — cheap, and "index.ts calls installCrashLogging" is a fact about text that genuinely matters. **Preference recorded 2026-08-28: option 2**, on condition its failure message SAYS it tests text rather than behaviour, so nobody mistakes it for the stronger check. Decide when scheduled | unassigned |
+| 24 | **`apps/worker` has NO build step, so nothing verifies it becomes a deployable artefact.** It has no `build` script and runs `tsx src/index.ts`. CI therefore cannot check that it compiles, and T0.9's "build" criterion is unmeetable for it rather than merely narrowed. **T0.10 must decide whether production runs `tsx` or a compiled artefact** — and that decision drives obligation 17 (re-measure boot-failure behaviour against however it actually runs) and the pino-flush scope limit (buffered crash output was proven to survive under `tsx` only). Three findings, one underlying question | **T0.10 — firm** |
 
 ---
 
