@@ -488,6 +488,27 @@ The gitleaks one was caught before the history scan was cited as evidence.
 Re-planted with a GitHub PAT and an RSA private key: exit 1, two findings,
 values redacted. Only then was the clean history result worth anything.
 
+#### When proving a test CAN fail, check WHICH assertion fired
+
+**A test with three assertions and one mutation has proven ONE assertion. The
+others remain unobserved, and "the test can fail" is then a claim about the test
+rather than about its assertions. Mutate per assertion, or state which ones
+remain unexercised.**
+
+Obligation 20's process-crash test carries three assertions: it started, it did
+not hang, it exited non-zero. Removing the rethrows made it fail — on the EXIT
+CODE, because the event loop emptied and the process exited 0 rather than
+hanging. **The hang assertion, the one specifically asked for, had still never
+been seen firing.**
+
+A second mutation — rethrows removed AND a `setInterval` holding the loop open —
+produced it: *"the process never exited: a crash handler returned instead of
+rethrowing, which SUPPRESSES the exit"*, at 30,066 ms.
+
+Reporting after mutation 1 that "the test can fail" would have been a real
+observation supporting a claim it does not cover — instance 8 exactly.
+
+
 #### The specific trap, because it will recur
 
 **A `limit` parameter may cap what is SCANNED rather than what is RETURNED.**
@@ -846,6 +867,22 @@ All five jobs passed. Job totals include checkout, pnpm setup and install:
 difference is setup, and quoting the job total would have overstated the suite
 by 5x. See obligation 11, now reframed on the strength of it.
 
+### GitHub repository settings — VERIFIED 2026-08-28, stop asking
+
+Confirmed by the user in the repository settings UI, not inferred:
+
+| Setting | State |
+|---|---|
+| Dependabot alerts | **enabled** (shows *Disable*, so already on) |
+| Dependabot security updates | **enabled** (shows *Disable*) |
+| Actions → Workflow permissions | **read-only**, already set |
+
+Recorded explicitly because it has been asked three times. Dependabot alerts are
+free on private repositories and are the second half of SEC-10; the read-only
+workflow permission is least privilege — nothing in this pipeline writes to the
+repository.
+
+
 ### CI #2 — the `pull_request` trigger works, demonstrated incidentally
 
 A Dependabot PR ran the full pipeline and passed. That satisfies the
@@ -969,6 +1006,27 @@ ignore.
 
 ---
 
+### Pino output SURVIVES a crash — a real result, not an absence of trouble
+
+**Measured 2026-08-28 while discharging obligation 20.** A process on its way out
+is exactly where buffered logs get dropped. Had the fatal line been lost, **T0.5's
+entire error taxonomy would be useless at the moment it matters most** — a
+crash-looping worker would leave no evidence at all, which is the failure
+obligation 20 exists to prevent.
+
+It was not lost. In every run, both `uncaught` and `unhandled`, the level-60 JSON
+line carrying `category` and `policy` reached stdout before the process died.
+
+**SCOPE LIMIT, stated because a figure without its platform is a trap: measured
+on Node 24 under `tsx`, writing to stdout with no pino transport.** NOT
+established for a different runtime, a different entry point, or a pino transport
+(which moves writing to a worker thread and changes the flush behaviour entirely).
+
+**FLAGGED FOR T0.10, same family as obligation 17.** Railway may run the worker
+differently, and if the crash line is lost there, we lose the only evidence a
+crash-looping worker would leave. Re-measure against however it actually runs.
+
+
 ### Dependabot: works, and the grouping was half-done
 
 Five PRs opened within minutes of the first push, hitting the limit of 5
@@ -1033,9 +1091,10 @@ wondering whether it was ever considered.
 | 17 | **T0.10 must re-measure worker boot-failure behaviour against however the worker actually runs on Railway.** T0.8 measured six failure modes under `tsx` **at commit `f9a75a5`** and all exited non-zero, so the worker needs no explicit `process.exit(1)`. **That result is valid for `tsx` only.** If production runs compiled output, a different entry point, or a process supervisor that wraps execution, the measurement must be repeated — believing a tsx result about production would be the minified-name mistake in a different costume. **Also check what Railway does with each exit code**: the lifecycle exits 0 on a clean shutdown and 1 when a hook failed or timed out, and that distinction is only useful if the platform acts on it | **T0.10 — firm** |
 | ~~18~~ | ~~**OPS-3 end to end is unproven, and CI is the only place it can run.**~~ **DISCHARGED 2026-08-27 by CI #1, on the step output rather than on a green job** — that distinction is the whole point of the obligation. The *Assert the SIGTERM test actually ran* step printed: `Total assertions in report: 10` / `PASSED: "shuts down cleanly and exits 0" ran and passed (/home/runner/work/KaratX/KaratX/apps/worker/src/boot.integration.test.ts)`. **Ten assertions — the same count as the Windows report where that test showed as `skipped`. The contrast is the evidence.** Run: https://github.com/georginamurray2026-eng/KaratX/actions | done |
 | 19 | **`apps/web` resolves the repository root from a BUNDLED module.** Its instrumentation hook now calls the shared `loadEnvFileIfPresent`, which walks up from the module's own location looking for `pnpm-workspace.yaml`. Under Turbopack that module is bundled, so `import.meta.url` points inside `.next/`. It resolves correctly today — verified by a real build, 9 integration tests and 2 Playwright tests — but a `standalone` output that copies files elsewhere would break it silently, and the failure mode is "no .env found", not an error. Re-verify if the web deployment mode changes | **T0.10** |
-| 20 | **Crash logging has never run in a real worker process.** `installCrashLogging` is unit-tested by invoking the registered listener directly, which proves the rethrow and the taxonomy fields but not that a fatal JSON line reaches stdout from a spawned worker. The T0.8 tsx measurement does not cover it — that ran BEFORE `crash-logging.ts` existed. Needs an integration test that starts a real worker, crashes it, and asserts one fatal line with `category` and `policy` | **T0.9** |
+| ~~20~~ | ~~**Crash logging has never run in a real worker process.**~~ **DISCHARGED 2026-08-28.** `apps/worker/test/crash-harness.ts` installs the REAL `installCrashLogging` and crashes itself; `crash-logging.integration.test.ts` spawns it for both `uncaught` and `unhandled` and asserts it started, did not hang, exited non-zero, and emitted a fatal JSON line carrying `category` and `policy`. **A harness, deliberately NOT a `KARATX_CRASH_TEST` env var** — a production affordance existing only for a test is the wrong artefact and a genuine remote-crash primitive. **Proven by TWO mutations, not one** — see the refinement to the positive-control rule. Leaves obligation 23 | done |
 | 21 | **Pool closure is unverified against a real database.** The lifecycle tests use a hook *named* `database-pool` that pushes to an array. Nothing asserts `pool.end()` released connections. Verify by checking `pg_stat_activity` after a shutdown, against a real PostgreSQL — the same "assert the observable changed" discipline that caught `verifyNotInTransaction` | **T0.9** |
 | 22 | **`isShuttingDown` has no production consumer.** OPS-3's "stops accepting work" is a SEAM, not a behaviour — `grep` finds it referenced only by `lifecycle.ts` and its own tests. Correct today, since there is no work until the feed exists. **T1.7 must wire the feed consumer to check it**, or the clause is never actually satisfied | **T1.7 — firm** |
+| 23 | **Nothing proves `index.ts` WIRES the crash handlers in.** Obligation 20 proves the module in a real process; delete `installCrashLogging(logger)` from `main()` and all four of its tests still pass. Two closure options, with costs: **(1)** an integration test that boots the real worker and kills its database mid-run — behavioural, but expensive and potentially flaky; **(2)** a static assertion that `index.ts` contains the call — cheap, and "index.ts calls installCrashLogging" is a fact about text that genuinely matters. **Preference recorded 2026-08-28: option 2**, on condition its failure message SAYS it tests text rather than behaviour, so nobody mistakes it for the stronger check. Decide when scheduled | unassigned |
 
 ---
 
