@@ -36,18 +36,20 @@ CLOSED: [ADR-008](./DECISIONS.md) supersedes ADR-005.**
 
 ## Verification state
 
-All run on 2026-08-26 from a clean tree.
+All run on **2026-08-28** from a clean tree.
 
 ```
 pnpm install --frozen-lockfile   EXIT=0
 pnpm lint                        EXIT=0
 pnpm format:check                EXIT=0
 pnpm typecheck                   EXIT=0
-pnpm test                        EXIT=0    235 tests  (PostgreSQL CONFIRMED STOPPED)
-pnpm test:integration            EXIT=0     57 tests + 1 deliberate skip
+pnpm test                        EXIT=0   235 tests  (PostgreSQL CONFIRMED STOPPED)
+pnpm test:integration            EXIT=0    57 tests + 1 deliberate skip
+pnpm --filter @karatx/web build  EXIT=0
+pnpm --filter @karatx/web test:e2e EXIT=0    5 Playwright tests
 ```
 
-Every exit code above is from a run on 2026-08-27, not recalled. PostgreSQL
+Every exit code above is from a run on **2026-08-28**, not recalled. PostgreSQL
 was stopped and its absence confirmed (`docker ps` count 0) before the unit
 run, so "database-free" is measured rather than assumed.
 
@@ -64,7 +66,7 @@ Unit test breakdown:
 | `packages/providers` | 1 | 29 |
 | **total** | **17** | **235** |
 
-Integration (52): `packages/test-support` 15, `packages/db` 19, `apps/web` 9, `apps/worker` 9 — against real PostgreSQL, each run in its own ephemeral database. Plus 2 Playwright end-to-end tests against a real built server.
+Integration (57): `packages/test-support` 15, `packages/db` 19, `apps/web` 9, `apps/worker` 14 — against real PostgreSQL, each run in its own ephemeral database. Plus 5 Playwright end-to-end tests against a real built server.
 
 **Known failures: none. One deliberate skip**, named honestly rather than
 hidden: the worker's end-to-end SIGTERM test is skipped on win32. Measured in
@@ -795,6 +797,28 @@ steps are REAL dependencies — migrate, then build, then test, then read the
 report the test produced. The rule is "let INDEPENDENT steps run", not "let
 every step run".
 
+### When a rule keeps being broken by someone TRYING to follow it, the fix is STRUCTURAL
+
+**Repeated failure to follow a rule, by someone who knows it and is actively
+trying, is not carelessness. It is evidence that the structure makes the mistake
+available. Remove the affordance rather than asking for more care.**
+
+Four anchor collisions in a single task — a numeric anchor matching a table row,
+a heading anchor matching a longer heading containing it, the repair orphaning a
+section, and a whole-file regex sweeping in three unrelated tables and
+miscounting obligations by ten. **Every one by an author who had written the
+anchor lesson and was consciously applying it.**
+
+Asking for more care had already been tried, in writing, and failed four times.
+So obligation 25 splits the file instead: scoped sections make a scripted edit
+**scope-safe by construction rather than by discipline.**
+
+The general test: if a rule must be applied correctly on every edit, and
+competent attention is not enough, the rule is compensating for a structure that
+should change. Count the failures before assuming the next attempt will be
+different.
+
+
 ### A self-reported success count is not evidence the work landed where intended
 
 **A tool saying it succeeded is a claim about what it DID, not about whether it
@@ -834,6 +858,21 @@ structural text, so short anchors keep matching the wrong thing.
 changed. If this happens again, the file is telling us it needs splitting.** The repair
 here was found by grepping for the new text and discovering it on line 61
 instead of line 773.
+
+**THE TRIGGER HAS NOW FIRED — FOURTH INSTANCE, 2026-08-28.** A summary script
+counted obligations with `/^| (~~)?[0-9]+[a-e]?(~~)? |/` across the WHOLE FILE and
+swept in rows from three other tables — the T0.8 criteria table, the T0.9
+criteria table, and the deliberate-red breaks table. It reported **31 open**
+obligations; the real figure, scoped to the section, is **20**.
+
+**This file is now telling us it needs splitting**, as this lesson said it would.
+A candidate split, for whoever picks it up: **Lessons** and **Obligations** are
+the two sections that are read independently of everything else and edited most
+often by script. Moving them to `docs/LESSONS.md` and `docs/OBLIGATIONS.md` would
+leave STATUS.md as the handoff document it is meant to be, and would make every
+scripted edit scope-safe by construction rather than by discipline.
+
+**Recorded as obligation 25 so it is scheduled rather than remembered.**
 
 ### Never run `git commit -am` on a throwaway branch
 
@@ -1195,24 +1234,25 @@ signal rather than noise.
 ## Carried-forward obligations
 
 
-**22 open, 2 discharged.** Where they land:
+**21 open, 9 discharged.** Where the open ones land:
 
 - **T0.10** — 3
-- **T0.9 — firm** — 3
-- **T0.9** — 2
 - **before Phase 2** — 2
-- **T1.4, T1.7** — 1
-- **unassigned — suggest T0.10** — 1
-- **ongoing** — 1
-- **low priority** — 1
-- **open — may become moot** — 1
-- **if suite slows** — 1
-- **cosmetic** — 1
-- **do not "fix"** — 1
-- **rationale** — 1
+- **T0.10 — firm** — 2
 - **audit — not urgent** — 1
 - **before Phase 6** — 1
-- **T0.10 — firm** — 1
+- **before T1.2** — 1
+- **cosmetic** — 1
+- **do not "fix"** — 1
+- **if suite slows** — 1
+- **low priority** — 1
+- **ongoing** — 1
+- **open — may become moot** — 1
+- **rationale** — 1
+- **T1.4, T1.7** — 1
+- **T1.7 — firm** — 1
+- **unassigned** — 1
+- **unassigned — suggest T0.10** — 1
 
 Sorted ascending. Discharged obligations are struck through and kept, so a
 later session can see that a question was asked and answered rather than
@@ -1245,10 +1285,11 @@ wondering whether it was ever considered.
 | ~~18~~ | ~~**OPS-3 end to end is unproven, and CI is the only place it can run.**~~ **DISCHARGED 2026-08-27 by CI #1, on the step output rather than on a green job** — that distinction is the whole point of the obligation. The *Assert the SIGTERM test actually ran* step printed: `Total assertions in report: 10` / `PASSED: "shuts down cleanly and exits 0" ran and passed (/home/runner/work/KaratX/KaratX/apps/worker/src/boot.integration.test.ts)`. **Ten assertions — the same count as the Windows report where that test showed as `skipped`. The contrast is the evidence.** Run: https://github.com/georginamurray2026-eng/KaratX/actions | done |
 | 19 | **`apps/web` resolves the repository root from a BUNDLED module.** Its instrumentation hook now calls the shared `loadEnvFileIfPresent`, which walks up from the module's own location looking for `pnpm-workspace.yaml`. Under Turbopack that module is bundled, so `import.meta.url` points inside `.next/`. It resolves correctly today — verified by a real build, 9 integration tests and 2 Playwright tests — but a `standalone` output that copies files elsewhere would break it silently, and the failure mode is "no .env found", not an error. Re-verify if the web deployment mode changes | **T0.10** |
 | ~~20~~ | ~~**Crash logging has never run in a real worker process.**~~ **DISCHARGED 2026-08-28.** `apps/worker/test/crash-harness.ts` installs the REAL `installCrashLogging` and crashes itself; `crash-logging.integration.test.ts` spawns it for both `uncaught` and `unhandled` and asserts it started, did not hang, exited non-zero, and emitted a fatal JSON line carrying `category` and `policy`. **A harness, deliberately NOT a `KARATX_CRASH_TEST` env var** — a production affordance existing only for a test is the wrong artefact and a genuine remote-crash primitive. **Proven by TWO mutations, not one** — see the refinement to the positive-control rule. Leaves obligation 23 | done |
-| 21 | **Pool closure is unverified against a real database.** The lifecycle tests use a hook *named* `database-pool` that pushes to an array. Nothing asserts `pool.end()` released connections. Verify by checking `pg_stat_activity` after a shutdown, against a real PostgreSQL — the same "assert the observable changed" discipline that caught `verifyNotInTransaction` | **T0.9** |
+| ~~21~~ | ~~**Pool closure is unverified against a real database.**~~ **DISCHARGED 2026-08-28.** `apps/worker/src/lifecycle.integration.test.ts` opens a real `Pool`, forces three concurrent queries so backends genuinely exist, registers it with a real `Lifecycle` exactly as `boot.ts` does, shuts down, and counts backends in `pg_stat_activity` from a SEPARATE client. **Proven by two mutations, one per assertion:** removing `pool.end()` failed with *"3 backend(s) still attached"* after the full 5s poll; pointing the observer query at a nonexistent `datname` failed the POSITIVE CONTROL, which is the assertion that stops the test passing while verifying nothing. Polls rather than sleeps, and asserts on the last real reading | done |
 | 22 | **`isShuttingDown` has no production consumer.** OPS-3's "stops accepting work" is a SEAM, not a behaviour — `grep` finds it referenced only by `lifecycle.ts` and its own tests. Correct today, since there is no work until the feed exists. **T1.7 must wire the feed consumer to check it**, or the clause is never actually satisfied | **T1.7 — firm** |
 | 23 | **Nothing proves `index.ts` WIRES the crash handlers in.** Obligation 20 proves the module in a real process; delete `installCrashLogging(logger)` from `main()` and all four of its tests still pass. Two closure options, with costs: **(1)** an integration test that boots the real worker and kills its database mid-run — behavioural, but expensive and potentially flaky; **(2)** a static assertion that `index.ts` contains the call — cheap, and "index.ts calls installCrashLogging" is a fact about text that genuinely matters. **Preference recorded 2026-08-28: option 2**, on condition its failure message SAYS it tests text rather than behaviour, so nobody mistakes it for the stronger check. Decide when scheduled | unassigned |
 | 24 | **`apps/worker` has NO build step, so nothing verifies it becomes a deployable artefact.** It has no `build` script and runs `tsx src/index.ts`. CI therefore cannot check that it compiles, and T0.9's "build" criterion is unmeetable for it rather than merely narrowed. **T0.10 must decide whether production runs `tsx` or a compiled artefact** — and that decision drives obligation 17 (re-measure boot-failure behaviour against however it actually runs) and the pino-flush scope limit (buffered crash output was proven to survive under `tsx` only). Three findings, one underlying question | **T0.10 — firm** |
+| 25 | **Split STATUS.md.** Its own anchor lesson set the trigger "if this happens again, the file is telling us it needs splitting" — and it has now happened four times, most recently miscounting obligations by 11 because a regex matched three other tables. The file is past 1,200 lines of nested headings and pipe-delimited tables. **Proposed split: `docs/LESSONS.md` and `docs/OBLIGATIONS.md`**, both read independently of the rest and both edited most often by script; STATUS.md stays the handoff document. Makes scripted edits scope-safe by construction rather than by discipline | **before T1.2** |
 
 ---
 
