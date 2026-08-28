@@ -626,3 +626,206 @@ It would close STATUS.md obligation 24 and T0.9's partial "build" criterion prop
 - the build artefact is wanted as a first-class thing CI verifies, rather than obligation 24 resting on a decision.
 
 **The route stays open**: ADR-006 does not obstruct bundling, only `tsc`. Reversing means adding a bundler and **re-measuring the worker's crash and boot behaviour under `node`** — the six failure modes, the pino flush, and the SIGTERM path — before deploying it.
+
+---
+
+# Retrospective ADRs (001, 002, 004)
+
+**The three ADRs below were written on 2026-08-28, during T0.10, about decisions
+taken weeks earlier. They are NOT contemporaneous with the decisions they
+record.**
+
+**Every claim is marked by its source**, because a retrospective ADR that
+confabulates its own reasoning is worse than none — it launders a guess into a
+decision record, and a later session cannot tell which parts are safe to rely on.
+
+| Marker | Meaning |
+|---|---|
+| **RECONSTRUCTED** | The reasoning is recorded somewhere — a commit message, an existing document, a code comment. Cited. |
+| **INFERRED** | The reasoning is not recorded, but the artefact makes it evident. Stated as inference. |
+| **UNKNOWN** | The decision was made and the reasoning is not recoverable. Said plainly, and left. |
+
+**An ADR with UNKNOWNs is more useful than one with plausible paragraphs.**
+
+---
+
+## ADR-001: One repository, two deployable processes
+
+**Date of decision:** ~2026-08-25 (T0.1)
+**Date written:** 2026-08-28 (T0.10, retrospective)
+**Status:** Accepted, in force.
+
+### Decision
+
+One repository using pnpm workspaces, containing **two deployable processes** —
+`apps/web` (Next.js dashboard) and `apps/worker` (plain long-lived Node) — plus
+shared `packages/*`. On Railway, two services plus Postgres.
+
+### Reasoning
+
+**RECONSTRUCTED** — `SPEC-AUDIT.md` finding **H6**, "Next.js alone is the wrong
+runtime shape for the monitoring core", which recommends exactly this and marks
+it *"ADR-worthy, propose accepting now"*. Restated in `ARCHITECTURE.md` §D:
+
+> "Next.js is a request-oriented framework; the monitoring core is a long-lived
+> singleton process holding a price stream and a scheduler. Putting them in one
+> service means a dashboard deploy drops your feed, and it makes the engine hard
+> to test in isolation (which NFR-9 forbids)."
+
+Two independent reasons, both recorded: **deployment coupling** (a dashboard
+deploy must not drop the market feed) and **testability** (NFR-9).
+
+**RECONSTRUCTED** — packages export TypeScript **source** rather than built JS.
+From the T0.1 commit (`997a03b`): *"so typecheck needs no prior build"*, with
+the consequences named in advance — *"T0.7 will need transpilePackages in the
+Next.js config, T0.8 will need tsx or a bundler to run the worker."* Both
+happened. See ADR-009 for how T0.8's half was settled.
+
+**UNKNOWN** — **why pnpm specifically, rather than npm or Yarn workspaces.**
+`ARCHITECTURE.md` records only *"Workspaces are needed for the monorepo shape
+below"*, which justifies **a** workspace tool, not this one. npm and Yarn both
+offer workspaces. No comparison is recorded anywhere.
+
+*Should this be re-made rather than documented?* **No.** It is load-bearing —
+the `workspace:*` protocol, `pnpm-workspace.yaml`, and the `allowBuilds`
+policy all depend on it — and no problem has been observed in nine tasks.
+Reviewing a working choice with no identified defect would cost a great deal and
+decide nothing. Recorded as unknown and left.
+
+### Consequences
+
+- Two Railway services from one repository, differentiated by build and start
+  commands. See `DEPLOYMENT.md`.
+- `packages/core` may not import `@karatx/db` or `@karatx/providers` —
+  F.3 invariant 1, enforced by ESLint since T0.2 and proven running in CI by the
+  T0.9 deliberate-red exercise.
+- Watch patterns are needed per service, or one push redeploys both.
+
+---
+
+## ADR-002: PostgreSQL with Drizzle ORM
+
+**Date of decision:** ~2026-08-26 (T0.4, and earlier in `ARCHITECTURE.md`)
+**Date written:** 2026-08-28 (T0.10, retrospective)
+**Status:** Accepted, in force.
+
+### Decision
+
+**PostgreSQL 17** as the only datastore, accessed through **Drizzle ORM** with
+Drizzle-generated SQL migrations.
+
+### Reasoning
+
+**RECONSTRUCTED** — PostgreSQL, from `ARCHITECTURE.md`'s stack table:
+
+> "Volume is small — five years of 15M candles is roughly 130k rows. Postgres
+> handles this without any special tooling. Explicitly reject time-series
+> databases as premature."
+
+A sizing argument with a number in it, and an explicit rejection of the obvious
+alternative.
+
+**RECONSTRUCTED** — Drizzle, from the same table:
+
+> "Thin, SQL-shaped, good TypeScript inference, migrations are plain SQL you can
+> read. Right fit."
+
+**INFERRED** — *why not Prisma or Kysely.* No comparison is recorded. "Thin" and
+"migrations are plain SQL you can read" read as a contrast with heavier ORMs that
+own their migration format, but that is inference from the wording, not a
+recorded deliberation.
+
+**RECONSTRUCTED** — prices stored as `NUMERIC`. `ARCHITECTURE.md` records
+that float64 represents gold prices safely but that **comparisons** are where
+floats bite, and mandates `NUMERIC` storage plus a single
+`priceCompare(a, b, tick)` helper.
+
+**RECONSTRUCTED** — three local-Postgres choices, from the T0.4 commit
+(`62746ce`): pinned to `postgres:17` and verified as 17.11; bound to
+`127.0.0.1` only, because a bare `5432:5432` publishes on all interfaces
+and that machine already ran exposed containers; and `--locale=C`, because
+Postgres sorts text by database collation and a host-dependent locale would make
+ordering machine-dependent, which NFR-12's byte-for-byte reproducibility forbids.
+
+**UNKNOWN** — whether any other database was seriously considered. The stack
+table presents PostgreSQL as a confirmation rather than a comparison.
+
+*Should this be re-made?* **No.** The sizing argument is sound and checkable, and
+the rejection of time-series databases is explicit. Nothing is missing that would
+change the answer.
+
+### Consequences
+
+- Migrations are immutable once applied (ADR-003), enforced in CI since T0.9.
+- Drizzle does **not** detect tampering with an applied migration — established
+  experimentally in T0.4 — which is why the CI check exists at all.
+- `drizzle-kit` pulls in a deprecated `@esbuild-kit/*` chain carrying an
+  old esbuild. Assessed at T0.9 as not exploitable here; see STATUS.md.
+
+---
+
+## ADR-004: Structured logging and a classified error model
+
+**Date of decision:** ~2026-08-26 (T0.5)
+**Date written:** 2026-08-28 (T0.10, retrospective)
+**Status:** Accepted, in force.
+
+### Decision
+
+**Pino**, emitting JSON to stdout in every environment, with three independent
+layers of secret redaction and correlation IDs carried through
+`AsyncLocalStorage`. Errors are classified by an **eight-category taxonomy**
+in `packages/core`, each class declaring a default **handling policy**.
+
+### Reasoning
+
+**RECONSTRUCTED** — Pino, from `ARCHITECTURE.md`'s library table, which names
+the alternatives it was chosen over:
+
+> `pino` — "Structured JSON logging with redaction. Required by NFR-6."
+> Alternatives: "`console.log` (unstructured, no redaction), Winston
+> (heavier)."
+
+**RECONSTRUCTED** — JSON in development as well as production, from the
+`createLogger` comment: identical output everywhere means a log line
+reproducing a problem locally is byte-comparable with one from the deployed
+service, and it avoids a pretty-printing transport that exists on only one of
+them.
+
+**RECONSTRUCTED** — the logger deliberately does **not** write to
+`system_events`, though that table existed. From the same comment: a logger
+that depends on the database would fail exactly when the database is what broke,
+and logging a database error would attempt a database write.
+
+**RECONSTRUCTED, with a provenance caveat already recorded in the code** — the
+eight categories are taken verbatim from `BUILD-PLAN.md`, but the **mapping of
+category to handling policy is DERIVED**, not transcribed. `BUILD-PLAN.md`
+asks for policies "per §23" of a Master Engineering Prompt that was not in the
+repository at the time. `packages/core/src/errors.ts` says so at the top and
+cites a justification per class. That note should not be "corrected" into
+claiming it transcribes §23.
+
+**RECONSTRUCTED** — `DatabaseError` defaults to `alert` rather than
+`retry`, from the T0.5 commit (`0654511`): the class covers both a dropped
+connection and a constraint violation, and retrying a constraint violation merely
+repeats it.
+
+**UNKNOWN** — why **eight** categories rather than some other number. The list is
+recorded; no deliberation about its granularity is.
+
+*Should this be re-made?* **Not yet, but it is under observation.** T0.8 was the
+taxonomy's first real consumer and found that **both** boot errors had to
+override the class default — policy turns out to be a property of the situation,
+not only of the class. STATUS.md records a concrete threshold: if the override
+rate across raise sites exceeds roughly a third by T1.7, the defaults are
+decoration and policy should move to the raise site. That is the review trigger.
+
+### Consequences
+
+- Every error line carries `category` and `policy`, so a log says how a
+  failure should be handled rather than only that one occurred.
+- Redaction is three layers: field-name, secret-value scrubbing, and message
+  rewriting. Layer 3 needs the actual secret passed in, which is why
+  `.reveal()` appears at exactly one place per entry point.
+- Anything using `console.log` directly bypasses all three. Recorded in
+  STATUS.md as an honest gap since T0.3.
