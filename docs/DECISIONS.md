@@ -133,6 +133,55 @@ Upgrade when **typescript-eslint ships support for TypeScript ≥ 7.1** — trac
 | Review | The generated `.sql` is read before it is committed. It is the reviewable artefact, not the schema TypeScript |
 | Application | `pnpm db:migrate` → `packages/db/src/bin/migrate.ts`, an explicit entry point |
 | At boot | **Never.** No application code path reaches the migrator |
+
+> **AMENDED 2026-08-28 (T0.10) — what "never at boot" means for Railway, so it is
+> not re-litigated.**
+>
+> **A Railway PRE-DEPLOY COMMAND satisfies this ADR. It is the deliberate
+> release step, not a boot-time migration.**
+>
+> Railway runs it *"between building and deploying your application"*, in a
+> **separate container** from the app, with volumes unmounted; if it fails it is
+> *"not retried and the deployment will not proceed"*. No application process
+> exists yet when it runs, so no application code path reaches the migrator —
+> which is exactly the property this ADR protects.
+>
+> The intent was never "a human must type the command". It was **"the migrator
+> must not run inside application startup"**, where a failed or partial
+> migration would leave a serving process against a schema it does not expect.
+> A separate pre-app container is the standard satisfaction of that.
+>
+> Configured on the **worker** service only. Exactly one service may carry it,
+> or two deploys race the same database, and the worker is the component that
+> refuses to boot against a mismatched schema (T0.8) — so the release step and
+> its strictest consumer sit together.
+
+---
+
+### MIGRATIONS MUST BE FORWARD-COMPATIBLE — a rule about how they are WRITTEN
+
+**Rolling back code does NOT roll back the database.** Railway's rollback
+redeploys a previous *image*; the schema stays wherever the last migration left
+it. So a rollback past a migration leaves the **new schema live and the old code
+running against it** — code that has never seen that schema and does not expect
+it.
+
+**Therefore, from T1.3 onward, every migration must be written so that the
+PREVIOUS release still works against it.** In practice:
+
+- **Add, do not alter.** New nullable columns and new tables are safe. Renaming
+  or dropping a column that the previous release reads is not.
+- **Split destructive changes across two releases.** Release N adds the new
+  shape and writes both; release N+1 stops writing the old shape; a later
+  release drops it. Each step is independently roll-back-able.
+- **A migration that cannot be made forward-compatible must be flagged as a
+  one-way door in its pull request**, and the deployment treated accordingly:
+  after it lands, rollback is no longer a recovery option and restoring a
+  database backup is.
+
+This is a constraint on migration AUTHORING, not only on deployment procedure.
+It is recorded here rather than only in `DEPLOYMENT.md` because this is the
+document someone writing a migration will already be reading.
 | `drizzle-kit push` | **Not wired up, deliberately** |
 | Immutability | An applied migration is never edited. Corrections are new migrations |
 | Local database | Docker Compose, Postgres 17, bound to `127.0.0.1` |
@@ -513,3 +562,67 @@ The *direction* is safe regardless — 3.3x more data helps at any setup rate, a
 | **A Thailand-availability change** at any provider | An authenticated call failing with an entitlement or region error | Re-run the T1.1 gate. This is the failure that produced this ADR |
 
 Nothing else reopens this. Not price, not a marketing depth figure, not a new provider appearing — absent one of the triggers above, the decision stands.
+
+---
+
+## ADR-009: The worker runs `tsx` in production, not a compiled artefact
+
+**Date:** 2026-08-28
+**Status:** **Accepted.**
+**Task:** T0.10
+**Related:** ADR-006 (extensionless imports), STATUS.md obligations 17 and 24
+
+---
+
+### Decision
+
+**`apps/worker` ships and runs its TypeScript source under `tsx`. There is no build step and no compiled artefact.**
+
+Railway start command: `pnpm --filter @karatx/worker start`, which is `tsx src/index.ts`.
+
+`tsx` moves from `devDependencies` to `dependencies` in `apps/worker`.
+
+---
+
+### Reasoning
+
+**This is one long-lived process that restarts rarely, where boot time and image size are irrelevant. Bundling machinery buys nothing here, so it is not worth its cost.**
+
+That is the whole justification. The worker is a singleton that starts once and runs for days. There is no cold-start path, no per-request latency, no horizontal scaling, no image-size pressure. A build step would add configuration, a second failure mode, and a source-map story, in exchange for a faster boot that nobody is waiting on.
+
+**A NOTE ON WHAT IS NOT THE REASONING.** Choosing this keeps every existing measurement of the worker's crash and boot behaviour valid, because they were all taken under `tsx`. **That is a consequence, not a justification.** Selecting a production runtime in order to preserve prior measurements would be backwards, and a future reader who thought that was the argument would be right to distrust the decision. If bundling were otherwise correct, the right move would be to bundle and re-measure.
+
+---
+
+### Alternatives considered
+
+**1. `tsc` per package, then `node dist/index.js`.** Rejected, and it is worth recording why it is not merely more work.
+
+Every `packages/*` is consumed as TypeScript SOURCE — its exports point at `./src/index.ts`. Compiling the worker alone does not work, because its imports resolve to `.ts` files. Making `tsc` work would mean rewriting every package's exports **and adding `.js` extensions to relative imports** — which directly contradicts **ADR-006**, adopted because Turbopack cannot resolve a `.js` specifier pointing at a `.ts` file. This route reopens a settled decision across the whole repository.
+
+**2. Bundling with esbuild or tsup.** Rejected for now, but **kept open** — a bundler resolves specifiers itself, so it does **not** conflict with ADR-006. This is the route to take if the reversal condition below is met.
+
+It would close STATUS.md obligation 24 and T0.9's partial "build" criterion properly, which is a real benefit. Against that: new tooling and configuration at the end of Phase 0, and **every measurement of the worker's crash and boot behaviour must be redone** — six boot-failure modes, the pino crash-flush result, and the SIGTERM path — first under plain `node` locally, then again on the platform. Two rounds of re-measurement rather than one.
+
+---
+
+### Consequences
+
+- **Obligation 24 resolves as a DECISION rather than a gap.** "The worker has no build artefact" stops being an omission and becomes a recorded choice. T0.9's "build" criterion stays partial for the worker, by intent.
+- **`tsx` is now production dependency surface**, not merely a development tool. It was already in the tree via `drizzle-kit`, so this widens exposure rather than creating it.
+- **Boot transpiles the import graph.** Observed at roughly a second in the integration suite's spawns. Irrelevant for a process that starts once.
+- **Obligation 17 still stands.** The runtime now matches what was measured, but the PLATFORM does not: Railway may wrap or supervise the process differently. Exit codes and log flushing must still be re-measured there. This decision reduces that to one round instead of two; it does not remove it.
+- **The pino crash-flush result keeps its scope limit.** Proven under `tsx` writing to stdout with no transport. Adding a pino transport would move writing to a worker thread and change flush behaviour, and would need re-measuring.
+
+---
+
+### REVERSAL CONDITION
+
+**Bundle with esbuild or tsup if any of these becomes true:**
+
+- boot time or memory becomes a constraint — for instance if the worker is ever restarted frequently, or run as a scheduled job rather than a daemon;
+- a slim production image is needed, for cost or for supply-chain reasons;
+- `tsx` becomes unmaintained, or its runtime dependency surface becomes a concern;
+- the build artefact is wanted as a first-class thing CI verifies, rather than obligation 24 resting on a decision.
+
+**The route stays open**: ADR-006 does not obstruct bundling, only `tsc`. Reversing means adding a bundler and **re-measuring the worker's crash and boot behaviour under `node`** — the six failure modes, the pino flush, and the SIGTERM path — before deploying it.

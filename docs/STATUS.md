@@ -746,6 +746,45 @@ commit did the run contain; does a branch push fire anything; what does a fresh
 clone actually fetch.
 
 
+### A deferred risk should be made CONCRETE before it is deferred
+
+**"Check this later" is not a plan. Ask what the failure would LOOK like — and
+the answer sometimes shows the failure is already present.**
+
+Obligation 19 sat as "watch this on Railway" for two whole tasks: `apps/web`
+resolves the repository root from a module Next has bundled, so
+`import.meta.url` points inside `.next/`. Plausible, deferred, unexamined.
+
+**One question — "what would the symptom be, a thrown error or a silent
+undefined?" — turned it into a live defect found before deployment.** Neither,
+as it happened: `findRepoRoot` threw, the throw sat OUTSIDE the boot guard, and
+Next swallowed it. The T0.7 failure exactly — "✓ Ready" then 500s from every
+endpoint — reached by a path the T0.7 fix did not cover.
+
+The cost of asking was one question. The cost of not asking would have been a
+deployment that reported success and served nothing.
+
+**Ask it at the moment of deferring, not at the moment of checking.** A risk
+recorded with its observable is a test; a risk recorded without one is a hope.
+
+### The positive-control rule applies to GUARDS, not only to absence checks
+
+**A guard proven to fire on every failure has not been shown to stay QUIET on
+success. And a guard that always fires would pass every failure test.**
+
+The rule is usually stated for absence queries — "if the query cannot show
+presence where presence is expected, its absence result proves nothing". The
+same structure applies one step over, and it is much less obvious there.
+
+`apps/web`'s boot-guard tests assert that a throw from either boot call exits
+1. Both pass against a `validateConfiguration` that called `process.exit(1)`
+**unconditionally** — which would break every successful deployment. The third
+test, *"does NOT exit when the boot sequence succeeds"*, is what makes the other
+two mean anything.
+
+**For any guard, test the quiet case as deliberately as the loud ones.**
+
+### When several findings share a PRECONDITION, resolve the precondition first
 ### When several findings share a PRECONDITION, resolve the precondition first
 
 **Look for the shared precondition before working through a list of findings in
@@ -1439,7 +1478,7 @@ wondering whether it was ever considered.
 | 16 | **`apps/web` computing strategy is unenforced.** F.1 says the web app reads what the worker wrote and never computes. That holds today by inspection only — no rule prevents `apps/web` importing an indicator from `packages/core` and calculating in the dashboard, producing two implementations that drift. The fix has a proven shape: an ESLint boundary plus a regression test, exactly as T0.2/T0.6 did for `packages/core`. Cheap now, and the reason to do it before Phase 6 builds the real dashboard | **before Phase 6** |
 | 17 | **T0.10 must re-measure worker boot-failure behaviour against however the worker actually runs on Railway.** T0.8 measured six failure modes under `tsx` **at commit `f9a75a5`** and all exited non-zero, so the worker needs no explicit `process.exit(1)`. **That result is valid for `tsx` only.** If production runs compiled output, a different entry point, or a process supervisor that wraps execution, the measurement must be repeated — believing a tsx result about production would be the minified-name mistake in a different costume. **Also check what Railway does with each exit code**: the lifecycle exits 0 on a clean shutdown and 1 when a hook failed or timed out, and that distinction is only useful if the platform acts on it | **T0.10 — firm** |
 | ~~18~~ | ~~**OPS-3 end to end is unproven, and CI is the only place it can run.**~~ **DISCHARGED 2026-08-27 by CI #1, on the step output rather than on a green job** — that distinction is the whole point of the obligation. The *Assert the SIGTERM test actually ran* step printed: `Total assertions in report: 10` / `PASSED: "shuts down cleanly and exits 0" ran and passed (/home/runner/work/KaratX/KaratX/apps/worker/src/boot.integration.test.ts)`. **Ten assertions — the same count as the Windows report where that test showed as `skipped`. The contrast is the evidence.** Run: https://github.com/georginamurray2026-eng/KaratX/actions | done |
-| 19 | **`apps/web` resolves the repository root from a BUNDLED module.** Its instrumentation hook now calls the shared `loadEnvFileIfPresent`, which walks up from the module's own location looking for `pnpm-workspace.yaml`. Under Turbopack that module is bundled, so `import.meta.url` points inside `.next/`. It resolves correctly today — verified by a real build, 9 integration tests and 2 Playwright tests — but a `standalone` output that copies files elsewhere would break it silently, and the failure mode is "no .env found", not an error. Re-verify if the web deployment mode changes | **T0.10** |
+| 19 | **`apps/web` resolves the repository root from a BUNDLED module.** Under Turbopack `import.meta.url` points inside `.next/`, so the upward walk for `pnpm-workspace.yaml` may fail. **UPGRADED 2026-08-28 from "watch this" to a defined test** — asking what the symptom would be found a live defect first (see the deferred-risk lesson), now fixed in `fc74b50`. **What to look for in the Railway logs, and what each means:** (a) *no notice* — the walk succeeded, bundling does not break it; (b) *`No repository root found (no pnpm-workspace.yaml above this module)`* — the walk FAILED, which is harmless because Railway injects env vars anyway, but obligation 19 is confirmed real and the message says so; (c) *`FATAL:` and a non-zero exit* — something else broke, and it exits rather than lying. **The silent-pass case no longer exists**: there is no path where a failed walk is indistinguishable from a correctly-absent `.env` | **T0.10 — observe on first deploy** |
 | ~~20~~ | ~~**Crash logging has never run in a real worker process.**~~ **DISCHARGED 2026-08-28.** `apps/worker/test/crash-harness.ts` installs the REAL `installCrashLogging` and crashes itself; `crash-logging.integration.test.ts` spawns it for both `uncaught` and `unhandled` and asserts it started, did not hang, exited non-zero, and emitted a fatal JSON line carrying `category` and `policy`. **A harness, deliberately NOT a `KARATX_CRASH_TEST` env var** — a production affordance existing only for a test is the wrong artefact and a genuine remote-crash primitive. **Proven by TWO mutations, not one** — see the refinement to the positive-control rule. Leaves obligation 23 | done |
 | ~~21~~ | ~~**Pool closure is unverified against a real database.**~~ **DISCHARGED 2026-08-28.** `apps/worker/src/lifecycle.integration.test.ts` opens a real `Pool`, forces three concurrent queries so backends genuinely exist, registers it with a real `Lifecycle` exactly as `boot.ts` does, shuts down, and counts backends in `pg_stat_activity` from a SEPARATE client. **Proven by two mutations, one per assertion:** removing `pool.end()` failed with *"3 backend(s) still attached"* after the full 5s poll; pointing the observer query at a nonexistent `datname` failed the POSITIVE CONTROL, which is the assertion that stops the test passing while verifying nothing. Polls rather than sleeps, and asserts on the last real reading | done |
 | 22 | **`isShuttingDown` has no production consumer.** OPS-3's "stops accepting work" is a SEAM, not a behaviour — `grep` finds it referenced only by `lifecycle.ts` and its own tests. Correct today, since there is no work until the feed exists. **T1.7 must wire the feed consumer to check it**, or the clause is never actually satisfied | **T1.7 — firm** |
