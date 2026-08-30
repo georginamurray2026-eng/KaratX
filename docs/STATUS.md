@@ -31,7 +31,7 @@ outstanding**, recorded as outstanding rather than met.
 | Phase 0 gate | **RUN 2026-08-31 — NOT PASSED.** Criteria 3 and 5 fail; 1 unverifiable here; 2 deferred |
 | T0.10 | **NOT CLOSED** — see its close-out; L5 fails, L1 unenforced, L4 partial |
 | Deployment | **NONE.** ADR-011 makes the project local-only for Phases 1–5 |
-| Open obligations | **23** |
+| Open obligations | **22** (plus 10 closed; 32 rows total — count OPEN rows only) |
 
 ### Verified counts — from an actual run, 2026-08-31
 
@@ -86,7 +86,7 @@ Fix that before or during the gate; it is the only cheap failure on the list.
 | Lands at | Obligations |
 |---|---|
 | **before T1.2** | 25 (split STATUS.md) |
-| **start of T1.2 — firm** | 26 (Dependabot red since 2026-08-29) |
+| **start of T1.2 — firm** | 35 (Dependabot red since 2026-08-29) |
 | **before T1.3** | 33 (ADR-003 unenforced by any check) |
 | **T1.3** | 31 (`db:restore` atomicity on a large dump) |
 | **T1.7** | 22 |
@@ -96,7 +96,7 @@ Fix that before or during the gate; it is the only cheap failure on the list.
 | **standing** | 34 (rollback procedure never used cold) |
 | **unscheduled** | 3, 4, 5, 6, 7, 9, 10, 11, 14, 23 |
 
-**Obligation 26 is the one with a date attached.** A security control has been
+**Obligation 35 is the one with a date attached.** A security control has been
 failing since 2026-08-29; it was deferred deliberately, and the deal was that it
 gets checked at the start of T1.2 rather than deferred again.
 
@@ -309,14 +309,82 @@ by ADR-011, and two are met.
 | 5 | `CLAUDE.md` and `docs/STATUS.md` accurate | **FAILS** |
 | 6 | Zero secrets in Git history | **MET, with a documented exception** |
 
-### Real exit codes, 2026-08-31
+### Real exit codes — FULL RUN, 2026-08-31
+
+**Re-run in full because the first run did not stop PostgreSQL, which makes the
+unit-suite result a different measurement.**
 
 ```
-typecheck         exit=0        test:integration            exit=0
-lint              exit=0        pnpm build                  exit=1   <-- FAILS
-format:check      exit=0        pnpm --filter @karatx/web build  exit=0
-test              exit=0
+pnpm install --frozen-lockfile   exit=0
+lint                             exit=0
+format:check                     exit=0
+typecheck                        exit=0
+test   [PostgreSQL STOPPED]      exit=0     239 unit tests, no database
+test:integration                 exit=0      57 passed, 1 SKIPPED
+pnpm build                       exit=1     <-- Command "build" not found
+pnpm --filter @karatx/web build  exit=0
 ```
+
+**The Postgres-down run is the one that matters** for T0.6's claim that unit
+tests touch no database. Verified with a positive control: `pg_isready` against
+the stopped container returned "no response" before the suite ran, so the
+absence of failures is not an absence of the condition.
+
+### The skipped test, followed rather than accepted
+
+`57 passed, 1 skipped` is not 58 passed. The skip is
+`describe.skipIf(process.platform === 'win32')('receiving SIGTERM')` — **the
+ordered-shutdown path never executes on this machine.**
+
+The chain matters:
+
+- It is **proven**, by CI #1 on Linux, 2026-08-27 — obligation 18, discharged,
+  with a detector that catches the skip being forced.
+- The shutdown code and its test are **unchanged since** — `git log --since` on
+  `boot.integration.test.ts` and `index.ts` returns nothing — so the measurement
+  has not expired under STATUS.md's own rule.
+- **But it was last EXECUTED four days ago, it cannot execute on Windows, and
+  its only current evidence is CI — which criterion 1 cannot verify from here.**
+
+So ordered shutdown on SIGTERM is believed-good on a four-day-old run, and this
+assessment produced no fresh evidence for it. That is not a failure; it is the
+honest limit of what a local gate can establish.
+
+### THE JUDGEMENT CALL, made explicitly
+
+**Question: can Phase 0 close with five deployment criteria outstanding?**
+
+**Answer: YES — as a LOCAL-SCOPE gate with a documented deferral — but NOT
+TODAY, because two local criteria fail.**
+
+The deferral is legitimate on three grounds, and the third is the one that
+actually decides it:
+
+1. **ADR-011 is an accepted decision with a recorded trigger**, not a
+   convenience. It was argued on cost, on architecture, and on what it costs us
+   — the accepted-consequences section names data gaps, alerting, and the effect
+   on Phase 9's backtest.
+2. **T6.1 exists as a real task** with its own six criteria, not a note saying
+   "later".
+3. **No Phase 1 task depends on any deferred criterion.** Checked, not assumed:
+   `grep -inE "deploy|railway|hosted|production|uptime"` across the whole of
+   Phase 1 returns nothing. T1.1–T1.10 are provider evaluation, contracts,
+   storage, backfill, validation, aggregation, live feed, watchdog,
+   reconciliation and the golden dataset. Every one runs locally.
+
+**What would make the deferral illegitimate**, and none of it is true here: if
+the criteria had been reworded to fit what we had; if the deferral had no
+trigger; if a Phase 1 task needed a deployment; or if "deferred" were recorded
+anywhere as "met".
+
+**But closure is blocked by criteria 3 and 5**, and neither is about deployment.
+Both are local, both are cheap, and both are exactly what a gate is for.
+Closing Phase 0 while `pnpm build` exits 1 and `CLAUDE.md` is stale would make
+the gate ceremonial — it would be the third consecutive assessment to
+over-credit in the same direction, this time knowingly.
+
+**VERDICT: NOT PASSED, 2026-08-31.** Fix criteria 3 and 5, re-run, then close as
+a local-scope gate with the five deployment criteria recorded as OUTSTANDING.
 
 ### 3 — FAILS. The gate names a command that does not exist.
 
@@ -354,7 +422,7 @@ refs/heads/main` returns the same SHA as local `HEAD`, so the remote has every
 commit and CI has had something to run on.
 
 **Whether it went green is unknown and must not be inferred.** A human needs to
-look. Note also that obligation 26 records `Dependabot Updates` red since
+look. Note also that obligation 35 records `Dependabot Updates` red since
 2026-08-29 — a different workflow from CI, but a reminder that a red run can sit
 unnoticed.
 
@@ -1379,7 +1447,7 @@ push, so:
 
 So the repository is not blind, and the loss is real but narrower than it first
 looks. Saying "security scanning is broken" would overstate it; saying "it may
-clear itself" would understate it. Obligation 26 carries the deadline.
+clear itself" would understate it. Obligation 35 carries the deadline.
 
 ### The FIRST fix that addresses a symptom is not always the fix that addresses the failure
 
@@ -2279,7 +2347,7 @@ wondering whether it was ever considered.
 | 23 | **Nothing proves `index.ts` WIRES the crash handlers in.** Obligation 20 proves the module in a real process; delete `installCrashLogging(logger)` from `main()` and all four of its tests still pass. Two closure options, with costs: **(1)** an integration test that boots the real worker and kills its database mid-run — behavioural, but expensive and potentially flaky; **(2)** a static assertion that `index.ts` contains the call — cheap, and "index.ts calls installCrashLogging" is a fact about text that genuinely matters. **Preference recorded 2026-08-28: option 2**, on condition its failure message SAYS it tests text rather than behaviour, so nobody mistakes it for the stronger check. Decide when scheduled  | **before T1.3 — was unassigned. Same family as obligation 33 — a fact about the code that matters and nothing checks. Do both in one pass** |
 | 24 | **`apps/worker` has NO build step, so nothing verifies it becomes a deployable artefact.** It has no `build` script and runs `tsx src/index.ts`. CI therefore cannot check that it compiles, and T0.9's "build" criterion is unmeetable for it rather than merely narrowed. **T0.10 must decide whether production runs `tsx` or a compiled artefact** — and that decision drives obligation 17 (re-measure boot-failure behaviour against however it actually runs) and the pino-flush scope limit (buffered crash output was proven to survive under `tsx` only). Three findings, one underlying question | **T6.1 — was "T0.10 — firm"; re-dated 2026-08-31. ADR-009 answered the tsx-vs-artefact question, so what remains is verifying a deployable artefact, which needs a deployment** |
 | 25 | **Split STATUS.md.** Its own anchor lesson set the trigger "if this happens again, the file is telling us it needs splitting" — and it has now happened four times, most recently miscounting obligations by 11 because a regex matched three other tables. The file is past 1,200 lines of nested headings and pipe-delimited tables. **Proposed split: `docs/LESSONS.md` and `docs/OBLIGATIONS.md`**, both read independently of the rest and both edited most often by script; STATUS.md stays the handoff document. Makes scripted edits scope-safe by construction rather than by discipline | **before T1.2** |
-| 26 | **`Dependabot Updates` has been RED since 2026-08-29 — the proactive half of SEC-10 is not running.** `.github/dependabot.yml` defines it as exactly that: "`pnpm audit` in CI reports vulnerabilities that already exist; this opens pull requests to remove them." Enforcement is intact, DISCOVERY is not. **Leading hypothesis, unverified: pnpm 11.23.0 produces a lockfile version Dependabot’s `npm_and_yarn` ecosystem cannot parse** — read the run log before acting on it. Deferred deliberately, not forgotten: a security control that has stopped working may only be left alone WITH A DEADLINE. **At the start of T1.2, check whether the run is still red; if it is, FIX IT rather than deferring again** | **start of T1.2 — firm** |
+| 35 | **`Dependabot Updates` has been RED since 2026-08-29 — the proactive half of SEC-10 is not running.** `.github/dependabot.yml` defines it as exactly that: "`pnpm audit` in CI reports vulnerabilities that already exist; this opens pull requests to remove them." Enforcement is intact, DISCOVERY is not. **Leading hypothesis, unverified: pnpm 11.23.0 produces a lockfile version Dependabot’s `npm_and_yarn` ecosystem cannot parse** — read the run log before acting on it. Deferred deliberately, not forgotten: a security control that has stopped working may only be left alone WITH A DEADLINE. **At the start of T1.2, check whether the run is still red; if it is, FIX IT rather than deferring again** | **start of T1.2 — firm** |
 | 31 | **`db:restore` atomicity is OBSERVED, not GUARANTEED.** Five deliberate failures on 2026-08-30 all exited non-zero and left the database intact — but that is because `pg_restore` reads the archive table of contents before applying anything, so a 5 KB dump fails before the first `DROP`. **On a multi-gigabyte Phase 1 dump, corruption late in the data stream could fail after earlier statements have committed**, leaving the half-populated database the drill was designed to rule out. `--exit-on-error` makes it stop; it does not make it undo. **Fix: add `--single-transaction`, then re-run the deliberate failures against a dump large enough that the failure lands mid-restore** — the evidence must come from a dump where the old behaviour would actually have differed | **T1.3 — with the first large table** |
 | 32 | **ADR-003’s forward-compatibility amendment does not deliver a usable rollback, and this is now MEASURED.** `packages/db/src/status.ts` computes `inSync` as `pending.length === 0 && unknown.length === 0`, where `unknown` means the database is AHEAD of the code. Proven 2026-08-31 with the most forward-compatible change that exists — an additive nullable column: old code against the newer schema returns **503 `not_ready`**, `expected 503 to be 200`. Since the healthcheck is a DEPLOY GATE, a rolled-back deployment would never go live, so rollback-without-restore is unavailable for any change containing a migration. **Two coherent resolutions, and the choice is real:** (a) the readiness check is right, forward compatibility cannot deliver rollback, and every migration-bearing rollback is a restore — say so in ADR-003 rather than implying otherwise; (b) `unknown` should NOT block readiness, because being ahead is tolerable when migrations are additive, in which case `pending` alone gates and the amendment becomes real. **Do not decide this by editing the code first** | **T6.1 — firm; revisit ADR-003 in the same breath** |
 | 33 | **ADR-003 is enforced by CONVENTION, not by a check.** No application code imports `runMigrations` — verified — but nothing asserts that it stays that way. A commit adding a boot-time migration would leave lint, typecheck, unit, integration and the build all green. The policy is protected by a comment in `migrate.ts` and by the ADR, which is documentation, not a guard. **This is the same shape as T0.7’s unenforced criterion and T0.9’s obligation 23** — a fact about the code that matters and that nothing checks. **Cheapest closure: a static assertion that no file under `apps/` imports `runMigrations`**, whose failure message says it tests imports rather than behaviour, so nobody mistakes it for the stronger check | **before T1.3** |
