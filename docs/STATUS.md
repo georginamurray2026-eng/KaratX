@@ -1731,6 +1731,71 @@ dropping it.
 justify keeping the obligation, and it cannot justify dropping it. The only
 honest moves are re-measure, or stop citing it. Flagging is neither.
 
+### AN EMPTY AUTHORITY TABLE DOES NOT FAIL — it answers "nothing expected" to every question
+
+**The cleanest example of this family we have, and it was found before the code
+existed.**
+
+`market_hours` is the trading-calendar authority. T1.5 asks it "how many bars
+should exist on this date?" and compares the answer to what arrived. **With no
+rows, the answer is always zero, and zero always matches nothing.**
+
+| | |
+|---|---|
+| Weekend detection | finds nothing, reports success |
+| Every calendar assertion | passes |
+| Errors raised | none |
+| Alerts | none |
+| Symptom | **none** |
+
+**A system that has stopped checking is indistinguishable from a system with
+nothing to report.** That is the whole family in one sentence, and here the
+failure needs no bug at all — just an unpopulated table.
+
+**THE FIX IS STRUCTURAL, NOT BEHAVIOURAL.** The guard is a database constraint
+plus a three-valued answer, not a convention that callers must remember:
+
+- **The calendar cannot be empty** — enforced by the schema, so it cannot be
+  forgotten rather than merely discouraged.
+- **`expectsBarAt` returns three values, not a boolean:** `EXPECTED`, `CLOSED`,
+  `UNKNOWN`. A boolean cannot distinguish "the market is closed" from "we do not
+  know", **and only the second should degrade confidence.**
+
+**The consumer contract for UNKNOWN, defined NOW rather than in T1.5** — because
+a value with no defined consequence becomes one that everybody handles by
+ignoring:
+
+| Value | T1.8 staleness alarm | T1.5 on a bar arriving |
+|---|---|---|
+| `EXPECTED` | armed | accept |
+| `CLOSED` | **suppressed** | quarantine, `bar_outside_calendar` event |
+| `UNKNOWN` | **armed — never suppressed** | accept, `calendar_unknown` event |
+
+`CLOSED` silences the watchdog; `UNKNOWN` does not. Treating UNKNOWN as closed
+would let an unknown period silently suppress staleness detection, so the feed
+could die inside it unnoticed. **T1.8 owns the alarm behaviour; T1.5 owns
+emitting the events**, which are kept distinct so they are queryable apart.
+
+**Same reasoning as splitting STATUS.md (obligation 25):** when correctness
+depends on someone remembering, make it structural instead.
+
+### EXPECTED FIRST OCCURRENCE — the first US holiday will look like a bug
+
+**It is correct behaviour. Do not investigate it as a fault.**
+
+T1.2 ships recurring rules only; holiday data is T1.5. So on the first US market
+holiday the calendar predicts a full session, a shortened or absent one arrives,
+and **T1.5 emits a data-quality event that looks exactly like a feed fault.**
+
+**Trigger: the first US holiday after T1.5 goes live.** Not a fixed date — T1.5
+does not exist yet, and under ADR-011 the feed runs only while the machine is
+awake. **The next one due is Labor Day, Monday 7 September 2026**, when CME gold
+runs a shortened session.
+
+**This is the trigger for the holiday obligation, not a separate problem.**
+Whoever sees the event should recognise it as the known gap and load holiday
+data, not debug the feed.
+
 ### A deferred risk should be made CONCRETE before it is deferred
 
 **"Check this later" is not a plan. Ask what the failure would LOOK like — and
