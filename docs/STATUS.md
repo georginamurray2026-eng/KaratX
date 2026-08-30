@@ -542,7 +542,7 @@ fail on purpose" had nothing to catch. A deliberately-broken run and a
 denied-request run produce the same clean output when the check only looks at
 the count.
 
-Twelve instances so far, all caught by reading the actual output rather than the
+Thirteen instances so far, all caught by reading the actual output rather than the
 exit code or the absence of an error:
 
 | Where | What looked fine | What was actually happening |
@@ -559,6 +559,7 @@ exit code or the absence of an error:
 | **T0.9 deliberate-red, first attempt** | A detailed prediction of which four jobs would go red, and why | **PRECONDITION NEVER VERIFIED.** The `push` trigger is filtered to `main` and the accompanying instruction was "do not open a pull request" — so nothing ran at all. The most confident output of the exercise was produced before anything could possibly happen |
 | **T0.10 Railway SDK type search** | `preDeploy 0 / restartPolicy 0 / watchPattern 0` — read as "IaC cannot express these" | **Every zero was fake.** The pipeline was `grep … | paste -sd+ | bc` and `bc` is not installed; each `0` came from the author's own `|| echo 0` fallback. The types support **all three**. **The first time a positive control saved a DECISION rather than a test** |
 | **T0.10 `railway iac plan` output** | A plan diff reported back in detail: which resources would be created, which settings would change | **THE COMMAND HAD NEVER RUN SUCCESSFULLY.** The SDK version check was still failing. The output was not a misread of a real result — there was no result. Caught only because the other party said so outright. **The only instance where the artefact did not exist at all** |
+| **Dependabot Updates, 2026-08-29** | No dependency-update PRs arriving — indistinguishable from having no outdated dependencies | **THE UPDATE JOB HAD BEEN FAILING SINCE 2026-08-29.** The healthy signal for this control is SILENCE, so a broken checker and a clean repository produce identical observable output. Found by scrolling past a red run while looking at something else. **The first instance where the broken check was VENDOR-OPERATED and not ours** |
 
 The leak probe is the sharpest: it produced confident reassurance from a code
 path that never executed. Its exit code and its output both looked like a pass.
@@ -1025,6 +1026,38 @@ backups worked.
 operational hygiene, schedulable whenever. They are in fact a hard prerequisite
 of the migration policy — so "defer backups to Phase 6" silently meant "have no
 migration recovery until Phase 6".
+
+### A job that FAILS TO CHECK looks identical to one that checked and found nothing
+
+**When the healthy signal is SILENCE, a broken checker is indistinguishable from
+a clean result. The only distinguishing evidence lives somewhere nobody looks.**
+
+`Dependabot Updates #8` went red on 2026-08-29. The observable consequence is
+**no dependency-update pull requests** — which is precisely what a repository
+with no outdated dependencies looks like. Nothing degraded, nothing alerted, and
+the inbox that would have carried the news was the thing that broke.
+
+**This is the audit-gate shape again, one level out.** The T1.1 Saturday sweep
+reported `0 bars` when every request was a 403; here the report is "no PRs" when
+every run failed. In both, an absence produced by FAILURE was read as an absence
+produced by CLEANLINESS.
+
+**The signal that did exist was a red run in a list nobody was reading.** It was
+found by scrolling past it while looking at something else — not by any check,
+alert or routine. That is not a detection mechanism, and treating it as one
+would be the mistake.
+
+**THE MITIGATION, STATED HONESTLY.** `pnpm audit` still runs in CI on every
+push, so:
+
+| | |
+|---|---|
+| **Enforcement against KNOWN advisories** | **INTACT** — the blocking gate is unaffected |
+| **DISCOVERY of new advisories** | **LOST** — nothing opens the PRs that act on them |
+
+So the repository is not blind, and the loss is real but narrower than it first
+looks. Saying "security scanning is broken" would overstate it; saying "it may
+clear itself" would understate it. Obligation 26 carries the deadline.
 
 ### A deferred risk should be made CONCRETE before it is deferred
 
@@ -1764,6 +1797,8 @@ wondering whether it was ever considered.
 | 23 | **Nothing proves `index.ts` WIRES the crash handlers in.** Obligation 20 proves the module in a real process; delete `installCrashLogging(logger)` from `main()` and all four of its tests still pass. Two closure options, with costs: **(1)** an integration test that boots the real worker and kills its database mid-run — behavioural, but expensive and potentially flaky; **(2)** a static assertion that `index.ts` contains the call — cheap, and "index.ts calls installCrashLogging" is a fact about text that genuinely matters. **Preference recorded 2026-08-28: option 2**, on condition its failure message SAYS it tests text rather than behaviour, so nobody mistakes it for the stronger check. Decide when scheduled | unassigned |
 | 24 | **`apps/worker` has NO build step, so nothing verifies it becomes a deployable artefact.** It has no `build` script and runs `tsx src/index.ts`. CI therefore cannot check that it compiles, and T0.9's "build" criterion is unmeetable for it rather than merely narrowed. **T0.10 must decide whether production runs `tsx` or a compiled artefact** — and that decision drives obligation 17 (re-measure boot-failure behaviour against however it actually runs) and the pino-flush scope limit (buffered crash output was proven to survive under `tsx` only). Three findings, one underlying question | **T0.10 — firm** |
 | 25 | **Split STATUS.md.** Its own anchor lesson set the trigger "if this happens again, the file is telling us it needs splitting" — and it has now happened four times, most recently miscounting obligations by 11 because a regex matched three other tables. The file is past 1,200 lines of nested headings and pipe-delimited tables. **Proposed split: `docs/LESSONS.md` and `docs/OBLIGATIONS.md`**, both read independently of the rest and both edited most often by script; STATUS.md stays the handoff document. Makes scripted edits scope-safe by construction rather than by discipline | **before T1.2** |
+| 26 | **`Dependabot Updates` has been RED since 2026-08-29 — the proactive half of SEC-10 is not running.** `.github/dependabot.yml` defines it as exactly that: "`pnpm audit` in CI reports vulnerabilities that already exist; this opens pull requests to remove them." Enforcement is intact, DISCOVERY is not. **Leading hypothesis, unverified: pnpm 11.23.0 produces a lockfile version Dependabot’s `npm_and_yarn` ecosystem cannot parse** — read the run log before acting on it. Deferred deliberately, not forgotten: a security control that has stopped working may only be left alone WITH A DEADLINE. **At the start of T1.2, check whether the run is still red; if it is, FIX IT rather than deferring again** | **start of T1.2 — firm** |
+| 27 | **`db:restore` atomicity is OBSERVED, not GUARANTEED.** Five deliberate failures on 2026-08-30 all exited non-zero and left the database intact — but that is because `pg_restore` reads the archive table of contents before applying anything, so a 5 KB dump fails before the first `DROP`. **On a multi-gigabyte Phase 1 dump, corruption late in the data stream could fail after earlier statements have committed**, leaving the half-populated database the drill was designed to rule out. `--exit-on-error` makes it stop; it does not make it undo. **Fix: add `--single-transaction`, then re-run the deliberate failures against a dump large enough that the failure lands mid-restore** — the evidence must come from a dump where the old behaviour would actually have differed | **T1.3 — with the first large table** |
 | ~~26~~ | ~~**Confirm the audit step reports without blocking, IN CI.**~~ **DISCHARGED 2026-08-28 by CI #14 at `91b0a55`, on the printed advisory rather than the job colour** — a green security job would have looked identical if the report line had produced nothing. The step printed the full advisory (package, `<=0.24.2`, `>=0.25.0`, the full dependency path, the GHSA link) and then `--- applying the blocking threshold ---`, and the job stayed green. **The `|| true` survived the runner: reporting changed, threshold did not** | done |
 | 27 | **NOTHING WATCHES THE HEALTH ENDPOINTS AFTER A DEPLOY GOES LIVE.** Railway queries the healthcheck only while a deployment is going live — *"Railway does not monitor the healthcheck endpoint after the deployment has gone live"*. **The 3am scenario, written out because "we have health endpoints" reads as covered and is not:** the database becomes unreachable; `/api/ready` starts returning 503, correctly; **nothing restarts the service; nothing alerts anybody**; Railway's UI still shows the deployment as live and healthy; the dashboard serves 503s until a human happens to look. The endpoints are correct — nothing is watching them. Needs an external uptime check or a scheduled probe that can page someone | **OPS-8 — firm** |
 

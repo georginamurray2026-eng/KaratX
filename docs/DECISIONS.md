@@ -935,6 +935,43 @@ By Phase 6 there will be more schema, more configuration, a Telegram token to ho
 
 ---
 
+
+---
+
+### Observed 2026-08-30 — one measured cost point, and what it does NOT show
+
+The figures above are estimates. Exactly one real measurement exists, taken
+during the T0.10 teardown:
+
+| | |
+|---|---|
+| Trial credit | $4.92 |
+| ~24 hours later | $4.91 |
+| Running | one idle Postgres and its volume, nothing else |
+
+**About $0.01/day — roughly $0.30/month — for an idle Postgres plus volume.**
+That is an order of magnitude below the $3–5/month this ADR estimates for the
+same component.
+
+**What it establishes:** the $9–13/month figure is unvalidated and probably
+conservative. Treat it as an upper bound rather than a forecast, and do not
+quote it as though it were measured.
+
+**What it does NOT establish, and the distinction matters:**
+
+- It is the **SUM** of compute and storage for one service. It cannot separate
+  them, so it does not show that compute dominates storage — only that both
+  together are small while the database is idle.
+- **"Idle" is doing the work.** Phase 1's worker polls and writes continuously
+  and `web` serves requests. Nothing here says what an ACTIVE service costs, and
+  active is the only case that matters.
+- A volume holding years of candles is a cost that **rises over time**. One day
+  of an empty volume says nothing about that trajectory.
+
+**Re-measure at T6.1 rather than trusting either number.** Twenty-four hours of
+real usage with all three services running replaces both the estimate and this
+data point.
+
 ### The revisit trigger
 
 **Phase 6 — Telegram alerting.** Not a date, and not "when it feels slow".
