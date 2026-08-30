@@ -13,6 +13,7 @@
     "lint:fix": "eslint . --fix --max-warnings 0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "build": "pnpm --filter @karatx/web build",
     "typecheck": "pnpm -r --no-bail typecheck && pnpm typecheck:iac",
     "test": "pnpm -r --no-bail test",
     "test:integration": "pnpm -r --no-bail test:integration",

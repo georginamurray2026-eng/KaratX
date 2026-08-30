@@ -11,24 +11,111 @@ handover document.
 
 ## ▶ START HERE — session handoff, 2026-08-31
 
-**Phase 0 is 10 tasks of 10 written. The PHASE 0 GATE WAS RUN 2026-08-31 AND
-DID NOT PASS** — two criteria fail, both cheap. **The next task is fixing them
-and re-running the gate**, not starting Phase 1.
+**PHASE 0 IS CLOSED AT LOCAL SCOPE.** All local gate criteria pass; **five
+deployment criteria were DEFERRED to T6.1 and never run** — see the closure
+below, and do not read "Phase 0 closed" as "Phase 0 complete".
 
-1. `CLAUDE.md` documents none of `db:backup`, `db:restore`, `db:drill`,
-   `rollback:check` — criterion 5.
-2. `pnpm build` exits 1; no root `build` script exists — criterion 3. Decide
-   whether to add one or reword the criterion; do not tick it as-is.
+**The next task is T1.2** — contracts and instrument reference data. **T1.1 is
+already CLOSED**: it was completed early, reopened when OANDA v20 turned out to
+be unavailable, re-run, and closed with ADR-008 superseding ADR-005. Two things
+to know before starting T1.2:
 
-Then Phase 0 closes as a **local-scope gate with five deployment criteria
-outstanding**, recorded as outstanding rather than met.
+1. **Obligation 35 has a date on it**: `Dependabot Updates` has been red since
+   2026-08-29, so the proactive half of SEC-10 is not running. The deal was that
+   it gets checked at the **start of T1.2**, not deferred again.
+2. **Obligation 12 blocks all of Phase 2**, not a task. Read its section below
+   before planning that far ahead — the workaround is untried and the fallback
+   costs money.
+
+## ⛔ PHASE 0 CLOSED AT LOCAL SCOPE — 2026-08-31. A DEPLOYMENT GATE WAS NEVER RUN.
+
+**This is not "Phase 0 complete".** Phase 0 is closed at **local scope**, with
+**five deployment criteria deferred to T6.1 by ADR-011**. Nothing has ever been
+deployed: `.railway/railway.ts` has never been applied and `railway iac plan`
+has never run successfully.
+
+**Never run, and not inferable from an obligations table:**
+
+| Deferred criterion | Where it lands |
+|---|---|
+| `web` and `worker` deploy as separate services, both healthy | T6.1 |
+| Healthcheck proven as a **deploy gate** | T6.1 |
+| Migrations as a pre-deploy release step, failure blocks the deploy | T6.1 |
+| Secrets configured on the platform | T6.1 |
+| **Platform** rollback performed once | T6.1 |
+
+**Why closing is honest rather than convenient.** The test applied was *"would
+these deferrals cause a Phase 1 defect?"* — not *"does Phase 0 look done?"*.
+The answer is no, and it was checked rather than assumed: `grep -inE
+"deploy|railway|hosted|production|uptime"` across the whole of Phase 1 returns
+nothing. T1.1–T1.10 are provider evaluation, contracts, storage, backfill,
+validation, aggregation, live feed, watchdog, reconciliation and the golden
+dataset. Every one runs locally. **Holding the phase open would protect
+nothing.**
+
+**What WAS proven, locally:** install, lint, format, typecheck all exit 0; 239
+unit tests pass **with PostgreSQL stopped**, verified with a positive control;
+57 integration tests pass; backup and restore drilled with five deliberate
+failures; local rollback drilled with three. Two criteria that failed at the
+gate run — `pnpm build` and a stale `CLAUDE.md` — were fixed before closing.
+
+**One thing this closure does NOT establish:** ordered shutdown on SIGTERM. That
+test is `skipIf(win32)` and cannot execute on this machine. It is proven by CI
+on Linux (2026-08-27) and its code is unchanged since — but no fresh evidence
+was produced here, and CI status could not be read from this machine.
+
+---
+
+## ⚠️ THE ONE THING THAT BLOCKS A WHOLE PHASE — obligation 12, C3 golden values
+
+**Read this before planning Phase 2. It is not a task-sized problem.**
+
+**What it is.** Audit finding C3 requires indicator parity — our EMA and Stoch
+RSI must match TradingView's own computed values within a documented tolerance.
+To assert parity we need TradingView's numbers as a golden dataset. **We do not
+have them, and there is currently no route to them.**
+
+**Why Phase 2 cannot proceed without it.** Phase 2 is the technical engine:
+EMA, Stoch RSI, swings, structure, zones, liquidity, sweeps, breakout, pullback,
+room — all pure functions in `packages/core`. Its gate is "golden-value parity
+with TradingView within documented tolerance". **Without TradingView's values
+there is nothing to assert engine output against**, so the phase can be built
+but not validated. Every downstream phase — the weekly map, the state machine,
+grading, and Phase 9's backtest — rests on indicators nobody has checked against
+an external reference. Shipping Phase 2 unvalidated would put an unverifiable
+assumption underneath everything after it.
+
+**What has been tried.** TradingView's *Export chart data* is a **paid feature
+the user does not have**, so the golden CSV planned for T0.6/T1.10 was never
+produced. That is the whole of it: **the workaround below is untried.**
+
+**The options, with costs:**
+
+| Route | Cost | Risk |
+|---|---|---|
+| **1. Pine Script `log.info()`** — make the chart emit its own indicator values | free; scripting time | **UNTRIED.** If output is truncated, rate-limited, or rounded in display, it may not yield fixture-grade numbers |
+| **2. One month of paid TradingView**, purely to run the export | one month's subscription | lowest risk, known to work, produces a real CSV |
+| **3. Manual transcription of ~20 bars** | tedious, error-prone | a **spot check, not a fixture** — cannot support byte-for-byte reproduction (NFR-12) |
+
+**The honest position: if route 1 fails, Phase 2 stalls on something with no
+cheap alternative.** Route 2 becomes necessary, and it is a purchase. Route 3
+cannot substitute — it is too small to be a fixture and would give false
+confidence.
+
+**Recommendation: attempt route 1 EARLY, well before Phase 2 begins**, so the
+answer is known while there is still time to fall back. Testing it costs an
+afternoon; discovering it at the start of Phase 2 costs the phase.
+
+**This blocks nothing in Phase 0 or Phase 1.**
+
+---
 
 ### Where things stand
 
 | | |
 |---|---|
 | Phase 0 tasks | **10 of 10 implemented** |
-| Phase 0 gate | **RUN 2026-08-31 — NOT PASSED.** Criteria 3 and 5 fail; 1 unverifiable here; 2 deferred |
+| Phase 0 gate | **CLOSED AT LOCAL SCOPE 2026-08-31.** All local criteria pass; five deployment criteria DEFERRED to T6.1, never run |
 | T0.10 | **NOT CLOSED** — see its close-out; L5 fails, L1 unenforced, L4 partial |
 | Deployment | **NONE.** ADR-011 makes the project local-only for Phases 1–5 |
 | Open obligations | **22** (plus 10 closed; 32 rows total — count OPEN rows only) |
@@ -1609,6 +1696,41 @@ places you already fixed.
 **Fixed 2026-08-31**, with the gate's original wording struck through rather
 than deleted, so the change is visible to a reader who was not present for it.
 
+### A measurement flagged as STALE is still being USED. Flagging is not retiring.
+
+**If a number matters enough to gate a phase, it matters enough to re-measure
+before citing it. If it does not, it should not be gating anything.**
+
+Obligation 11 carried "**18.2 s on Windows**" from 2026-08-26. Two later audits
+looked at it, both noted it needed re-measuring, and **neither re-measured it**.
+The obligation's own text says "re-measure locally first". It was cited three
+times as the reason a Phase 2 prerequisite existed, and the number was never
+re-taken — in a document that carries the lesson *a measurement's validity
+expires when the code it measured changes* a few hundred lines above.
+
+**RE-MEASURED 2026-08-31: 38.1 s.** The figure had **doubled**.
+
+| | 2026-08-26 (`66be0e4`) | 2026-08-31 | |
+|---|---|---|---|
+| Windows wall clock | 18.2 s | **38.1 s** | **2.1x** |
+| Tests | 132 | 239 | 1.8x |
+| Per test | ~138 ms | ~159 ms | 1.15x |
+
+**The per-test cost barely moved; the absolute cost roughly doubled because the
+suite did.** That distinction matters: nothing is degrading, but the edit-run
+loop is twice as expensive, and the edit-run loop is what the obligation is
+about.
+
+**THE OUTCOME IS THE POINT.** The proposal on the table was to REMOVE obligation
+11 as a stale number that should not gate a phase. Re-measuring instead showed
+the concern had grown, not evaporated — so removal would have retired a live
+problem on the strength of a number too old to justify either keeping OR
+dropping it.
+
+**A stale measurement cannot support a decision in EITHER direction.** It cannot
+justify keeping the obligation, and it cannot justify dropping it. The only
+honest moves are re-measure, or stop citing it. Flagging is neither.
+
 ### A deferred risk should be made CONCRETE before it is deferred
 
 **"Check this later" is not a plan. Ask what the failure would LOOK like — and
@@ -2332,7 +2454,7 @@ wondering whether it was ever considered.
 | 10c | **A pre-T0.6 leftover database `karatx_test` exists on the local server.** It does not match the current anchored naming pattern, so the sweep will correctly never touch it — "unrecognised means untouched". It is harmless clutter from the T0.4 scheme and can be dropped manually whenever convenient | cosmetic |
 | 10d | **Do not replace the crash-path test with a "more realistic" kill test.** `db.integration.test.ts` reproduces the post-crash state deterministically via `KEEP_TEST_DB=1`, which skips teardown and leaves exactly the database a crashed run leaves behind. Two attempts at a timing-based kill were tried first and neither was valid — one finished before the kill landed, the other killed a worker while Vitest's main process survived and cleaned up anyway. A timing-based test would be **flaky forever**, and a flaky test around destructive operations is worse than none. Reproducing the state that matters beats simulating the event that causes it | do not "fix" |
 | 10e | **Vitest cleans up after a worker crash — the orphan window is narrower than assumed.** Measured during T0.6: killing a test *worker* leaves Vitest's main process alive, which reports `Worker exited unexpectedly` and still runs `globalSetup` teardown, dropping the database. So a crashed test does not usually orphan anything. **The 24-hour floor is still justified**, because it covers the cases teardown genuinely cannot run: machine reboot, a cancelled CI job, SIGKILL of the whole process tree, and Docker stopping underneath a running suite. Those are the real orphan sources | rationale |
-| 11 | **PHASE 2 PREREQUISITE — but REFRAMED 2026-08-27: it is Windows process-spawn cost, not suite size.** Measured wall clock: **18.2 s on Windows** (`66be0e4`, 4 packages, 132 tests) vs **4.3 s on Linux** (CI #1, 7 packages, 235 tests) — roughly **4x faster on nearly twice the tests**. Per-package Vitest durations in the Linux log total well under 4 s, so almost none of it is process spawn there. **The problem is `pnpm -r` spawning a Vitest process per package ON WINDOWS, and adding packages is not the threat we assumed.** That changes the fix: a single Vitest workspace run sharing one process targets exactly the right thing. **Still a Phase 2 prerequisite** — the edit-run loop happens on Windows, which is what affects daily work — but **re-measure locally first**, and record both numbers with their platform | **before Phase 2** |
+| 11 | **PHASE 2 PREREQUISITE — RE-MEASURED 2026-08-31, and the number DOUBLED.** Windows wall clock for `pnpm test` is now **38.1 s** (239 tests), against **18.2 s** at `66be0e4` (132 tests) and **4.3 s** on Linux in CI. Per-test cost barely moved (~138 ms → ~159 ms); the absolute cost roughly doubled because the suite did. **The cause is unchanged and confirmed: `pnpm -r` spawns a Vitest process per package, and process spawn is expensive on Windows** — Linux per-package durations total well under 4 s, so almost none of it is spawn there. **Fix: a single Vitest workspace run sharing one process.** Removal was proposed on the grounds that the 18.2 s figure was stale; re-measuring showed the concern had GROWN, so removal would have retired a live problem on a number too old to justify either decision | **before Phase 2 — number is now current as of 2026-08-31** |
 | 12 | **C3 indicator parity still needs TradingView's own computed values, and there is no route to them yet.** TradingView's *Export chart data* is a paid feature the user does not have, so the golden CSV planned for T0.6/T1.10 could not be produced. Without TradingView's own EMA and Stoch RSI numbers there is nothing to assert engine output *against*, and audit finding C3 — parity within a documented tolerance — cannot be closed by inspection alone. **Routes being explored, in order:** (1) Pine Script `log.info()` output, which would let the chart emit its own indicator values; (2) one month of a paid TradingView plan purely to run the export; (3) manual transcription of ~20 bars, enough for a spot check but not a fixture. **Blocks nothing in Phase 0 or Phase 1.** Required before **Phase 2** indicator work begins | **before Phase 2** |
 | ~~13~~ | ~~**T0.9 must set `NEXT_TELEMETRY_DISABLED=1` in the CI environment.**~~ **DISCHARGED 2026-08-27.** Set at workflow level so no job can forget it, and also pinned in `playwright.config.ts`'s webServer env | done |
 | 14 | **`pnpm typecheck` has a blind spot — audit it.** `vitest.shared.ts` sat at the repository root with a type error (it imported `UserConfig` from `vitest/node`, which exports it as `TestUserConfig`) and **no package tsconfig included it**, so nothing checked it. It surfaced only by accident, when `apps/web` happened to pull it in through a relative import. Root-level and config files outside every package's `include` are unchecked today. **Audit which files are outside every package tsconfig and decide deliberately whether each should be covered.** A typecheck with unknown blind spots is worse than one whose shape is known  | **before T1.3 — was "audit — not urgent". **One instance found and CLOSED 2026-08-31**: `.railway/railway.ts` was reached by no typecheck at all, proven by planting a type error; closed by `tsconfig.iac.json` + `typecheck:iac`. The general audit remains, and finding one real instance raises the prior on others** |

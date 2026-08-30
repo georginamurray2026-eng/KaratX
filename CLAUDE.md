@@ -13,13 +13,24 @@ XAU/USD market-intelligence and setup-alerting system. Watches gold, detects set
 - Plan first, in small steps, and get approval before implementing (§29, §30, §42).
 - Say plainly when something is mocked, unproven or incomplete (§32).
 - Update `docs/STATUS.md` at the end of every substantial session (§44).
+- **There is no down-migration path.** ADR-003 makes applied migrations
+  immutable and Drizzle generates forward-only SQL, so recovering from a bad
+  migration means RESTORE FROM BACKUP, then a new forward migration. Back up
+  before every migration. Run `pnpm rollback:check` before reverting anything.
 
 ```
 pnpm install   pnpm lint   pnpm format:check   pnpm typecheck
 pnpm test               unit tests — fast, no database
 pnpm test:integration   against real Postgres
+pnpm build              builds apps/web only — nothing else has a build (ADR-009)
 pnpm db:up              start local Postgres
 pnpm db:migrate         apply migrations (deliberate step, never at boot)
+
+pnpm db:backup          pg_dump + manifest into git-ignored backups/
+pnpm db:restore <file>  restore, with integrity and content verified
+pnpm db:drill           the backup/restore drill — DESTROYS the local database
+pnpm rollback:check <sha>  BEFORE reverting anything: refuses on a dirty tree,
+                        and refuses outright if the commit touches a migration
 ```
 
 First-time setup: `cp .env.example .env` then `pnpm db:up`.

@@ -221,7 +221,20 @@ Each phase has a **quality gate**. Do not start the next phase until the gate is
 
 ---
 
-### ✅ Phase 0 Quality Gate
+### ⛔ Phase 0 Quality Gate — CLOSED AT LOCAL SCOPE, 2026-08-31
+
+**NOT "Phase 0 complete". A DEPLOYMENT GATE WAS NEVER RUN.** Five criteria are
+deferred to T6.1 by ADR-011; nothing has ever been deployed. The full
+assessment, including what was and was not proven, is in `docs/STATUS.md`.
+
+```
+install exit=0   lint exit=0   format:check exit=0   typecheck exit=0
+build   exit=0   test [PostgreSQL STOPPED] exit=0    test:integration exit=0
+```
+
+Closed on the test *"would the deferrals cause a Phase 1 defect?"* — checked,
+not assumed: no Phase 1 task references deployment, hosting or uptime.
+
 
 **AMENDED 2026-08-31 by ADR-011.** One criterion was deferred and one split.
 The original wording is kept struck through rather than deleted, so a reader
