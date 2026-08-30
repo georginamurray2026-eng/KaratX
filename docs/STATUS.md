@@ -11,7 +11,7 @@ handover document.
 
 ## ▶ START HERE — session handoff, 2026-08-31
 
-**Phase 0 is 10 tasks of 10 written. The PHASE 0 GATE HAS NOT BEEN RUN.
+**Phase 0 is 10 tasks of 10 written. The PHASE 0 GATE WAS RUN 2026-08-31 AND DID NOT PASS.
 Running it is the next task, and it is a task in its own right — do not fold it
 into whatever comes after.**
 
@@ -20,7 +20,7 @@ into whatever comes after.**
 | | |
 |---|---|
 | Phase 0 tasks | **10 of 10 implemented** |
-| Phase 0 gate | **NOT RUN** |
+| Phase 0 gate | **RUN 2026-08-31 — NOT PASSED.** Criteria 3 and 5 fail; 1 unverifiable here; 2 deferred |
 | T0.10 | **NOT CLOSED** — see its close-out; L5 fails, L1 unenforced, L4 partial |
 | Deployment | **NONE.** ADR-011 makes the project local-only for Phases 1–5 |
 | Open obligations | **23** |
@@ -284,6 +284,116 @@ accepting, which is T1.7 (obligation 22).
 New obligations 20, 21 and 22 record them.
 
 ---
+---
+
+## PHASE 0 GATE — RUN 2026-08-31. **NOT PASSED.** Two criteria fail.
+
+**Assessed adversarially against the repository, not against memory of it.** Two
+criteria fail outright, one is unverifiable from this machine, one is deferred
+by ADR-011, and two are met.
+
+| # | Criterion | Verdict |
+|---|---|---|
+| 1 | CI green on `main` | **UNVERIFIABLE HERE** |
+| 2 | ~~Both Railway services deployed and healthy~~ | **DEFERRED to T6.1** |
+| 3 | `typecheck`, `lint`, `test`, `test:integration`, **`build`** pass locally | **FAILS** |
+| 4 | Rollback proven once | **MET (local scope)** |
+| 5 | `CLAUDE.md` and `docs/STATUS.md` accurate | **FAILS** |
+| 6 | Zero secrets in Git history | **MET, with a documented exception** |
+
+### Real exit codes, 2026-08-31
+
+```
+typecheck         exit=0        test:integration            exit=0
+lint              exit=0        pnpm build                  exit=1   <-- FAILS
+format:check      exit=0        pnpm --filter @karatx/web build  exit=0
+test              exit=0
+```
+
+### 3 — FAILS. The gate names a command that does not exist.
+
+```
+$ pnpm build
+[ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL] Command "build" not found
+```
+
+**There is no root `build` script.** Only `apps/web` has one (`next build`);
+every other package has none, and `apps/worker` has none *by design* — ADR-009
+runs its TypeScript source under `tsx`, which is obligation 24.
+
+So the criterion is unsatisfiable as literally written. The substantive question
+— does the only buildable package build? — answers yes, exit 0. **But "nearly
+met" is not met**, and the fix is a decision, not a formality: either add a root
+`build` that delegates to the packages that have one, or reword the criterion to
+name what is actually built. **Do not tick it in its current form.**
+
+### 5 — FAILS. `CLAUDE.md` does not document T0.10's commands.
+
+```
+db:backup 0    db:restore 0    db:drill 0    rollback:check 0
+```
+
+`CLAUDE.md` exists to brief a session with no memory of this one. Such a session
+recovering from a bad change would not learn that `pnpm rollback:check` exists —
+the command whose entire purpose is stopping them from reverting a migration.
+The criterion says the file must be *accurate*; it is currently *stale*.
+
+### 1 — UNVERIFIABLE from this machine, and not assumed
+
+`gh` is not installed and the repository is private, so GitHub Actions' status
+cannot be read from here. **What WAS verified:** `git ls-remote origin
+refs/heads/main` returns the same SHA as local `HEAD`, so the remote has every
+commit and CI has had something to run on.
+
+**Whether it went green is unknown and must not be inferred.** A human needs to
+look. Note also that obligation 26 records `Dependabot Updates` red since
+2026-08-29 — a different workflow from CI, but a reminder that a red run can sit
+unnoticed.
+
+**Unexpected, and worth someone's attention:** no `git push` was issued in this
+session, yet the remote is current. Something is pushing automatically. That
+means anything committed here is published immediately — including, if it ever
+happened, a secret.
+
+### 6 — MET, with a documented exception that should be stated rather than ticked past
+
+Full-history scan across 70 commits, **run with a positive control** (the known
+committed local dev password, which the search correctly found — otherwise
+"no results" would have been indistinguishable from a broken search, and the
+first attempt *was* broken: `grep -t` is not an option and silently produced
+nothing).
+
+- **On `main`: clean.** No credentialed connection string, no key literal, no
+  PEM block, and `.env` has never been committed — 0 commits, ever.
+- Every connection string found is a localhost, fixture or documentation value.
+- **One token-shaped literal exists**, `CI_PROOF_TOKEN`, on branch
+  `ci/verify-red` — **still present locally AND on origin**. It is the fake
+  planted in T0.9 to prove gitleaks fires; it matches no account and its
+  permanence was a recorded, deliberate decision. **But STATUS.md describes it
+  as living in "a branch that was always going to be deleted", and the branch
+  is still there.** Deleting it would not remove the objects — that is the whole
+  lesson — so this is cosmetic, not a security action. Recorded rather than
+  quietly resolved.
+
+### Can Phase 0 close?
+
+**Not as written, and not today.** But the blocker is not the deferral.
+
+**The five deployment criteria are legitimately deferrable.** ADR-011 is an
+accepted decision with a recorded trigger, T6.1 exists with its own criteria,
+and Phase 1 does not depend on any of them. A gate that closes with an explicit,
+dated, documented deferral is honest; one that quietly rewords the criterion
+away is not.
+
+**What actually blocks closure is criteria 3 and 5, and both are cheap.** Fix
+`CLAUDE.md`, resolve the `build` criterion, re-run, and Phase 0 closes as a
+**LOCAL-SCOPE GATE WITH FIVE DEPLOYMENT CRITERIA OUTSTANDING** — recorded as
+outstanding, not as met.
+
+**It should not close before those two are fixed**, because both are exactly the
+kind of small failure a gate exists to catch, and ticking either would make the
+gate ceremonial.
+
 ---
 
 ## T0.10 CLOSED OUT — assessed 2026-08-31. NOT fully done.
@@ -2133,14 +2243,14 @@ wondering whether it was ever considered.
 |---|---|---|
 | ~~1~~ | ~~**`packages/core` import-boundary regression test.**~~ **DISCHARGED in T0.6.** `packages/test-support/src/core-boundary.test.ts` lints snippets through the ESLint API against a virtual `packages/core` path and asserts each rule fires. Proven by deliberately weakening `eslint.config.js` two ways: changing the core block glob failed 11 of 15 tests, removing the empty-catch selector failed exactly 1. Both reverted, confirmed with `git diff`. **Its failure messages explain why the boundary exists and say not to delete the test** — the real risk is removal by someone who does not know what it protects | done |
 | ~~2~~ | ~~**Prevent modification of existing migration files on `main`.**~~ **DISCHARGED 2026-08-28.** `scripts/check-migrations-immutable.mjs` runs in CI and was proven by a deliberate break (run 33103674481): `FAILED: migrations already on main were changed. MODIFIED: packages/db/migrations/0000_init_system_events_and_config.sql`, compared against a REAL `origin/main` at `3cd3f930085f`. The rule is deliberately not "nothing under migrations/ may change" — `.sql` and snapshots are byte-immutable, `_journal.json` is append-only, because a blunt rule would reject every legitimate new migration | done |
-| 3 | **Verify Railway's pre-deploy/release migration mechanism.** Migrations must be a release step, never the service start command (OPS-2). How Railway expresses that is `[VERIFY]` — unconfirmed, `ARCHITECTURE.md` U-7 | **T0.10** |
-| 4 | **Railway backup and restore (OPS-7).** Requires a *tested* restore, not just a configured backup. Entirely outstanding | **T0.10** |
+| 3 | **Verify Railway's pre-deploy/release migration mechanism.** Migrations must be a release step, never the service start command (OPS-2). How Railway expresses that is `[VERIFY]` — unconfirmed, `ARCHITECTURE.md` U-7  | **T6.1 — was "T0.10". The mechanism is DOCUMENTED (ADR-003 amendment, from vendor docs) but has never been verified against a real deploy, and there is none until T6.1** |
+| 4 | **Railway backup and restore (OPS-7).** Requires a *tested* restore, not just a configured backup. Entirely outstanding  | **T6.1 — was "T0.10". **The LOCAL half is DISCHARGED** — backup and restore built and drilled in T0.10 L3, `pnpm db:drill` exit 0. The HOSTED half needs a deployment** |
 | 5 | **"Avoid infinite retry loops" (§23).** T0.5 defines the `retry` policy but **nothing consumes it**. It lands in T1.4 backfill and T1.7 reconnection, both of which specify bounded exponential backoff with jitter | **T1.4, T1.7** |
-| 6 | **No ADR records the TypeScript 6.0.3 pin.** TypeScript 7 is npm's `latest`, but typescript-eslint does not support it and hard-errors on load. A routine `pnpm update` would silently break `pnpm lint`. The reason exists only in commit `d41b2cb` | **unassigned — suggest T0.10** |
+| ~~6~~ | ~~**No ADR records the TypeScript 6.0.3 pin.**~~ **DISCHARGED — verified 2026-08-31.** ADR-007 "TypeScript pinned to 6.x" is Accepted, dated 2026-08-26, names `^6.0.3` twice, and records both the typescript-eslint reason and the originating commit `d41b2cb`. **It had been satisfied for five days while still listed as open** — the obligations table had never been reconciled against the artefacts it tracks | **CLOSED 2026-08-31** |
 | 7 | **ESLint flat-config trap.** Flat config *replaces* a rule's options rather than merging. Any future repo-wide `no-restricted-syntax` rule must be repeated inside the `packages/core` block or it silently switches off there. Verify with `eslint --print-config` | ongoing |
 | ~~8~~ | ~~**`ARCHITECTURE.md` §D is wrong and needs correcting.**~~ **DISCHARGED in T0.8.** §D no longer says "holding a websocket" and carries a dated correction note; §E/U-1's matrix row now records that the question is resolved for OANDA and that its original answer ("websocket is better for sweep detection") was exactly backwards for this provider — kept as a criterion because it still applies to evaluating a replacement. The F.2 amendment, which had flagged both as uncorrected, now says both were fixed | done |
 | 9 | **Migration CLI duplicates redaction logic.** `packages/db/src/bin/migrate.ts` hand-rolls error redaction predating T0.5's logger. **Its `.env` loading was deduplicated in T0.8** — that copy and three others now share `loadEnvFileIfPresent` in `@karatx/config` — but the redaction itself is untouched | low priority |
-| 10 | **The CSV fixture loader does not handle quoted fields containing commas.** `readCsvFixture` in `@karatx/test-support` splits on `,` with no quote handling. The TradingView exports it serves are not believed to use quoted fields, and a half-implemented quote parser that looks correct is worse than none — but **this fails as silently wrong numbers, not as an error**, because a quoted `"4,637.29"` would split into two values and either throw a column-count error or, worse, shift every subsequent column. **When real golden data arrives, check whether any field contains a quoted comma before trusting the loader.** **STAYS OPEN, and may become moot:** TradingView's export is a paid feature we do not have (obligation 12). If golden values instead arrive via Pine Script `log.info()`, the format is one we control rather than TradingView's, and this limitation stops mattering. Do not close it on the assumption that the format will be CSV | **open — may become moot** |
+| 10 | **The CSV fixture loader does not handle quoted fields containing commas.** `readCsvFixture` in `@karatx/test-support` splits on `,` with no quote handling. The TradingView exports it serves are not believed to use quoted fields, and a half-implemented quote parser that looks correct is worse than none — but **this fails as silently wrong numbers, not as an error**, because a quoted `"4,637.29"` would split into two values and either throw a column-count error or, worse, shift every subsequent column. **When real golden data arrives, check whether any field contains a quoted comma before trusting the loader.** **STAYS OPEN, and may become moot:** TradingView's export is a paid feature we do not have (obligation 12). If golden values instead arrive via Pine Script `log.info()`, the format is one we control rather than TradingView's, and this limitation stops mattering. Do not close it on the assumption that the format will be CSV  | **T1.2 — was "open — may become moot". It stops being moot the moment a fixture contains a quoted comma** |
 | ~~10a~~ | ~~**REQUIRED, not optional: a CI job that runs unit tests with NO PostgreSQL service attached.**~~ **DISCHARGED 2026-08-27.** The `unit` job declares no `services:` block AND asserts nothing is listening on 5432 before running — omission is invisible, an assertion fails loudly if someone adds one. Green on CI #1 and every run since | done |
 | 10b | **Integration isolation is per *run*, not per *file*.** Each run gets its own ephemeral database, so two runs — CI and local, or two CI jobs — cannot collide. **Within** a run, files still share that one database and rely on `fileParallelism: false`. Revisit per-worker schemas if the integration suite becomes slow in Phase 1 | if suite slows |
 | 10c | **A pre-T0.6 leftover database `karatx_test` exists on the local server.** It does not match the current anchored naming pattern, so the sweep will correctly never touch it — "unrecognised means untouched". It is harmless clutter from the T0.4 scheme and can be dropped manually whenever convenient | cosmetic |
@@ -2149,7 +2259,7 @@ wondering whether it was ever considered.
 | 11 | **PHASE 2 PREREQUISITE — but REFRAMED 2026-08-27: it is Windows process-spawn cost, not suite size.** Measured wall clock: **18.2 s on Windows** (`66be0e4`, 4 packages, 132 tests) vs **4.3 s on Linux** (CI #1, 7 packages, 235 tests) — roughly **4x faster on nearly twice the tests**. Per-package Vitest durations in the Linux log total well under 4 s, so almost none of it is process spawn there. **The problem is `pnpm -r` spawning a Vitest process per package ON WINDOWS, and adding packages is not the threat we assumed.** That changes the fix: a single Vitest workspace run sharing one process targets exactly the right thing. **Still a Phase 2 prerequisite** — the edit-run loop happens on Windows, which is what affects daily work — but **re-measure locally first**, and record both numbers with their platform | **before Phase 2** |
 | 12 | **C3 indicator parity still needs TradingView's own computed values, and there is no route to them yet.** TradingView's *Export chart data* is a paid feature the user does not have, so the golden CSV planned for T0.6/T1.10 could not be produced. Without TradingView's own EMA and Stoch RSI numbers there is nothing to assert engine output *against*, and audit finding C3 — parity within a documented tolerance — cannot be closed by inspection alone. **Routes being explored, in order:** (1) Pine Script `log.info()` output, which would let the chart emit its own indicator values; (2) one month of a paid TradingView plan purely to run the export; (3) manual transcription of ~20 bars, enough for a spot check but not a fixture. **Blocks nothing in Phase 0 or Phase 1.** Required before **Phase 2** indicator work begins | **before Phase 2** |
 | ~~13~~ | ~~**T0.9 must set `NEXT_TELEMETRY_DISABLED=1` in the CI environment.**~~ **DISCHARGED 2026-08-27.** Set at workflow level so no job can forget it, and also pinned in `playwright.config.ts`'s webServer env | done |
-| 14 | **`pnpm typecheck` has a blind spot — audit it.** `vitest.shared.ts` sat at the repository root with a type error (it imported `UserConfig` from `vitest/node`, which exports it as `TestUserConfig`) and **no package tsconfig included it**, so nothing checked it. It surfaced only by accident, when `apps/web` happened to pull it in through a relative import. Root-level and config files outside every package's `include` are unchecked today. **Audit which files are outside every package tsconfig and decide deliberately whether each should be covered.** A typecheck with unknown blind spots is worse than one whose shape is known | **audit — not urgent** |
+| 14 | **`pnpm typecheck` has a blind spot — audit it.** `vitest.shared.ts` sat at the repository root with a type error (it imported `UserConfig` from `vitest/node`, which exports it as `TestUserConfig`) and **no package tsconfig included it**, so nothing checked it. It surfaced only by accident, when `apps/web` happened to pull it in through a relative import. Root-level and config files outside every package's `include` are unchecked today. **Audit which files are outside every package tsconfig and decide deliberately whether each should be covered.** A typecheck with unknown blind spots is worse than one whose shape is known  | **before T1.3 — was "audit — not urgent". **One instance found and CLOSED 2026-08-31**: `.railway/railway.ts` was reached by no typecheck at all, proven by planting a type error; closed by `tsconfig.iac.json` + `typecheck:iac`. The general audit remains, and finding one real instance raises the prior on others** |
 | ~~15~~ | ~~**T0.9 must build `apps/web` BEFORE running integration tests.**~~ **DISCHARGED 2026-08-27.** The integration job applies migrations, then builds `apps/web`, then runs the suite. Both are real dependencies: `apps/web`'s readiness tests read DATABASE_URL directly rather than creating an ephemeral database, and its instrumentation test spawns `next start`, which needs `.next` | done |
 | 16 | **`apps/web` computing strategy is unenforced.** F.1 says the web app reads what the worker wrote and never computes. That holds today by inspection only — no rule prevents `apps/web` importing an indicator from `packages/core` and calculating in the dashboard, producing two implementations that drift. The fix has a proven shape: an ESLint boundary plus a regression test, exactly as T0.2/T0.6 did for `packages/core`. Cheap now, and the reason to do it before Phase 6 builds the real dashboard | **before Phase 6** |
 | 17 | **T0.10 must re-measure worker boot-failure behaviour against however the worker actually runs on Railway.** T0.8 measured six failure modes under `tsx` **at commit `f9a75a5`** and all exited non-zero, so the worker needs no explicit `process.exit(1)`. **That result is valid for `tsx` only.** If production runs compiled output, a different entry point, or a process supervisor that wraps execution, the measurement must be repeated — believing a tsx result about production would be the minified-name mistake in a different costume. **Also check what Railway does with each exit code**: the lifecycle exits 0 on a clean shutdown and 1 when a hook failed or timed out, and that distinction is only useful if the platform acts on it | **T6.1 — was "T0.10 — firm"; re-dated 2026-08-31 by ADR-011, since there is no deployment to measure against until then** |
@@ -2158,7 +2268,7 @@ wondering whether it was ever considered.
 | ~~20~~ | ~~**Crash logging has never run in a real worker process.**~~ **DISCHARGED 2026-08-28.** `apps/worker/test/crash-harness.ts` installs the REAL `installCrashLogging` and crashes itself; `crash-logging.integration.test.ts` spawns it for both `uncaught` and `unhandled` and asserts it started, did not hang, exited non-zero, and emitted a fatal JSON line carrying `category` and `policy`. **A harness, deliberately NOT a `KARATX_CRASH_TEST` env var** — a production affordance existing only for a test is the wrong artefact and a genuine remote-crash primitive. **Proven by TWO mutations, not one** — see the refinement to the positive-control rule. Leaves obligation 23 | done |
 | ~~21~~ | ~~**Pool closure is unverified against a real database.**~~ **DISCHARGED 2026-08-28.** `apps/worker/src/lifecycle.integration.test.ts` opens a real `Pool`, forces three concurrent queries so backends genuinely exist, registers it with a real `Lifecycle` exactly as `boot.ts` does, shuts down, and counts backends in `pg_stat_activity` from a SEPARATE client. **Proven by two mutations, one per assertion:** removing `pool.end()` failed with *"3 backend(s) still attached"* after the full 5s poll; pointing the observer query at a nonexistent `datname` failed the POSITIVE CONTROL, which is the assertion that stops the test passing while verifying nothing. Polls rather than sleeps, and asserts on the last real reading | done |
 | 22 | **`isShuttingDown` has no production consumer.** OPS-3's "stops accepting work" is a SEAM, not a behaviour — `grep` finds it referenced only by `lifecycle.ts` and its own tests. Correct today, since there is no work until the feed exists. **T1.7 must wire the feed consumer to check it**, or the clause is never actually satisfied | **T1.7 — firm** |
-| 23 | **Nothing proves `index.ts` WIRES the crash handlers in.** Obligation 20 proves the module in a real process; delete `installCrashLogging(logger)` from `main()` and all four of its tests still pass. Two closure options, with costs: **(1)** an integration test that boots the real worker and kills its database mid-run — behavioural, but expensive and potentially flaky; **(2)** a static assertion that `index.ts` contains the call — cheap, and "index.ts calls installCrashLogging" is a fact about text that genuinely matters. **Preference recorded 2026-08-28: option 2**, on condition its failure message SAYS it tests text rather than behaviour, so nobody mistakes it for the stronger check. Decide when scheduled | unassigned |
+| 23 | **Nothing proves `index.ts` WIRES the crash handlers in.** Obligation 20 proves the module in a real process; delete `installCrashLogging(logger)` from `main()` and all four of its tests still pass. Two closure options, with costs: **(1)** an integration test that boots the real worker and kills its database mid-run — behavioural, but expensive and potentially flaky; **(2)** a static assertion that `index.ts` contains the call — cheap, and "index.ts calls installCrashLogging" is a fact about text that genuinely matters. **Preference recorded 2026-08-28: option 2**, on condition its failure message SAYS it tests text rather than behaviour, so nobody mistakes it for the stronger check. Decide when scheduled  | **before T1.3 — was unassigned. Same family as obligation 33 — a fact about the code that matters and nothing checks. Do both in one pass** |
 | 24 | **`apps/worker` has NO build step, so nothing verifies it becomes a deployable artefact.** It has no `build` script and runs `tsx src/index.ts`. CI therefore cannot check that it compiles, and T0.9's "build" criterion is unmeetable for it rather than merely narrowed. **T0.10 must decide whether production runs `tsx` or a compiled artefact** — and that decision drives obligation 17 (re-measure boot-failure behaviour against however it actually runs) and the pino-flush scope limit (buffered crash output was proven to survive under `tsx` only). Three findings, one underlying question | **T6.1 — was "T0.10 — firm"; re-dated 2026-08-31. ADR-009 answered the tsx-vs-artefact question, so what remains is verifying a deployable artefact, which needs a deployment** |
 | 25 | **Split STATUS.md.** Its own anchor lesson set the trigger "if this happens again, the file is telling us it needs splitting" — and it has now happened four times, most recently miscounting obligations by 11 because a regex matched three other tables. The file is past 1,200 lines of nested headings and pipe-delimited tables. **Proposed split: `docs/LESSONS.md` and `docs/OBLIGATIONS.md`**, both read independently of the rest and both edited most often by script; STATUS.md stays the handoff document. Makes scripted edits scope-safe by construction rather than by discipline | **before T1.2** |
 | 26 | **`Dependabot Updates` has been RED since 2026-08-29 — the proactive half of SEC-10 is not running.** `.github/dependabot.yml` defines it as exactly that: "`pnpm audit` in CI reports vulnerabilities that already exist; this opens pull requests to remove them." Enforcement is intact, DISCOVERY is not. **Leading hypothesis, unverified: pnpm 11.23.0 produces a lockfile version Dependabot’s `npm_and_yarn` ecosystem cannot parse** — read the run log before acting on it. Deferred deliberately, not forgotten: a security control that has stopped working may only be left alone WITH A DEADLINE. **At the start of T1.2, check whether the run is still red; if it is, FIX IT rather than deferring again** | **start of T1.2 — firm** |
@@ -2167,7 +2277,7 @@ wondering whether it was ever considered.
 | 33 | **ADR-003 is enforced by CONVENTION, not by a check.** No application code imports `runMigrations` — verified — but nothing asserts that it stays that way. A commit adding a boot-time migration would leave lint, typecheck, unit, integration and the build all green. The policy is protected by a comment in `migrate.ts` and by the ADR, which is documentation, not a guard. **This is the same shape as T0.7’s unenforced criterion and T0.9’s obligation 23** — a fact about the code that matters and that nothing checks. **Cheapest closure: a static assertion that no file under `apps/` imports `runMigrations`**, whose failure message says it tests imports rather than behaviour, so nobody mistakes it for the stronger check | **before T1.3** |
 | 34 | **DEPLOYMENT.md’s rollback procedure has never been used by anyone who was not present when it was written.** It was drafted and drilled by the same session, so every ambiguity in it was resolved by knowledge the reader will not have. **There is no honest way to close this except by someone running it cold** — and the first genuine test will be the first real incident. **Listed deliberately as a standing limitation rather than a task**: it is EXPECTED, not a gap to be closed now, and it should stay listed rather than being quietly resolved. When it is first used in anger, record what was unclear | **standing — review after first real use** |
 | ~~26~~ | ~~**Confirm the audit step reports without blocking, IN CI.**~~ **DISCHARGED 2026-08-28 by CI #14 at `91b0a55`, on the printed advisory rather than the job colour** — a green security job would have looked identical if the report line had produced nothing. The step printed the full advisory (package, `<=0.24.2`, `>=0.25.0`, the full dependency path, the GHSA link) and then `--- applying the blocking threshold ---`, and the job stayed green. **The `|| true` survived the runner: reporting changed, threshold did not** | done |
-| 27 | **NOTHING WATCHES THE HEALTH ENDPOINTS AFTER A DEPLOY GOES LIVE.** Railway queries the healthcheck only while a deployment is going live — *"Railway does not monitor the healthcheck endpoint after the deployment has gone live"*. **The 3am scenario, written out because "we have health endpoints" reads as covered and is not:** the database becomes unreachable; `/api/ready` starts returning 503, correctly; **nothing restarts the service; nothing alerts anybody**; Railway's UI still shows the deployment as live and healthy; the dashboard serves 503s until a human happens to look. The endpoints are correct — nothing is watching them. Needs an external uptime check or a scheduled probe that can page someone | **OPS-8 — firm** |
+| 27 | **NOTHING WATCHES THE HEALTH ENDPOINTS AFTER A DEPLOY GOES LIVE.** Railway queries the healthcheck only while a deployment is going live — *"Railway does not monitor the healthcheck endpoint after the deployment has gone live"*. **The 3am scenario, written out because "we have health endpoints" reads as covered and is not:** the database becomes unreachable; `/api/ready` starts returning 503, correctly; **nothing restarts the service; nothing alerts anybody**; Railway's UI still shows the deployment as live and healthy; the dashboard serves 503s until a human happens to look. The endpoints are correct — nothing is watching them. Needs an external uptime check or a scheduled probe that can page someone  | **T6.1 — was "OPS-8 — firm". Nothing is deployed under ADR-011, so there is no live deployment to watch until T6.1** |
 
 ---
 
