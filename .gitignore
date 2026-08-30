@@ -59,3 +59,7 @@ scratch/
 
 # Machine-readable CI test report (obligation 18). Generated only when CI=1.
 apps/worker/integration-report.json
+
+# Database dumps (T0.10 L3). From Phase 6 these contain journal entries and
+# trade notes - the most personal artefact the project holds. Never committed.
+backups/

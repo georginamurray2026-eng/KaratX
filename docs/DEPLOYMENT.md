@@ -213,6 +213,31 @@ notices inside the window.
 **Set a usage limit before deploying.** Railway supports configurable maximum
 spending thresholds. Use them.
 
+
+### A Railway SERVICE and its VOLUME are separate objects
+
+**Deleting a service does NOT delete its volume.** Observed directly during the
+T0.10 teardown: the Postgres service was deleted, and `postgres-volume` remained
+on the project canvas with nothing attached to it. The staged-changes panel had
+already signalled this — it enumerated "Service will be deleted" and said
+nothing about the volume — which is worth trusting as a rule. **A staged change
+that enumerates one resource and not the other is telling you what it will
+actually delete.**
+
+An orphaned volume continues to exist and, since Railway bills volumes "at a
+rate per GB / minutely", presumably continues to bill. Deletion is also not
+immediate: "when a volume is deleted, it is queued for deletion and will be
+permanently deleted within 48 hours".
+
+**"Delete the service to stop the cost" is WRONG ADVICE on this platform.**
+
+- **Full teardown:** delete the **PROJECT**. It removes services and volumes together.
+- **Keeping the project:** delete the **volume FIRST**, then the service — once the service is gone the volume's controls are harder to reach.
+
+**Relevant to T6.1 beyond teardown:** the same separation applies when replacing
+or recreating a database service. A "clean slate" that deletes only the service
+inherits the old volume.
+
 ### Serverless / sleeping — NEVER ENABLE ON THE WORKER
 
 Railway's Serverless is **opt-in per service**, not automatic, and not on by
@@ -271,7 +296,116 @@ since they are idempotent — but it should be a known fact rather than a guess.
 
 ---
 
-## Backups and restore
+## Backups and restore — LOCAL (the live procedure)
+
+**This is the procedure in force under ADR-011.** The Railway section below
+describes a hosted arrangement that is NOT currently in use; read it at T6.1.
+
+```
+pnpm db:backup            → backups/karatx-YYYYMMDD-HHMMSS.dump  (UTC, pg_dump -Fc)
+pnpm db:restore <file>    → pg_restore --clean --if-exists --exit-on-error
+```
+
+Both run `pg_dump`/`pg_restore` **inside the container**, so there is no client
+to install and the client version always matches the server. Both refuse to run
+unless the volume the database is actually using is the volume the compose file
+declares — a drill that destroys an unused volume would otherwise pass while
+proving nothing. `backups/` is git-ignored.
+
+### ⚠️ WHAT A RESTORE CANNOT RECOVER
+
+**Read this BEFORE deciding to restore, not after.** Restoring a dump from *N*
+days ago discards *N* days of writes. What that costs depends entirely on which
+writes, and the two halves are wildly asymmetric:
+
+| Data | Recoverable? | How |
+|---|---|---|
+| **Candles** | **YES** | Re-fetch from Twelve Data. History reaches back to **2020-01-24** at 15min and **2020-04-06** at 1min. A measured full 6.6-year backfill was 47 requests, ~6 minutes |
+| **Setups, states, grades** | **Only while the engine code is unchanged** | Re-derivable by replay — but once the engine changes, old setups cannot be reproduced identically |
+| **Alerts sent** | **NO** | Records of something that happened at a moment that has passed |
+| **Journal and trade log** | **NO** | Human-entered. Nothing can reconstruct them |
+| **Reasoning / LLM runs** | **NO** | Non-deterministic, and derived from live state that no longer exists |
+
+**A single request returns 5,000 bars — 52 days at 15min — but that is one
+request's coverage, NOT a limit.** There is no 52-day window; the bound is
+provider history, which starts in 2020. Do not let this number become a belief
+that older candles are lost.
+
+**THE ASYMMETRY, STATED PLAINLY.** Through Phase 3 a restore costs an API call.
+**From Phase 4 the backup is not a convenience, it is the only copy.**
+
+**One further loss that survives re-fetching:** re-fetched bars are confirmed at
+restore time, so `occurred_at` is preserved and `confirmed_at` is not. Anything
+measuring detection latency across a re-fetched window measures the restore, not
+the system.
+
+### The drill — `pnpm db:drill`, PERFORMED 2026-08-30
+
+**It is a script, not a checklist.** It found a real defect the first time it
+ran, and the case that found it was a deliberate failure rather than the happy
+path. Re-run it whenever `db:backup` or `db:restore` changes — same reasoning as
+T0.9's deliberate-red exercise.
+
+It **destroys the local database**, and refuses to run against one holding more
+than 1,000 rows in any table without `--force`.
+
+```
+[1]  interlock, and sweep any sentinel left by an earlier FAILED run
+[2]  insert a sentinel row
+[3]  pnpm db:backup                          → dump + manifest
+[4]  NEGATIVE  truncated dump, three ways    → all rejected, database unchanged
+[5]  NEGATIVE  empty file, missing file      → both rejected
+[6]  docker compose down -v                  ← destroys karatx-pgdata
+[7]  POSITIVE CONTROL: sentinel must be ABSENT
+[8]  pnpm db:restore                         → integrity + content verified
+[9]  sentinel present, EXACTLY ONE, original UUID
+[10] clean up
+```
+
+**Step 7 is the test.** Without it a row that survived and a row that was
+restored are indistinguishable.
+
+**Result: PASSED.** The restore returned the sentinel with its original UUID,
+both tables, three indexes, the column defaults and the migration ledger.
+
+### The three verification layers, and why the order matters
+
+| | Layer | Catches |
+|---|---|---|
+| 1 | **sha256 against the manifest, BEFORE any change** | truncation and corruption, while the database is still whole |
+| 2 | `pg_restore --exit-on-error` | anything the archive itself rejects |
+| 3 | **row counts against the manifest, AFTER** | a restore that succeeded and produced the wrong content |
+
+`pnpm db:backup` writes a `.manifest.json` beside every dump: sha256, byte
+count, per-table row counts, index count and migration-ledger count. Counts are
+read either side of the dump and must agree, so a backup taken while something
+was writing is refused rather than described wrongly.
+
+**A dump with NO manifest is REFUSED, not warned about.** `--unverified` forces
+it. This was the defect the drill found on its first run: the truncated copy had
+no manifest, so layer 1 was skipped silently and only `pg_restore` caught it. In
+an incident, a dump copied without its sidecar would have had no integrity check
+at all.
+
+**On failure, layer 3 makes the database OBVIOUSLY broken rather than plausibly
+working:** `public` is renamed to `failed_restore_<timestamp>` and an empty
+schema left in its place. Nothing can run against partial data by accident, and
+the evidence survives for diagnosis.
+
+**Why `-Fc` and not plain SQL.** A plain-SQL dump fed to `psql` needs
+`ON_ERROR_STOP=1` or it exits 0 having applied half the file — the classic trap.
+A custom-format archive validates its table of contents before applying
+anything, which is why every truncation case here fails before the first `DROP`.
+
+**⚠️ STILL NOT GUARANTEED: atomicity on a LARGE dump.** Layers 1 and 3 bound the
+problem, but `--exit-on-error` stops the restore without undoing it. On a
+multi-gigabyte Phase 1 dump, corruption late in the data stream could fail after
+earlier statements committed — layer 3 would then catch it and quarantine, which
+is a detection, not a prevention. `--single-transaction` would make it a
+guarantee. **Obligation 27, due at T1.3**, when a table large enough to prove it
+exists.
+
+## Backups and restore — RAILWAY (not in use; read at T6.1)
 
 Railway offers **daily** (6 days), **weekly** (1 month) and **monthly** (3
 months) schedules on the Postgres service's volume.

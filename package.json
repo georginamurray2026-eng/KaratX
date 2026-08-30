@@ -21,6 +21,9 @@
     "db:reset": "docker compose down -v && docker compose up -d --wait postgres",
     "db:generate": "pnpm --filter @karatx/db db:generate",
     "db:migrate": "pnpm --filter @karatx/db db:migrate",
+    "db:backup": "node scripts/db-backup.mjs",
+    "db:restore": "node scripts/db-restore.mjs",
+    "db:drill": "node scripts/db-drill.mjs",
     "typecheck:iac": "tsc --noEmit -p tsconfig.iac.json"
   },
   "devDependencies": {
