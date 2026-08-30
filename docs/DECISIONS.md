@@ -4,13 +4,17 @@ Decisions are numbered, dated, and immutable once accepted. To change one, write
 
 | ADR | Title | Status | Date |
 |---|---|---|---|
-| ADR-001 | Monorepo with separate `web` and `worker` processes | Accepted (pre-recorded, to be written in T0.10) | — |
-| ADR-002 | PostgreSQL + Drizzle | Accepted (pre-recorded, to be written in T0.10) | — |
+| **ADR-001** | **Monorepo with separate `web` and `worker` processes** | **Accepted** | **2026-08-29** |
+| **ADR-002** | **PostgreSQL + Drizzle** | **Accepted** | **2026-08-29** |
 | **ADR-003** | **Migration policy** | **Accepted** | **2026-08-25** |
-| ADR-004 | Logging and error model | Accepted (pre-recorded, to be written in T0.10) | — |
+| **ADR-004** | **Logging and error model** | **Accepted** | **2026-08-29** |
 | **ADR-005** | **Market data provider** | **Accepted, conditional** | **2026-08-25** |
 | **ADR-006** | **Extensionless relative imports** | **Accepted** | **2026-08-26** |
 | **ADR-007** | **TypeScript pinned to 6.x** | **Accepted** | **2026-08-26** |
+| **ADR-008** | **Market data provider, re-evaluated** | **Accepted** | **2026-08-27** |
+| **ADR-009** | **Worker runs `tsx` in production** | **Accepted** | **2026-08-28** |
+| ADR-010 | Railway configuration mechanism | **NOT WRITTEN** — dangling reference in `.railway/railway.ts` | — |
+| **ADR-011** | **Local-only hosting for Phases 1–5** | **Accepted** | **2026-08-30** |
 
 ---
 
@@ -255,6 +259,40 @@ Consequences, recorded so this is not rediscovered the hard way:
 ### Reversibility
 
 **Easy.** The policy is expressed in scripts and one small entry point. Switching to boot-time migration would be a few lines — which is precisely why the reasoning is recorded here, since the change would be cheap to make and expensive to discover.
+
+---
+
+### Gap identified 2026-08-30 (T0.10) — no down path was ever specified
+
+**This ADR made migrations immutable and never said how to get back.** Each half
+is defensible alone; the combination was never examined:
+
+- Drizzle generates forward-only SQL, and `packages/db/src/bin/migrate.ts` has
+  no down capability.
+- An applied migration cannot be edited, by this ADR's own rule.
+
+**So "roll back a bad migration" currently means "restore from backup".** That
+is a coherent recovery story, but it was never *chosen* — it is what remains
+once the other routes are closed, and it went unstated because the
+question asked of this ADR was always "is the policy correct", never "what
+happens when a migration is wrong".
+
+**To be precise about what was and was not missed.** This ADR DID record
+"OPS-7 (backup with a *tested* restore) is untouched by this ADR and remains
+open for T0.10". The backup risk was tracked. **What was never recorded is the
+COUPLING** — that OPS-7 is not an adjacent operational item but the mechanism
+this ADR silently depends on. Tracked separately, it was schedulable
+separately, and deferring it to Phase 6 would have left the migration policy
+with no recovery path for six phases without anyone reading it as a change to
+this decision.
+
+**It makes a tested backup a HARD DEPENDENCY of the migration policy**, not an
+operational nicety. Until T0.10 L3 has been performed, this ADR has no recovery
+path at all.
+
+The decision itself is unchanged; this note amends nothing. What follows from it
+— that L3 precedes L4, and that L3 is a precondition of T1.3 — is recorded in
+BUILD-PLAN.md.
 
 ---
 
@@ -829,3 +867,97 @@ decoration and policy should move to the raise site. That is the review trigger.
   `.reveal()` appears at exactly one place per entry point.
 - Anything using `console.log` directly bypasses all three. Recorded in
   STATUS.md as an honest gap since T0.3.
+
+---
+
+## ADR-011: Local-only hosting for Phases 1–5
+
+**Date:** 2026-08-30
+**Status:** **Accepted.**
+**Task:** T0.10
+**Related:** ADR-001 (two processes), ADR-003 (migration policy), ADR-009 (`tsx` in production), DEPLOYMENT.md (cost), STATUS.md — "A COST MODEL is an architectural constraint"
+
+---
+
+### Decision
+
+**KaratX runs entirely on one local machine for Phases 1–5. Postgres in Docker, `web` and `worker` started by hand. Nothing is deployed and nothing is reachable from the internet. Cost: zero.**
+
+The Railway work stands as preparation, not as infrastructure. **Revisit at Phase 6.**
+
+---
+
+### Reasoning
+
+**Three reasons, in the order they actually weighed.**
+
+**1. There is one user, and no reason to be reachable.** A hosted deployment's benefit is availability to others and availability when the machine is off. The first is unwanted at this stage; the second does not matter until Phase 6.
+
+**2. $9–13/month for a system that does not yet do anything.** Measured against what exists today — a schema, a health endpoint and a CI pipeline — that is paying for a property nothing currently needs.
+
+**3. THE DECIDING REASON: cost pressure was about to force an architectural merge.** The Free tier includes $1/month of usage; two always-on services plus Postgres is $9–13. The obvious way to close an order-of-magnitude gap is to run one service instead of two — which would have reversed ADR-001 on financial grounds.
+
+ADR-001 split `web` and `worker` because a dashboard deploy must not drop the market feed and because the feed must be a singleton. **Both reasons still hold, and both would have been surrendered.** Railway's zero-downtime deploys overlap containers, so a merged service would run two feed instances briefly on every deploy — duplicate writes and duplicate alerts, on precisely the singleton the ADR exists to protect.
+
+**Local hosting removes the pressure without reversing the engineering decision.** That is the point of this ADR. Two processes are preserved, and preserved for their original reasons rather than by an accounting accident.
+
+---
+
+### ACCEPTED CONSEQUENCES
+
+**These are costs we are choosing to pay. None of them is solved.**
+
+#### 1. The feed only runs while the machine is awake
+
+Phase 1 is a continuous feed. Sleep, shutdown, reboots and closing the lid all produce **genuine gaps in collected data**. T1.5's trading-calendar authority will classify them correctly, which means **we will manufacture the data-quality events the system exists to detect.** Every one will be real, and none will be a provider fault.
+
+**What this does to Phase 9's backtest, honestly:**
+
+- **The gaps are NOT RANDOM.** They correlate with when the operator sleeps, so they fall on the same hours of the trading day — one session systematically under-sampled. This biases the sample rather than merely shrinking it, and a backtest run over it would silently under-represent whatever happens in those hours.
+- **Indicator warm-up spans gaps invisibly.** An EMA computed across a fourteen-hour hole produces a number that looks entirely ordinary. Nothing about the output announces the discontinuity.
+- **Price data is REPAIRABLE by backfill.** Historical bars can be fetched after the fact and reconciled, which is what T1.5 and the reconciliation work are for. With backfill, the bar series can be made continuous and honest.
+- **Latency data is NOT repairable, and this is the sharp edge.** A backfilled bar is confirmed long after it occurred. Our `occurred_at` / `confirmed_at` model makes that visible rather than hiding it — which is the model working correctly, and also the reason **anything whose behaviour depends on WHEN WE LEARNED SOMETHING cannot be backtested from a gapped local feed.** Detection latency, alert timeliness, and any rule sensitive to confirmation delay are unbacktestable over gap-repaired periods.
+
+**The practical consequence for Phase 9: the backtest must be able to distinguish live-collected bars from backfilled ones, and must exclude gap-repaired windows from any latency-sensitive measurement.** If that distinction is not in the schema by then, this decision will have quietly corrupted the evaluation. It is an obligation created here, not a risk noted here.
+
+#### 2. No alerts away from the desk
+
+**This is Phase 6's entire premise**, so the revisit trigger is not arbitrary — Phase 6 is the first phase whose value cannot be demonstrated locally at all.
+
+#### 3. The deployment work is deferred, not removed — and gets harder
+
+By Phase 6 there will be more schema, more configuration, a Telegram token to hold, and more to go wrong on first deploy. Two specific decay risks:
+
+- The Railway IaC SDK's own README says it "is in beta and there will be breaking changes". `railway.ts` may not work by Phase 6.
+- Railway's Config as Code has a hard cutoff of **2026-12-01**, so the fallback route may be gone as well.
+
+**DEPLOYMENT.md's settings table is the durable artefact**, not `railway.ts`. It records every value and can be applied by hand on any platform. That was already its stated purpose; this decision makes it load-bearing.
+
+---
+
+### The revisit trigger
+
+**Phase 6 — Telegram alerting.** Not a date, and not "when it feels slow".
+
+The reasoning, recorded so a future reader does not have to reconstruct it: an alerting system that only fires while its operator is at the desk is not an alerting system. Until Phase 6, everything KaratX does is either collection (repairable by backfill) or analysis (re-runnable at any time). **Phase 6 is the first capability whose value is destroyed by downtime rather than merely delayed by it.**
+
+At that point re-open: hosting cost against current usage, whether `web` needs hosting at all or only `worker`, and whether the Railway configuration in DEPLOYMENT.md still applies.
+
+---
+
+### Alternatives considered
+
+**1. Hosted on Railway Hobby, $9–13/month.** Rejected for now on the reasoning above — not because it is wrong, and it is the expected outcome at Phase 6.
+
+**2. Merge `web` and `worker` into one service.** Rejected on both engineering and arithmetic grounds. Railway bills resources, not services, so merging saves one Node runtime's baseline footprint — roughly $1–2/month — **not** the $5 the tier price suggests. The trade was never "reverse ADR-001 for $5/month"; it was "surrender the singleton guarantee for about $1.50/month".
+
+**3. Worker hosted elsewhere, on another provider's free tier.** Rejected on non-financial grounds. It forces `DATABASE_PUBLIC_URL` and puts the database on the public internet; it adds 20–100 ms to every write on a feed making frequent small ones, invalidating timing assumptions in reconciliation and idempotency; it doubles the operational surface for a one-person project. **And the free tiers that would host it are the ones that sleep** — reintroducing, on a platform where it is not opt-in, the exact failure Railway's opt-in Serverless setting allowed us to avoid.
+
+---
+
+### What this does NOT change
+
+- **ADR-001 stands.** Two processes, for their original reasons.
+- **ADR-003 stands.** Migrations remain a deliberate step, run by hand rather than by a pre-deploy container. The property being protected — no application process running while migrations apply — is easier to guarantee locally, not harder.
+- **ADR-009 stands**, and its `tsx` provision must still be applied.
+- **`packages/core` performs no I/O.** Unaffected, and the reason the backtest can be honest at all.

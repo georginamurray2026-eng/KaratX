@@ -147,20 +147,62 @@ Each phase has a **quality gate**. Do not start the next phase until the gate is
 
 ---
 
-### T0.10 — Railway deployment and project documentation
+### T0.10 — Local operational readiness and project documentation
 
-**Objective:** both services live, and the repository able to brief a fresh Claude Code session.
-**Files:** `railway.json` or service config, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, `docs/TESTING.md`, `docs/SECURITY.md`, `docs/DEPLOYMENT.md`, `README.md`; expands the existing `CLAUDE.md` and `docs/STATUS.md`
+**RE-SCOPED 2026-08-30 by ADR-011.** Was "Railway deployment and project documentation". Deployment moved wholesale to **T6.1**; it is deferred, not met, and nothing below silently absorbs it.
+
+**Objective:** the project provably recoverable on one machine, and the repository able to brief a fresh Claude Code session.
+**Files:** `docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, `docs/TESTING.md`, `docs/SECURITY.md`, `docs/DEPLOYMENT.md`, `README.md`, `scripts/db-backup.*`, `scripts/db-restore.*`; expands `CLAUDE.md` and `docs/STATUS.md`
 **Depends on:** all of Phase 0
 **Acceptance criteria:**
-- `web` and `worker` deploy from the same repo as separate Railway services, both healthy
-- Migrations run as a deliberate release step
-- Secrets configured in Railway, absent from Git
-- Rollback procedure documented and **performed once** to prove it works
-- `CLAUDE.md` states the project, the three hard invariants (F.3), the stack, the commands, and where docs live
-- `docs/STATUS.md` accurately reflects reality
-- ADRs written: ADR-001 monorepo + worker split, ADR-002 Postgres + Drizzle, ADR-003 migration policy, ADR-004 logging + error model
+
+- **L1.** Migrations run as a deliberate step: `pnpm db:migrate`, invoked by a human, never at boot
+- **L2.** No secrets in Git history — verified, not assumed
+- **L3. Local backup and restore drill, PERFORMED ONCE.** `pg_dump` to a git-ignored directory, the volume then deliberately destroyed, and the restore proven — including a **positive control** that the sentinel data is absent after destruction and present after restore
+- **L4. Local rollback drill, PERFORMED ONCE.** Three parts: a code revert returns the system to working; **old code runs against new schema** (which is the only test ADR-003's forward-compatibility amendment has ever had); and a bad migration is recovered from, end to end
+- **L5.** `CLAUDE.md` states the project, the three hard invariants (F.3), the stack, the commands, and where docs live
+- **L6.** `docs/STATUS.md` accurately reflects reality
+- **L7.** ADRs written: ADR-001 monorepo + worker split, ADR-002 Postgres + Drizzle, ADR-003 migration policy, ADR-004 logging + error model
+- **L8.** OPS-5 — verify nothing depends on local filesystem persistence
+
+> **WHY L3 AND L4 ARE NOT DEPLOYMENT WORK WEARING A LOCAL COSTUME.**
+>
+> **There is no down-migration path.** Drizzle generates forward-only SQL,
+> `packages/db/src/bin/migrate.ts` has no down capability, and ADR-003 makes
+> applied migrations immutable so a bad one cannot be edited. **The only
+> recovery from a bad migration is: restore from backup, then write a new
+> forward migration.** Backups are therefore not parallel to rollback — they
+> are its ONLY mechanism, which is why L3 must be proven before L4.
+>
+> **And `pnpm db:reset` runs `docker compose down -v`**, destroying the
+> `karatx-pgdata` volume in one command. It differs from `pnpm db:down` by one
+> word and by everything. From Phase 1 that volume holds years of candle
+> history — the asset the whole project rests on, some of it not re-fetchable
+> within free-tier limits. Both drills must be done **before Phase 1 puts
+> anything valuable in it.**
+
 **Risks:** OPS-5 — verify nothing depends on local filesystem persistence
+
+---
+
+### T6.1 — Deployment (DEFERRED from T0.10)
+
+**Deferred 2026-08-30 by ADR-011.** Trigger: Phase 6 needs continuous uptime, because an alerting system that only fires while its operator is at the desk is not an alerting system.
+
+**Objective:** both services live and healthy on a hosting platform.
+**Depends on:** T0.10, and a decision to pay (est. $9–13/month; re-price at the time)
+**Acceptance criteria:**
+
+- **D1.** `web` and `worker` deploy from the same repo as separate services, both healthy
+- **D2.** The healthcheck proven to work **as a deploy gate** — a deployment that cannot reach its database must fail rather than go live
+- **D3.** Migrations run as a pre-deploy release step, with a failure proven to block the deploy
+- **D4.** Secrets configured on the platform, absent from Git
+- **D5.** Platform rollback procedure documented and **performed once**
+- **D6.** Backup and restore proven against the hosted database
+
+**Preparatory work already done and NOT APPLIED:** `.railway/railway.ts`, `docs/DEPLOYMENT.md`'s settings table and cost section. Read ADR-011's decay warnings first — the Railway IaC SDK is beta, and Config as Code is withdrawn on 2026-12-01, so neither may still work.
+
+**Before starting T6.1:** confirm Serverless is OFF for `worker`. It is opt-in and off by default, so this is a check against human error, not an open question.
 
 > **Amended 2026-08-26.** `CLAUDE.md` and `docs/STATUS.md` were originally
 > **created** in this task. Both were pulled forward to T0.6 and now exist.
@@ -227,6 +269,13 @@ Each phase has a **quality gate**. Do not start the next phase until the gate is
 ---
 
 ### T1.3 — Candle storage with idempotent upsert
+
+**PRECONDITION — CHECK BEFORE STARTING T1.3.** The backup and restore drill
+(T0.10 L3) must have been **performed**, not merely written. T1.3 creates the
+table that will hold years of candle history in a Docker volume that
+`pnpm db:reset` destroys in one command. An untested restore procedure is
+indistinguishable from no restore procedure until the moment it matters. If L3
+has not been performed, do it first.
 
 **Objective:** a candles table that cannot be corrupted by duplicate delivery.
 **Files:** `packages/db/schema/candles.ts`, migration, `packages/db/queries/candles.ts`
