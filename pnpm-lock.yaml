@@ -119,7 +119,15 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
 
-  packages/contracts: {}
+  packages/contracts:
+    dependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@karatx/test-support':
+        specifier: workspace:*
+        version: link:../test-support
 
   packages/core: {}
 

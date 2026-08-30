@@ -1,8 +1,10 @@
 /**
  * `@karatx/contracts` - Zod schemas shared across every boundary.
  *
- * Populated in T1.2: Candle, Tick, Instrument, Timeframe, Provider - each
- * defined once and imported everywhere.
+ * Defined once here and imported everywhere: nothing downstream declares its
+ * own shape for a Candle, a Price or an instant.
  */
+
+export { Candle, Instrument, Price, Provider, TIMEFRAMES, Timeframe, Timestamp } from './market'
 
 export const CONTRACTS_PACKAGE_NAME = '@karatx/contracts' as const
