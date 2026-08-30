@@ -1059,6 +1059,73 @@ So the repository is not blind, and the loss is real but narrower than it first
 looks. Saying "security scanning is broken" would overstate it; saying "it may
 clear itself" would understate it. Obligation 26 carries the deadline.
 
+### The FIRST fix that addresses a symptom is not always the fix that addresses the failure
+
+**Three mechanisms were needed where one looked sufficient, and the drill is
+what showed the gap between them.**
+
+The T0.10 L3 restore began with one guard: `pg_restore --exit-on-error`. It is
+the obvious fix, it is necessary, and on its own it is not enough. Running the
+failure path produced a second requirement, and reasoning about what it still
+could not catch produced a third:
+
+| Layer | Catches | What the others MISS |
+|---|---|---|
+| sha256 vs manifest, **before** any change | truncation, corruption | the exit code catches this only AFTER starting |
+| `--exit-on-error` **during** | anything the archive rejects | says nothing about content |
+| row counts vs manifest, **after** | a restore that succeeded with the WRONG content | neither of the above looks at rows |
+| the sentinel | a restore that was a **no-op** | counts alone cannot distinguish "restored" from "never emptied" |
+
+**None is redundant, and no single one of them would have been enough.** The
+error-code layer is the one everybody writes; it is the one that catches the
+least.
+
+### A defect in the FIRST version of a data-loss procedure, past review by two people
+
+**Found on the drill's first run, and only because the drill exercised the
+FAILURE path.**
+
+The truncated test dump had no manifest beside it, so the integrity layer was
+skipped **silently** and only `pg_restore` caught it. The consequence in real
+use: a dump copied somewhere without its sidecar would have had **no integrity
+check at all**, and the warning that replaced it was the kind nobody reads
+during an incident. A missing manifest is now a refusal.
+
+**Both of us reviewed that design and neither of us saw it.** It was not caught
+by care, by reading, or by a second pair of eyes — it was caught by executing
+the case that was supposed to fail.
+
+**A drill that tests only success would have shipped it**, and it would then
+have been discovered during an actual restore: the one moment when learning that
+your recovery procedure lies is least survivable.
+
+A second defect appeared on the next run, of the same kind: the failed run left
+its sentinel behind and poisoned the following run's verification. **A drill
+that cannot be re-run after it fails is not re-runnable** — and a drill's first
+real user is usually someone whose previous attempt just failed.
+
+### "The command failed, so nothing happened" is an ASSUMPTION, not a property
+
+**Failure is not atomic unless something makes it so.** The assumption is made
+constantly, it is usually right, and it is not guaranteed.
+
+**Stated honestly for this codebase: we have NOT observed a non-atomic failure
+here.** Every one of the five deliberate failures on 2026-08-30 left the
+database bit-for-bit unchanged — `pg_restore` validates a custom-format
+archive's table of contents before applying anything, so a damaged file fails
+before the first `DROP`.
+
+**But that is a property of SMALL dumps, not a property of the command.**
+`--exit-on-error` stops the restore; it does not undo it. On a multi-gigabyte
+Phase 1 dump, corruption late in the data stream can fail after earlier
+statements have committed. Layer 3 would then catch it and quarantine the
+schema — **detection, not prevention.**
+
+**Recorded as a reasoned risk, not a measurement**, precisely so a future
+session does not cite it as something that was seen. `--single-transaction`
+would convert it into a guarantee; obligation 27 carries it to T1.3, when a
+table large enough to demonstrate the difference exists.
+
 ### A deferred risk should be made CONCRETE before it is deferred
 
 **"Check this later" is not a plan. Ask what the failure would LOOK like — and
