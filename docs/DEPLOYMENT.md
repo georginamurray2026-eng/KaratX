@@ -277,7 +277,99 @@ the reading so it is not re-litigated.
 
 ---
 
-## The rollback drill
+## Rolling back a bad change — LOCAL (the live procedure)
+
+**Run `pnpm rollback:check <commit>` first. It answers both gating questions and
+refuses when the answer is "do not revert".** A procedure that CHECKS beats one
+that TELLS, because this is read by someone in a hurry whose last change broke
+something.
+
+```
+1. IS THE WORKING TREE DIRTY?
+
+   A recovery is rarely started from a clean tree - the person running it is
+   usually mid-edit. `git revert` refuses on a dirty tree, and the reflex
+   answer to that refusal is `git commit -am` or `git checkout .`, which is
+   how T0.9 destroyed two uncommitted edits.
+
+     git stash push -u -m "before rollback"     keep it, set it aside
+     git commit -m "wip"                        keep it, on the record
+
+   Choose deliberately. Do not improvise under pressure.
+
+2. DOES THE COMMIT CONTAIN A MIGRATION?          ← A QUESTION, NOT A COMMAND
+
+   YES → DO NOT REVERT. Go to 4.
+   NO  → go to 3.
+
+3. CODE-ONLY. Safe to revert.
+
+     git revert --no-edit <sha>
+     <REBUILD and RESTART whatever is running>
+     verify the SPECIFIC behaviour that broke
+
+4. THE COMMIT CONTAINED A MIGRATION. Reverting the code leaves the new schema
+   live and the old code meeting a shape it does not expect. ADR-003 makes the
+   migration immutable, and there is no down path.
+
+     pnpm db:restore <backup taken BEFORE that migration>
+     read "WHAT A RESTORE CANNOT RECOVER" before you do - it tells you what
+       you are about to lose
+     write a NEW forward migration correcting the mistake
+```
+
+### ⚠️ Reverting the code is NOT enough when a migration was involved
+
+**Measured 2026-08-31, not argued.** With the database one migration ahead of
+the code — via the most forward-compatible change that exists, an **additive
+nullable column** — the readiness endpoint reports:
+
+```
+expected 503 to be 200
+expected 'not_ready' to be 'ready'
+```
+
+`packages/db/src/status.ts` computes `inSync` as `pending.length === 0 &&
+unknown.length === 0`, where `unknown` means **the database is ahead of the
+code**. So a rolled-back deployment is reported not-ready *whatever* the
+migration did.
+
+**On a hosted deployment the healthcheck is a deploy gate, so that rollback
+would never go live.** Rollback-without-restore is therefore not available to
+us for any change that included a migration — which is why step 2 is a question
+and step 4 exists. See obligation 28.
+
+### Four ways a rollback silently does not work
+
+**All four were performed on 2026-08-31, with the observable recorded before and
+after. None is hypothetical.**
+
+| # | Failure | Measured |
+|---|---|---|
+| 1 | **Reverted the wrong thing** | `git revert` exit **0**, oracle exit **1** — the revert succeeded and the defect survived |
+| 2 | **Process never restarted** | source correct on disk, `git revert` exit 0, endpoint still `HTTP 200 ready` with `connected:false`. Only a rebuild + restart produced `HTTP 503 not_ready` |
+| 3 | **Code back, schema ahead** | additive nullable column, code reverted → `503`, `inSync:false` |
+| 4 | **Restore was a no-op** | covered by the L3 sentinel |
+
+**FAIL-2 is the one to expect in practice.** From outside, a reverted-but-not-
+restarted process is *indistinguishable* from a rollback that did nothing: the
+files are right, git is clean, and the endpoint still lies. It is a process-
+lifecycle failure wearing a git failure's clothes.
+
+### The distinguishing principle
+
+**A rollback that worked shows a STATE CHANGE at a named observable.** If
+nothing was red and is now green, you have not observed a rollback — you have
+observed a green suite, which was equally true while the defect was live for
+everything except the one thing that mattered.
+
+So name the observable before reverting. In the drill it was
+`apps/web/app/api/ready/route.integration.test.ts` — `expect((await
+GET()).status).toBe(503)` — red with the defect, green after.
+
+---
+
+## The rollback drill — RAILWAY (not in use; read at T6.1)
 
 **A documented rollback nobody has performed has not been shown to work.** Run
 this once, deliberately, and record the result in STATUS.md.
