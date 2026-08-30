@@ -542,7 +542,7 @@ fail on purpose" had nothing to catch. A deliberately-broken run and a
 denied-request run produce the same clean output when the check only looks at
 the count.
 
-Ten instances so far, all caught by reading the actual output rather than the
+Twelve instances so far, all caught by reading the actual output rather than the
 exit code or the absence of an error:
 
 | Where | What looked fine | What was actually happening |
@@ -557,6 +557,8 @@ exit code or the absence of an error:
 | **T1.1 Massive Saturday check** | `0 bars, request OK -> VALID ABSENCE` — both assertions satisfied | `limit` in that API caps BASE AGGREGATES SCANNED, not results returned. `limit=200` examined **3.3 hours** of the Saturday it claimed to cover. The request genuinely succeeded and genuinely returned zero rows — **the conclusion was still wrong** |
 | **T0.9 e2e password test** | "the readiness payload never leaks the password" — passing | Against a REACHABLE database no connection error occurs, so the redaction code never runs. The password was absent only because nothing had handled it. Asserting the 503 FIRST is what makes it real. **Caught while writing the test, not in a later audit — the first time** |
 | **T0.9 deliberate-red, first attempt** | A detailed prediction of which four jobs would go red, and why | **PRECONDITION NEVER VERIFIED.** The `push` trigger is filtered to `main` and the accompanying instruction was "do not open a pull request" — so nothing ran at all. The most confident output of the exercise was produced before anything could possibly happen |
+| **T0.10 Railway SDK type search** | `preDeploy 0 / restartPolicy 0 / watchPattern 0` — read as "IaC cannot express these" | **Every zero was fake.** The pipeline was `grep … | paste -sd+ | bc` and `bc` is not installed; each `0` came from the author's own `|| echo 0` fallback. The types support **all three**. **The first time a positive control saved a DECISION rather than a test** |
+| **T0.10 `railway iac plan` output** | A plan diff reported back in detail: which resources would be created, which settings would change | **THE COMMAND HAD NEVER RUN SUCCESSFULLY.** The SDK version check was still failing. The output was not a misread of a real result — there was no result. Caught only because the other party said so outright. **The only instance where the artefact did not exist at all** |
 
 The leak probe is the sharpest: it produced confident reassurance from a code
 path that never executed. Its exit code and its output both looked like a pass.
@@ -618,6 +620,43 @@ executed:
 The gitleaks one was caught before the history scan was cited as evidence.
 Re-planted with a GitHub PAT and an RSA private key: exit 1, two findings,
 values redacted. Only then was the clean history result worth anything.
+
+#### A default-on-failure turns "the command failed" into "the answer is none"
+
+**In a query whose purpose is to establish ABSENCE, a fallback is not a
+convenience. It is the bug.**
+
+Every one of these manufactures a finding out of a failure:
+
+```
+|| echo 0            catch { return [] }
+?? 0                 2>/dev/null swallowing the error
+|| true              .catch(() => undefined)
+```
+
+They exist to keep output tidy, and they destroy the exact distinction the
+absence rule is built on — "I looked and found nothing" versus "I could not
+look".
+
+**INSTANCE 11 IS THE COSTLIEST SO FAR, because it nearly decided an
+architecture.** A search of the Railway SDK's shipped types printed
+`preDeploy 0`, `restartPolicy 0`, `watchPattern 0`. The pipeline was
+`grep -rihc … | paste -sd+ | bc` and `bc` is not installed on this machine, so
+every count came from the trailing `|| echo 0`.
+
+**The types support all three.** Without the check, an ADR would have recorded
+an architectural limitation that does not exist, and the configuration would
+have been split between a file and a UI to work around it.
+
+**What caught it was a positive control** — running the same broken query
+against `healthcheck`, `build` and `env`, things that MUST be present.
+They came back blank with `bc: command not found`, which exposed the pipeline
+rather than the data.
+
+**Note what this instance was NOT: a test.** Every prior instance was a check
+that passed while verifying nothing. This was a measurement feeding a DECISION,
+with no test involved anywhere. The rule generalises past testing — anything
+that reports a count, a list, or an absence is subject to it.
 
 #### When proving a test CAN fail, check WHICH assertion fired
 
@@ -746,6 +785,95 @@ commit did the run contain; does a branch push fire anything; what does a fresh
 clone actually fetch.
 
 
+### Vendor documentation is a STARTING POINT, not evidence
+
+**Where a vendor capability decides something, check the artefact — the types,
+the response, the actual behaviour. Twice now the documentation has been wrong
+in the direction that would have changed a decision.**
+
+| Vendor | The documentation said | The artefact said |
+|---|---|---|
+| Massive (T1.1) | free tier is *"End of day only"* | free tier **served 15-minute intraday** |
+| Railway (T0.10) | `service()` supports 9 options; pre-deploy, restart policy and watch patterns absent | shipped `.d.ts` supports **all three**, plus `cronSchedule`, `rootDirectory` and container limits |
+
+**Railway also contradicts itself about maturity.** The docs say *"TypeScript is
+generally available"*; the SDK's own README says *"The SDK is in beta and there
+will be breaking changes."* Both are current, and they cannot both be relied on.
+
+The failure is asymmetric and worth naming: **documentation tends to UNDERSTATE
+what a product does** — it lags the code, and omissions are cheaper to ship than
+corrections. So "the docs do not mention it" is weak evidence of absence, while
+"the docs promise it" is reasonable evidence of intent. Weight them differently.
+
+**Practically:** read the docs to learn what to look for, then confirm against
+the thing itself. For an SDK that means the type definitions; for an API, a real
+authenticated call; for a platform behaviour, a deliberate test.
+
+
+### An unsettled item presented inside a LIST OF ACTIONS will be actioned
+
+**The annotation does not survive contact with the format. Either remove the
+row, or issue the list without it and raise the open question separately.**
+
+T0.10 issued a variables table for hand-entry into a UI. One row read:
+
+| Variable | Value |
+|---|---|
+| `NODE_ENV` | **hold** — still unsettled between us |
+
+**It was entered.** Not through carelessness — a row in a table of fields to
+enter reads as a field to enter, and the qualifier lost to the format. The
+decision to omit it had already been made and agreed.
+
+**The practical form, which is the useful half:** when a decision is made
+mid-task, **RE-DERIVE downstream instructions from the artefact** rather than
+re-issuing an earlier list with an annotation attached.
+
+**This came with its own natural experiment.** In the same task, Stage 1b was
+re-derived by reading `railway.ts` at the moment of use, and was correct.
+Stage 2 was re-issued from an earlier draft with a note attached, and produced
+the wrong action. Same author, same session, minutes apart — the only variable
+was whether the list was regenerated from the source.
+
+**A stale instruction is more dangerous than a wrong one.** A wrong one tends
+to fail visibly. A stale one was correct when written, carries the authority of
+having been agreed, and describes a world that has since moved.
+
+### The GAP between deciding and doing is where a false claim forms
+
+**A decision is not an application. An approval is not a commit. An intention
+to run a command is not its output.** Between settling something and doing it
+there is a window in which it is natural to speak as though it is done — and
+anything said in that window is a claim about an artefact that does not yet
+exist.
+
+Five instances in a single task, all the same shape:
+
+| Spoken of as done | Actually |
+|---|---|
+| `railway.ts` edited to drop `NODE_ENV` | agreed twice, referred back to as applied, **never edited** until challenged |
+| ADR-010 cited as recording the decision | **never written**; `grep -c` returned 0 |
+| The upstream vendor issue "filed" | **never drafted** |
+| `NODE_ENV` settled and therefore removed from the instructions | settled, but still listed |
+| `railway iac plan` output, reported as a diff | **the command had never run successfully** — instance 12 above |
+
+**The last one shows how far this goes.** The others describe an artefact in
+the wrong state; that one describes an artefact that was never produced. Same
+gap, same confident register — a decision to run something, narrated as though
+it had been run.
+
+**The failure is not forgetting — it is the CONFIDENCE OF THE REFERENCE.** Each
+was mentioned in passing as an accomplished fact, which is precisely the form
+that does not invite checking. Four were caught by the other party asking; one
+by a `grep`. **None was caught by its author.**
+
+**Specific hazard worth naming: the agreed-but-uncommitted edit.** The working
+tree matches intent, `HEAD` does not, and any tool reading `HEAD` — a diff, a CI
+job, `railway iac plan` — reports a divergence that was never real.
+
+**Verify that an agreed change LANDED, and where it matters that it was
+COMMITTED, before relying on it downstream.**
+
 ### A deferred risk should be made CONCRETE before it is deferred
 
 **"Check this later" is not a plan. Ask what the failure would LOOK like — and
@@ -784,7 +912,6 @@ two mean anything.
 
 **For any guard, test the quiet case as deliberately as the loud ones.**
 
-### When several findings share a PRECONDITION, resolve the precondition first
 ### When several findings share a PRECONDITION, resolve the precondition first
 
 **Look for the shared precondition before working through a list of findings in
