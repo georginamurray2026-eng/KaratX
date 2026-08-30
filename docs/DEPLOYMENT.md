@@ -126,18 +126,108 @@ nothing. The ADR records the reversal condition.
 | Variable | `web` | `worker` | Source |
 |---|---|---|---|
 | `DATABASE_URL` | ✓ | ✓ | Railway **variable reference** to the Postgres service |
-| `NODE_ENV=production` | ✓ | ✓ | set on the service |
+| `NODE_ENV=production` | — | ✓ | set on the service |
 | `LOG_LEVEL=info` | ✓ | ✓ | set on the service |
 | `NEXT_TELEMETRY_DISABLED=1` | ✓ | — | set on the service |
 | `PORT` | injected | — | Railway |
 
 **`DATABASE_URL` is a reference, never a copied value.** It is never typed by
 hand, never pasted, and never in Git. Use the **private** URL — not
-`DATABASE_PUBLIC_URL` — so the database is not exposed to the internet.
+`DATABASE_PUBLIC_URL` — so the database is not exposed to the internet. Railway also bills
+network egress, and "using Private Networking when communicating with other
+services (such as databases) within your Railway project will help you avoid
+unnecessary Network Egress costs" — so the private URL is the cheaper one too.
 
 **No secrets are needed in GitHub Actions.** CI runs against a throwaway
 PostgreSQL service container whose credentials are in the workflow file, exactly
 like `.env.example`.
+
+### A matched default is not an ASSERTED value
+
+**A value that MATCHES Railway's default and a value ASSERTED to equal that
+default are indistinguishable in the UI, different in the project's state, and
+only the second survives Railway changing its default.**
+
+Three of `web`'s settings did not stage when first entered, because the value
+typed already equalled Railway's own default:
+
+| Setting | Our value | Railway's default |
+|---|---|---|
+| Healthcheck Timeout | 300 | **documented** — "The default timeout on healthchecks is 300 seconds (5 minutes)" |
+| Restart Policy | `ON_FAILURE` | **UNDOCUMENTED**; observed on a fresh service |
+| Restart Max Retries | 10 | **UNDOCUMENTED**; observed on a fresh service |
+
+The two undocumented ones are the weaker case. There is no published contract
+for Railway to break by changing them, so a change would arrive without notice.
+
+**THE PIN.** Set the field to a different value, then set it back. The
+pending-changes counter goes UP on the first edit and **STAYS UP** on the
+second: the field is now recorded as an assertion rather than inherited.
+
+```
+Healthcheck Timeout   300 -> 299   counter 10 -> 11
+                      299 -> 300   counter STAYS at 11
+```
+
+**The counter is the only thing that distinguishes the two states.** Both read
+`300` in the input box afterwards. Accepting "the field already says 300" leaves
+the value unpinned, and looks identical to having pinned it.
+
+**Confirm in the Details panel, not the counter.** The counter has been observed
+rendering "0 changes to apply" against a list of nine pending items, so a
+counter that merely fails to decrement is indistinguishable from a real
+assertion until the itemised panel shows the change.
+
+---
+
+## Cost
+
+Railway bills **per-second on the CPU, memory and disk a service actually
+uses** — $20 / vCPU / month, $10 / GB RAM / month, with volumes "billed at a
+rate per GB / minutely". An idle service still bills.
+
+| Plan | Fee | Included usage | Volume cap |
+|---|---|---|---|
+| Free | $0 | **$1 / month** | 0.5 GB |
+| Trial | $0 | $5 one-time, **expires after 30 days** | 0.5 GB |
+| Hobby | $5 | $5 / month | 5 GB |
+| Pro | $20 | $20 / month | 50 GB |
+
+**THIS PROJECT CANNOT RUN ON A FREE TIER.** Two always-on services plus a
+Postgres is roughly **$9–13/month** of usage against the Free plan's $1
+allowance. The gap is an order of magnitude, not a margin. Hobby's $5 fee covers
+the first $5 of usage, so the realistic all-in figure is **$9–13/month**.
+
+**The worker is the CHEAP part** — perhaps $2–2.50/month. It spends its life
+waiting on a feed: near-zero CPU, a small constant RAM footprint. The expensive
+terms are **Postgres** (memory plus disk, and the disk GROWS as bars accumulate)
+and **`web`** (the largest RAM footprint of the three, serving a dashboard that
+nobody is looking at most of the time). If cost ever needs cutting, `web` is the
+candidate — not the feed, which is the product.
+
+**When credit is exhausted**, Railway "will stop all of your workloads" and
+blocks further deploys until a card is added. Volumes are retained 30 days on
+Free/Trial, 60 on Hobby, 90 on Pro. A stop, not a data loss — provided someone
+notices inside the window.
+
+**Set a usage limit before deploying.** Railway supports configurable maximum
+spending thresholds. Use them.
+
+### Serverless / sleeping — NEVER ENABLE ON THE WORKER
+
+Railway's Serverless is **opt-in per service**, not automatic, and not on by
+default. "When Serverless is enabled for a service, Railway automatically
+detects inactivity based on outbound traffic"; a service is "considered inactive
+after 5 minutes" and is woken "when it receives traffic from the internet or
+from another service in the same project through the private network".
+
+**A market feed that sleeps is not a market feed.** Worse than the gap itself:
+the Phase 1 staleness watchdog would fire on the platform's own behaviour and be
+read as a data-provider outage. Leave Serverless **OFF** for `worker`.
+
+It is defensible for `web`, which serves a dashboard on demand and whose
+healthcheck is only a deploy gate (warning 1). Not enabled today; noted as the
+first lever if cost needs cutting.
 
 ---
 
@@ -192,6 +282,48 @@ and goes through a staged deployment for review.
 **⚠️ Restoring removes any backups newer than the one restored.** This is why the
 restore drill belongs in Phase 0, while the database holds one migration and no
 market data. After Phase 1 it costs real history.
+
+
+### WHAT A RESTORE ACTUALLY COSTS
+
+Restoring a three-day-old backup loses three days of writes. What that costs
+depends entirely on **which** writes.
+
+**Candles: re-fetchable, cheaply.** Measured against Twelve Data on 2026-08-27 —
+5,000 bars per request at 8 credits/minute, history reaching back to 2020-04-06
+at 1min and 2020-01-24 at 15min.
+
+| Gap | 1min bars | Requests |
+|---|---|---|
+| 3 days | 4,320 | **1** |
+| 1 month | ~43,200 | 9 |
+| 1 year | ~525,600 | 106 |
+
+A three-day gap is a single request. The full 6.6-year backfill at 15min was
+measured at 47 requests and roughly six minutes.
+
+**Derived data: NOT re-fetchable, from anywhere.** Detected setups, state
+transitions, grades, alerts sent, LLM annotations and the manual trade journal
+exist only in our own database. Twelve Data can return the bars; it cannot
+return what we concluded from them.
+
+**So backup frequency is governed by DERIVED data, not by candles** — which
+inverts the obvious intuition that the biggest table is the thing to protect.
+Before Phase 4 a restore costs an API call. From Phase 4 onward it costs
+reasoning that exists nowhere else, and backup frequency stops being a
+formality and becomes a real decision.
+
+**A caveat that does not go away.** Re-fetched bars are confirmed at restore
+time, not at their original time: `occurred_at` survives, `confirmed_at` does
+not. Anything measuring detection latency across a re-fetched window is
+measuring the restore rather than the system. This is the same limitation
+ADR-011 records for machine-sleep gaps, with the same mitigation — exclude
+repaired windows from latency-sensitive analysis.
+
+**NOT ESTABLISHED:** whether Twelve Data's free tier imposes a **daily** request
+cap. Only the per-minute rate was measured. Establish it before relying on a
+large re-fetch, because a 106-request year-long backfill is where a daily cap
+would first bite.
 
 ### The restore drill
 

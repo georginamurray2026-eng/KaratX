@@ -871,8 +871,160 @@ by a `grep`. **None was caught by its author.**
 tree matches intent, `HEAD` does not, and any tool reading `HEAD` — a diff, a CI
 job, `railway iac plan` — reports a divergence that was never real.
 
+**A fabricated reference does not stay put — it PROPAGATES.** Days after
+ADR-010 was cited as existing, the other party used it in their own reasoning:
+"the divergence risk ADR-010 records". It records nothing; it has never been
+written. The false claim had been corrected once and still travelled, because a
+citation is normally load-bearing and gets reused rather than re-checked.
+`railway.ts` also carries a committed "See ADR-010" pointing at nothing.
+
+**The cost of the gap is therefore not bounded by the moment it happens.**
+
 **Verify that an agreed change LANDED, and where it matters that it was
 COMMITTED, before relying on it downstream.**
+
+### A number that NEARLY reconciles is a FINDING, not a rounding error
+
+**When a hypothesis makes an anomaly disappear, test the hypothesis. Do not
+adopt it.** A hypothesis that dissolves a discrepancy is the most dangerous kind,
+because it removes the reason to keep looking.
+
+T0.10 configured the `web` service by hand in a UI. The pending-changes
+counter read **11** where the itemised expectation was 12. The author proposed
+that Railway groups a service's variables into a single pending entry — which
+would have made 11 exactly correct, and closed the question.
+
+**It was wrong.** Deleting one variable moved the count 11 → 10, so variables are
+itemised individually. The real arithmetic was 5 + 2 + 3, and the missing items
+were three settings that never staged at all:
+
+| Declared in `railway.ts` | Staged |
+|---|---|
+| `healthcheckTimeout: 300` | no |
+| `restartPolicyType: 'ON_FAILURE'` | no |
+| `restartPolicyMaxRetries: 10` | no |
+
+**And opening the panel to find them surfaced two hand-entry errors as well** —
+a healthcheck path of `api/ready` missing its leading slash, and a fifth watch
+pattern `/apps/**` that exists nowhere in `railway.ts` and would have made every
+worker change redeploy web: the precise failure watch patterns exist to prevent.
+
+**Five defects shipped-in-waiting, and the only thing standing between them and
+production was a refusal to accept a number that nearly added up.** Under the
+grouped-variables hypothesis, 11 was correct, the panel was never opened, and all
+five went live.
+
+**The tell was cheap and should be routine: the hypothesis made a TESTABLE
+prediction** — delete one variable, and if grouping is real the count does not
+move. One click. It moved.
+
+### The ENTRY surface is not a REVIEW surface
+
+**An input box echoes what you typed. It cannot tell you what you meant.** Any
+value entered by hand needs reviewing somewhere OTHER than the field it was
+entered into.
+
+Both T0.10 hand-entry errors sat in plain sight in their own fields, and both
+looked right there: `api/ready` reads as a path, `/apps/**` reads as a watch
+pattern. Neither is wrong-looking. They became visible only in Railway's Details
+panel, which renders the pending change rather than the input.
+
+**This is the same shape as reviewing a DIFF rather than a file.** The diff is a
+second surface, and it is second-ness that does the work — not extra care applied
+to the first one.
+
+**It materialised on the FIRST service, on the FIRST attempt.** Two errors in
+roughly nine hand-entered fields. That is the measured hand-entry error rate for
+this configuration, and it is the argument for IaC stated as a number rather than
+a preference.
+
+### A COST MODEL is an architectural constraint, and ours was designed without one
+
+**Deployability, cost and quota are as much a part of an architecture as its
+module boundaries. A non-functional constraint nobody wrote down is not absent —
+it is UNMEASURED.**
+
+ADR-001 split `web` and `worker` into two processes for two correctness reasons:
+a dashboard deploy must not drop the market feed, and the feed must be a
+singleton. **Both reasons still hold.** What no ADR recorded was what the
+resulting topology COSTS to run:
+
+| | |
+|---|---|
+| Railway Free tier includes | **$1 / month** of usage |
+| Two always-on services plus Postgres | **$9–13 / month** |
+
+An order of magnitude, not a shortfall that can be engineered away. The
+architecture is sound and cannot run on a free tier — and nothing in Phase 0
+would ever have said so, because no document asked.
+
+**THE TIMING, AND HOW NARROW THE ESCAPE WAS.** This surfaced at the END of Phase
+0, before anything was deployed, with the decision still fully open. The trigger
+was **a number in the corner of a screen** — "26 days or $4.92 left" — that
+nothing in the plan had asked anyone to look at.
+
+The counterfactual is specific. Found instead at T1.7, with a live feed running:
+the credit expires, Railway "will stop all of your workloads", and the outage
+arrives overnight, mid-Phase-1, **as a feed gap**. T1.8's staleness watchdog
+would have fired correctly and pointed at the data provider, because the one
+thing it cannot distinguish is a provider outage from a billing event. Hours
+would have gone into the wrong system.
+
+**A cheaper decision found early beats a correct diagnosis found late.**
+
+#### The arithmetic that makes the decision easy — RESOURCES, not SERVICES
+
+Merging `web` and `worker` to save money looks like it saves a service's worth.
+It does not. **Railway bills the CPU, memory and disk actually consumed; there is
+no per-service fee.** One container running both still runs a Next.js server and
+a feed loop, so the only saving is one Node runtime's baseline footprint —
+roughly **$1–2/month**, not the $5 the plan tiers suggest.
+
+So the trade is not "reverse ADR-001 for $5/month". It is "surrender the
+singleton guarantee and feed continuity for about $1.50/month". Stated that way
+it does not need deciding.
+
+**The general form: when a cost argues against a design, price the DELTA, not
+the line item.** The tier price is what you pay; the delta is what the change
+actually buys, and here they differ by a factor of three.
+
+
+### An IMMUTABLE artefact needs an escape route, and ADR-003 never defined one
+
+**Two individually safe decisions can compose into an unsafe one. Immutability
+plus no down path equals no way back — and neither half looks wrong alone.**
+
+ADR-003 made applied migrations immutable, which is right: editing history is
+how migration systems become unreproducible. Drizzle generates forward-only SQL,
+which is ordinary. **Together they mean a bad migration cannot be edited and
+cannot be reversed**, leaving restore-from-backup as the only route — and no
+backup procedure had ever been tested.
+
+**THE RISK WAS TRACKED. THE COUPLING WAS NOT.** ADR-003 explicitly recorded
+"OPS-7 (backup with a *tested* restore) … remains open for T0.10", so nobody
+forgot about backups. What no document said is that OPS-7 **is the migration
+policy’s only recovery mechanism**. Listed as an adjacent operational item, it
+was schedulable like one — and deferring it would have silently gutted ADR-003
+without anyone experiencing that as a decision about migrations.
+
+The ADR was reviewed more than once. The question asked of it was always "is
+this policy correct?" — to which the answer is yes. The question that found the
+gap was **"what actually happens when a migration is bad?"**, asked in passing
+while re-scoping a task.
+
+**A risk recorded in the wrong RELATIONSHIP is nearly as dangerous as one not
+recorded at all**, because tracking it creates the impression it is handled.
+
+**THE GENERAL FORM: when a policy FORBIDS something, name the route it leaves
+open and check that the route exists.** A prohibition silently elects a
+remaining path. ADR-003 forbade editing a migration and thereby elected
+restore-from-backup, without saying so and without anyone verifying that
+backups worked.
+
+**And it inverts a dependency nobody had written down.** Backups looked like
+operational hygiene, schedulable whenever. They are in fact a hard prerequisite
+of the migration policy — so "defer backups to Phase 6" silently meant "have no
+migration recovery until Phase 6".
 
 ### A deferred risk should be made CONCRETE before it is deferred
 
