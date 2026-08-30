@@ -91,7 +91,7 @@ unproven** — see "Not proven" and obligation 18.
 | T0.7 Web skeleton + health endpoints | **Done, one honest caveat** | Next 16 + React 19; /api/health and /api/ready; boot-time config validation that refuses to start; Playwright smoke test. See "Not proven" for the unenforced criterion |
 | T0.8 Worker skeleton | **Done, three honest gaps** | Boot sequence, ordered shutdown, crash logging, heartbeat. 33 unit + 9 integration tests. Criterion 1 met; criteria 2 and 3 partial — see the close-out assessment. Obligations 20, 21, 22 |
 | T0.9 CI | **Done, two partials** | Five parallel jobs on GitHub Actions, green on the first Linux run. Secret scanning, dependency scanning, migration immutability. Four deliberate breaks proved across two exercises. Partials: `build` is verified only incidentally and not at all for the worker (obligation 24); `on push` is narrowed to `main` |
-| T0.10 Railway deploy + docs | Not started | — |
+| T0.10 Local operational readiness | **NOT CLOSED** | Re-scoped by ADR-011: local-only for Phases 1-5, five deployment criteria DEFERRED to T6.1. L2/L3 met, L1 met but unenforced (obligation 29), L4 partial, **L5 FAILS** - CLAUDE.md documents none of the four new commands. Backup/restore and rollback both drilled with deliberate failures. Obligations 27, 28, 29 |
 
 `packages/contracts` is still a stub. It is populated in T1.2.
 
@@ -184,6 +184,110 @@ accepting, which is T1.7 (obligation 22).
 New obligations 20, 21 and 22 record them.
 
 ---
+---
+
+## T0.10 CLOSED OUT — assessed 2026-08-31. NOT fully done.
+
+**Assessed against the repository, separately from the implementation, and
+treated as adversarial.** The question asked was not "does this look done" but
+"what would I have to find to call this unfinished". Three things were found.
+
+**T0.10 was RE-SCOPED by ADR-011, not completed.** Five of the original nine
+sub-criteria are **DEFERRED to T6.1**. A re-scope is not a completion, and this
+close-out does not treat it as one.
+
+### The four LOCAL criteria
+
+| # | Criterion | Verdict |
+|---|---|---|
+| L1 | Migrations run as a deliberate step, never at boot | **MET, BUT UNENFORCED** — see below |
+| L2 | No secrets in Git history | **MET**, re-verified 2026-08-31 |
+| L3 | Local backup and restore drill, performed once | **MET** — `pnpm db:drill` exit 0 |
+| L4 | Local rollback drill, performed once | **PARTIAL** — three of four parts |
+
+**L1 — met by convention, not by a check.** No application code imports
+`runMigrations`: `grep -rn "runMigrations" apps/ --include="*.ts"` excluding
+tests returns nothing, which is correct. **But nothing enforces it.** No CI
+step, no lint rule, no test asserts that boot does not migrate. A future commit
+could add a boot-time migration and every gate in this repository would stay
+green. The policy is protected by a comment in `migrate.ts` and by ADR-003 —
+that is documentation, not a guard. **Obligation 29.**
+
+**L2 — re-verified rather than inherited.** The prior verification was
+2026-08-28, and **25 commits** have landed since. STATUS.md's own lesson says a
+measurement's validity expires when the code it measured changes, so it was
+re-run: the full `3cd3f93..HEAD` diff scanned for connection strings, key
+assignments and PEM headers — no matches; `.env` still ignored, 0 commits ever
+touching it.
+
+**L4 — three of four parts, and the fourth is named rather than glossed.** The
+pass, FAIL-1 (reverted the wrong thing), FAIL-2 (process never restarted) and
+FAIL-3 (code back, schema ahead) were all performed with observables recorded
+before and after. **The destructive-migration variant was NOT run** — no
+migration that drops or narrows a column was applied, so "recover from a bad
+migration end to end" rests on the restore being proven (L3) plus the schema-
+ahead case, not on a genuinely breaking migration. Honest status: the mechanism
+is proven, the specific scenario is not.
+
+### The five DEFERRED criteria — deferred, NOT met
+
+| # | Criterion | Status |
+|---|---|---|
+| D1 | `web` and `worker` deploy as separate services, both healthy | **DEFERRED to T6.1** |
+| D2 | Healthcheck proven as a DEPLOY GATE | **DEFERRED to T6.1** |
+| D3 | Migrations as a pre-deploy release step, failure blocks the deploy | **DEFERRED to T6.1** |
+| D4 | Secrets configured on the platform | **DEFERRED to T6.1** |
+| D5 | Platform rollback performed once | **DEFERRED to T6.1** |
+
+Nothing has ever been deployed. `.railway/railway.ts` has never been applied,
+and `railway iac plan` has never run successfully.
+
+### The documentation criteria
+
+| # | Criterion | Verdict |
+|---|---|---|
+| L5 | `CLAUDE.md` states the project, invariants, stack, **commands**, docs | **FAILS** |
+| L6 | `docs/STATUS.md` accurately reflects reality | **MET** — this section |
+| L7 | ADRs 001–004 written | **MET** |
+| L8 | OPS-5 — nothing depends on local filesystem persistence | **MET, with a note** |
+
+**L5 FAILS, and it is not a quibble.** T0.10 added four commands and `CLAUDE.md`
+mentions none of them:
+
+```
+db:backup       0 occurrences
+db:restore      0
+db:drill        0
+rollback:check  0
+```
+
+The criterion says "states … the commands", and the whole purpose of that file
+is briefing a session that has no memory of this one. A session told to recover
+from a bad change would not learn that `pnpm rollback:check` exists.
+
+**L8 — met, with the note that `backups/` is now local filesystem state.** It is
+an operational artefact rather than an application dependency: no application
+code reads it, and nothing in `apps/` breaks if it is absent. The related
+limitation, already recorded, is that dumps sit on the same disk as the database
+they protect.
+
+### Quality gate — real exit codes, 2026-08-31
+
+```
+lint              exit=0        test:integration  exit=0
+format:check      exit=0        db:drill          exit=0
+typecheck         exit=0        rollback:check    exit=0
+test (unit)       exit=0
+```
+
+### Verdict
+
+**T0.10's local scope is NOT closed.** L5 fails outright, L1 is unenforced, and
+L4 is partial. Owed before Phase 1: update `CLAUDE.md` (L5), and decide
+obligation 29. The five deployment criteria are carried to T6.1 with a recorded
+trigger, and obligations 27 and 28 remain open against L3 and L4.
+
+
 
 ## T0.9 CLOSED OUT — assessed 2026-08-28, two criteria met of four
 
@@ -1921,6 +2025,7 @@ wondering whether it was ever considered.
 | 26 | **`Dependabot Updates` has been RED since 2026-08-29 — the proactive half of SEC-10 is not running.** `.github/dependabot.yml` defines it as exactly that: "`pnpm audit` in CI reports vulnerabilities that already exist; this opens pull requests to remove them." Enforcement is intact, DISCOVERY is not. **Leading hypothesis, unverified: pnpm 11.23.0 produces a lockfile version Dependabot’s `npm_and_yarn` ecosystem cannot parse** — read the run log before acting on it. Deferred deliberately, not forgotten: a security control that has stopped working may only be left alone WITH A DEADLINE. **At the start of T1.2, check whether the run is still red; if it is, FIX IT rather than deferring again** | **start of T1.2 — firm** |
 | 27 | **`db:restore` atomicity is OBSERVED, not GUARANTEED.** Five deliberate failures on 2026-08-30 all exited non-zero and left the database intact — but that is because `pg_restore` reads the archive table of contents before applying anything, so a 5 KB dump fails before the first `DROP`. **On a multi-gigabyte Phase 1 dump, corruption late in the data stream could fail after earlier statements have committed**, leaving the half-populated database the drill was designed to rule out. `--exit-on-error` makes it stop; it does not make it undo. **Fix: add `--single-transaction`, then re-run the deliberate failures against a dump large enough that the failure lands mid-restore** — the evidence must come from a dump where the old behaviour would actually have differed | **T1.3 — with the first large table** |
 | 28 | **ADR-003’s forward-compatibility amendment does not deliver a usable rollback, and this is now MEASURED.** `packages/db/src/status.ts` computes `inSync` as `pending.length === 0 && unknown.length === 0`, where `unknown` means the database is AHEAD of the code. Proven 2026-08-31 with the most forward-compatible change that exists — an additive nullable column: old code against the newer schema returns **503 `not_ready`**, `expected 503 to be 200`. Since the healthcheck is a DEPLOY GATE, a rolled-back deployment would never go live, so rollback-without-restore is unavailable for any change containing a migration. **Two coherent resolutions, and the choice is real:** (a) the readiness check is right, forward compatibility cannot deliver rollback, and every migration-bearing rollback is a restore — say so in ADR-003 rather than implying otherwise; (b) `unknown` should NOT block readiness, because being ahead is tolerable when migrations are additive, in which case `pending` alone gates and the amendment becomes real. **Do not decide this by editing the code first** | **T6.1 — firm; revisit ADR-003 in the same breath** |
+| 29 | **ADR-003 is enforced by CONVENTION, not by a check.** No application code imports `runMigrations` — verified — but nothing asserts that it stays that way. A commit adding a boot-time migration would leave lint, typecheck, unit, integration and the build all green. The policy is protected by a comment in `migrate.ts` and by the ADR, which is documentation, not a guard. **This is the same shape as T0.7’s unenforced criterion and T0.9’s obligation 23** — a fact about the code that matters and that nothing checks. **Cheapest closure: a static assertion that no file under `apps/` imports `runMigrations`**, whose failure message says it tests imports rather than behaviour, so nobody mistakes it for the stronger check | **before T1.3** |
 | ~~26~~ | ~~**Confirm the audit step reports without blocking, IN CI.**~~ **DISCHARGED 2026-08-28 by CI #14 at `91b0a55`, on the printed advisory rather than the job colour** — a green security job would have looked identical if the report line had produced nothing. The step printed the full advisory (package, `<=0.24.2`, `>=0.25.0`, the full dependency path, the GHSA link) and then `--- applying the blocking threshold ---`, and the job stayed green. **The `|| true` survived the runner: reporting changed, threshold did not** | done |
 | 27 | **NOTHING WATCHES THE HEALTH ENDPOINTS AFTER A DEPLOY GOES LIVE.** Railway queries the healthcheck only while a deployment is going live — *"Railway does not monitor the healthcheck endpoint after the deployment has gone live"*. **The 3am scenario, written out because "we have health endpoints" reads as covered and is not:** the database becomes unreachable; `/api/ready` starts returning 503, correctly; **nothing restarts the service; nothing alerts anybody**; Railway's UI still shows the deployment as live and healthy; the dashboard serves 503s until a human happens to look. The endpoints are correct — nothing is watching them. Needs an external uptime check or a scheduled probe that can page someone | **OPS-8 — firm** |
 
