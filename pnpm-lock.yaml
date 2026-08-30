@@ -99,6 +99,9 @@ importers:
       pg:
         specifier: ^8.23.0
         version: 8.23.0
+      tsx:
+        specifier: ^4.23.12
+        version: 4.23.12
     devDependencies:
       '@karatx/test-support':
         specifier: workspace:*
@@ -106,9 +109,6 @@ importers:
       '@types/pg':
         specifier: ^8.23.1
         version: 8.23.1
-      tsx:
-        specifier: ^4.23.12
-        version: 4.23.12
 
   packages/config:
     dependencies:
@@ -134,6 +134,9 @@ importers:
       pg:
         specifier: ^8.23.0
         version: 8.23.0
+      tsx:
+        specifier: ^4.23.12
+        version: 4.23.12
     devDependencies:
       '@karatx/test-support':
         specifier: workspace:*
@@ -144,9 +147,6 @@ importers:
       drizzle-kit:
         specifier: ^0.31.10
         version: 0.31.10
-      tsx:
-        specifier: ^4.23.12
-        version: 4.23.12
 
   packages/providers:
     dependencies:

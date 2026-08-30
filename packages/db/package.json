@@ -19,12 +19,12 @@
   "dependencies": {
     "@karatx/config": "workspace:*",
     "drizzle-orm": "^0.45.2",
-    "pg": "^8.23.0"
+    "pg": "^8.23.0",
+    "tsx": "^4.23.12"
   },
   "devDependencies": {
     "@karatx/test-support": "workspace:*",
     "@types/pg": "^8.23.1",
-    "drizzle-kit": "^0.31.10",
-    "tsx": "^4.23.12"
+    "drizzle-kit": "^0.31.10"
   }
 }
