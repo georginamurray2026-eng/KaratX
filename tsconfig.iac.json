@@ -1,0 +1,19 @@
+{
+  // The Railway IaC file is not part of any workspace package, so
+  // `pnpm -r typecheck` does not reach it. Verified by planting a type error:
+  // the repo typecheck passed while `.railway/railway.ts` was broken.
+  //
+  // That matters more than an ordinary uncovered file. A type error here
+  // surfaces at `railway iac apply` - against live infrastructure - rather
+  // than in CI.
+  //
+  // Deliberately NOT a package.json inside .railway/: that directory is read by
+  // the Railway CLI, and adding package structure to it invites the CLI to
+  // treat it as something it is not.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": [".railway/**/*.ts"]
+}

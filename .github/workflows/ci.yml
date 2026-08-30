@@ -63,7 +63,22 @@ jobs:
         run: pnpm lint
       - name: typecheck
         if: always() && steps.install.outcome == 'success'
-        run: pnpm typecheck
+        run: pnpm -r --no-bail typecheck
+
+      # Its OWN step, not chained behind the one above.
+      #
+      # .railway/railway.ts is not part of any workspace package, so
+      # `pnpm -r typecheck` does not reach it - verified by planting a type
+      # error and watching the repo typecheck pass. A type error here would
+      # otherwise surface at `railway iac apply`, against live infrastructure.
+      #
+      # The local `pnpm typecheck` chains the two with &&, which means a
+      # package failure masks this one. Here they are independent, because the
+      # deployment configuration failing is not the same finding as a package
+      # failing and both should report.
+      - name: typecheck the Railway IaC config
+        if: always() && steps.install.outcome == 'success'
+        run: pnpm typecheck:iac
 
   # ---------------------------------------------------------------------------
   unit:
