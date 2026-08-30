@@ -24,6 +24,7 @@
     "db:backup": "node scripts/db-backup.mjs",
     "db:restore": "node scripts/db-restore.mjs",
     "db:drill": "node scripts/db-drill.mjs",
+    "rollback:check": "node scripts/rollback-preflight.mjs",
     "typecheck:iac": "tsc --noEmit -p tsconfig.iac.json"
   },
   "devDependencies": {
