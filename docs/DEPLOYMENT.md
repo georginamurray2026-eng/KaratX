@@ -337,7 +337,7 @@ migration did.
 **On a hosted deployment the healthcheck is a deploy gate, so that rollback
 would never go live.** Rollback-without-restore is therefore not available to
 us for any change that included a migration — which is why step 2 is a question
-and step 4 exists. See obligation 28.
+and step 4 exists. See obligation 32.
 
 ### Four ways a rollback silently does not work
 
@@ -494,7 +494,7 @@ problem, but `--exit-on-error` stops the restore without undoing it. On a
 multi-gigabyte Phase 1 dump, corruption late in the data stream could fail after
 earlier statements committed — layer 3 would then catch it and quarantine, which
 is a detection, not a prevention. `--single-transaction` would make it a
-guarantee. **Obligation 27, due at T1.3**, when a table large enough to prove it
+guarantee. **Obligation 31, due at T1.3**, when a table large enough to prove it
 exists.
 
 ## Backups and restore — RAILWAY (not in use; read at T6.1)

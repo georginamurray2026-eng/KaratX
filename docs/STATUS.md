@@ -9,6 +9,106 @@ handover document.
 
 ---
 
+## ▶ START HERE — session handoff, 2026-08-31
+
+**Phase 0 is 10 tasks of 10 written. The PHASE 0 GATE HAS NOT BEEN RUN.
+Running it is the next task, and it is a task in its own right — do not fold it
+into whatever comes after.**
+
+### Where things stand
+
+| | |
+|---|---|
+| Phase 0 tasks | **10 of 10 implemented** |
+| Phase 0 gate | **NOT RUN** |
+| T0.10 | **NOT CLOSED** — see its close-out; L5 fails, L1 unenforced, L4 partial |
+| Deployment | **NONE.** ADR-011 makes the project local-only for Phases 1–5 |
+| Open obligations | **23** |
+
+### Verified counts — from an actual run, 2026-08-31
+
+```
+lint             exit=0     unit tests          239 passed
+format:check     exit=0     integration tests    57 passed (1 skipped)
+typecheck        exit=0     db:drill            exit=0
+test             exit=0     rollback:check      exit=0
+test:integration exit=0
+```
+
+**These are measured, not carried forward.** Re-run rather than cite them if
+anything has changed — a measurement's validity expires when the code it
+measured changes.
+
+### The BUILD-PLAN drift — FOUND AND FIXED 2026-08-31
+
+ADR-011 re-scoped T0.10 on 2026-08-30 and the re-scope reached DECISIONS.md and
+BUILD-PLAN.md's T0.10 section. **Three references elsewhere were missed**, found
+by grepping the plan for "Railway":
+
+| Location | Was | Now |
+|---|---|---|
+| **Phase 0 Quality Gate** | "Both Railway services deployed and healthy" | struck through, **DEFERRED to T6.1** |
+| T0.4 objective | "locally and on Railway" | amended; the Railway Postgres was deleted in T0.10 |
+| T0.4 manual step | "creating the Railway Postgres instance" | amended |
+
+**The gate one mattered most: the gate as written could not pass.** Also
+re-dated three obligations (17, 19, 24) that were still due at "T0.10", a task
+now closed with deployment deferred. All fixed; recorded as a lesson.
+
+### The next task — the Phase 0 gate
+
+It is in BUILD-PLAN.md under "Phase 0 Quality Gate". As amended it is:
+
+1. CI green on `main`
+2. ~~Both Railway services deployed~~ — **DEFERRED, do not tick**
+3. `typecheck`, `lint`, `test`, `test:integration`, `build` pass locally
+4. Rollback proven once — **LOCAL only**; platform rollback deferred
+5. `CLAUDE.md` and `docs/STATUS.md` accurate
+6. Zero secrets in Git history
+
+**It cannot be passed in full while ADR-011 stands, and that is the intended
+state.** Phase 1 proceeds with the deployment criterion explicitly outstanding.
+
+**Criterion 5 is currently FALSE** — `CLAUDE.md` documents none of the four
+commands T0.10 added (`db:backup`, `db:restore`, `db:drill`, `rollback:check`).
+Fix that before or during the gate; it is the only cheap failure on the list.
+
+### Obligations by where they land
+
+| Lands at | Obligations |
+|---|---|
+| **before T1.2** | 25 (split STATUS.md) |
+| **start of T1.2 — firm** | 26 (Dependabot red since 2026-08-29) |
+| **before T1.3** | 33 (ADR-003 unenforced by any check) |
+| **T1.3** | 31 (`db:restore` atomicity on a large dump) |
+| **T1.7** | 22 |
+| **before Phase 2** | 12 |
+| **before Phase 6** | 16 |
+| **T6.1** | 17, 19, 24, 27 (OPS-8 monitoring), 32 (ADR-003 forward-compat vs readiness) |
+| **standing** | 34 (rollback procedure never used cold) |
+| **unscheduled** | 3, 4, 5, 6, 7, 9, 10, 11, 14, 23 |
+
+**Obligation 26 is the one with a date attached.** A security control has been
+failing since 2026-08-29; it was deferred deliberately, and the deal was that it
+gets checked at the start of T1.2 rather than deferred again.
+
+**Obligation 34 is not a task to close.** The rollback procedure was written and
+drilled by the same session, so every ambiguity in it was resolved by knowledge
+its reader will not have. There is no honest way to close it except by someone
+running it cold, and **the first genuine test will be the first real incident.**
+That is expected. Leave it listed; when it is first used in anger, record what
+was unclear.
+
+### Do not
+
+- Do not tick the deployment criterion. Nothing has been deployed, `railway.ts`
+  has never been applied, and `railway iac plan` has never run successfully.
+- Do not treat T0.10's re-scope as a completion.
+- Do not run `pnpm db:reset` casually — it is `docker compose down -v` and
+  destroys the volume. From T1.3 that volume holds candle history.
+
+---
+
 ## Current position
 
 | | |
@@ -91,7 +191,7 @@ unproven** — see "Not proven" and obligation 18.
 | T0.7 Web skeleton + health endpoints | **Done, one honest caveat** | Next 16 + React 19; /api/health and /api/ready; boot-time config validation that refuses to start; Playwright smoke test. See "Not proven" for the unenforced criterion |
 | T0.8 Worker skeleton | **Done, three honest gaps** | Boot sequence, ordered shutdown, crash logging, heartbeat. 33 unit + 9 integration tests. Criterion 1 met; criteria 2 and 3 partial — see the close-out assessment. Obligations 20, 21, 22 |
 | T0.9 CI | **Done, two partials** | Five parallel jobs on GitHub Actions, green on the first Linux run. Secret scanning, dependency scanning, migration immutability. Four deliberate breaks proved across two exercises. Partials: `build` is verified only incidentally and not at all for the worker (obligation 24); `on push` is narrowed to `main` |
-| T0.10 Local operational readiness | **NOT CLOSED** | Re-scoped by ADR-011: local-only for Phases 1-5, five deployment criteria DEFERRED to T6.1. L2/L3 met, L1 met but unenforced (obligation 29), L4 partial, **L5 FAILS** - CLAUDE.md documents none of the four new commands. Backup/restore and rollback both drilled with deliberate failures. Obligations 27, 28, 29 |
+| T0.10 Local operational readiness | **NOT CLOSED** | Re-scoped by ADR-011: local-only for Phases 1-5, five deployment criteria DEFERRED to T6.1. L2/L3 met, L1 met but unenforced (obligation 33), L4 partial, **L5 FAILS** - CLAUDE.md documents none of the four new commands. Backup/restore and rollback both drilled with deliberate failures. Obligations 31, 32, 33 |
 
 `packages/contracts` is still a stub. It is populated in T1.2.
 
@@ -211,7 +311,7 @@ tests returns nothing, which is correct. **But nothing enforces it.** No CI
 step, no lint rule, no test asserts that boot does not migrate. A future commit
 could add a boot-time migration and every gate in this repository would stay
 green. The policy is protected by a comment in `migrate.ts` and by ADR-003 —
-that is documentation, not a guard. **Obligation 29.**
+that is documentation, not a guard. **Obligation 33.**
 
 **L2 — re-verified rather than inherited.** The prior verification was
 2026-08-28, and **25 commits** have landed since. STATUS.md's own lesson says a
@@ -284,8 +384,8 @@ test (unit)       exit=0
 
 **T0.10's local scope is NOT closed.** L5 fails outright, L1 is unenforced, and
 L4 is partial. Owed before Phase 1: update `CLAUDE.md` (L5), and decide
-obligation 29. The five deployment criteria are carried to T6.1 with a recorded
-trigger, and obligations 27 and 28 remain open against L3 and L4.
+obligation 33. The five deployment criteria are carried to T6.1 with a recorded
+trigger, and obligations 31 and 32 remain open against L3 and L4.
 
 
 
@@ -1227,7 +1327,7 @@ schema — **detection, not prevention.**
 
 **Recorded as a reasoned risk, not a measurement**, precisely so a future
 session does not cite it as something that was seen. `--single-transaction`
-would convert it into a guarantee; obligation 27 carries it to T1.3, when a
+would convert it into a guarantee; obligation 31 carries it to T1.3, when a
 table large enough to demonstrate the difference exists.
 
 ### Design a recovery procedure for the conditions it will be RUN in, not the ones that make it easy to TEST
@@ -1283,6 +1383,45 @@ class of failure.** "The restore reported success on a bad file" invites
 **The practical form: after the fix, ask what ELSE is in the same class.** SQL
 files are not the only migration state; a non-zero exit is not the same as an
 unchanged database.
+
+### A decision carried through where it was MADE is not carried through where it is USED
+
+**The document-scale form of the deciding-vs-doing family — and the reason it
+stays invisible longer than the field-scale versions.**
+
+ADR-011 re-scoped T0.10 on 2026-08-30. The decision was recorded in
+DECISIONS.md, the re-scope was applied to BUILD-PLAN.md's T0.10 section, and
+T6.1 was written. All of that was done. **Three references elsewhere were not**,
+and they were found by grepping the plan for "Railway" rather than by reading
+it:
+
+| Location | Said | Actually |
+|---|---|---|
+| **Phase 0 Quality Gate** | "Both Railway services deployed and healthy" | deferred to T6.1 — **the gate as written could not pass** |
+| T0.4 objective | "working Postgres locally **and on Railway**" | the Railway Postgres was deleted in T0.10 |
+| T0.4 manual step | "creating the Railway Postgres instance" | no longer part of the task |
+
+**The gate one is the dangerous one**, because it sat in the definition of the
+very next task. Someone running it would have hit a criterion that cannot be
+met, and the two available responses — tick it anyway, or treat Phase 0 as
+failed — are both wrong.
+
+**WHY THIS SHAPE HIDES.** The field-scale versions of this family (the `NODE_ENV`
+row, the uncommitted `railway.ts` edit, the ADR cited before it was written)
+were each caught within a turn or two, because someone was looking at the field.
+At document scale nobody is looking: the decision lands in the document where it
+was *made*, which is the one the deciding session naturally opens, and the
+documents that *consume* it are opened later by someone else. **A fresh session
+reads BUILD-PLAN.md for task definitions and would never have opened
+DECISIONS.md to check whether the plan still matched it.**
+
+**THE PRACTICAL FORM: after a decision, grep the repository for the thing it
+changed, rather than editing the places you remember.** "Railway" was the search
+term here and it took one command. The places you remember are exactly the
+places you already fixed.
+
+**Fixed 2026-08-31**, with the gate's original wording struck through rather
+than deleted, so the change is visible to a reader who was not present for it.
 
 ### A deferred risk should be made CONCRETE before it is deferred
 
@@ -2013,19 +2152,20 @@ wondering whether it was ever considered.
 | 14 | **`pnpm typecheck` has a blind spot — audit it.** `vitest.shared.ts` sat at the repository root with a type error (it imported `UserConfig` from `vitest/node`, which exports it as `TestUserConfig`) and **no package tsconfig included it**, so nothing checked it. It surfaced only by accident, when `apps/web` happened to pull it in through a relative import. Root-level and config files outside every package's `include` are unchecked today. **Audit which files are outside every package tsconfig and decide deliberately whether each should be covered.** A typecheck with unknown blind spots is worse than one whose shape is known | **audit — not urgent** |
 | ~~15~~ | ~~**T0.9 must build `apps/web` BEFORE running integration tests.**~~ **DISCHARGED 2026-08-27.** The integration job applies migrations, then builds `apps/web`, then runs the suite. Both are real dependencies: `apps/web`'s readiness tests read DATABASE_URL directly rather than creating an ephemeral database, and its instrumentation test spawns `next start`, which needs `.next` | done |
 | 16 | **`apps/web` computing strategy is unenforced.** F.1 says the web app reads what the worker wrote and never computes. That holds today by inspection only — no rule prevents `apps/web` importing an indicator from `packages/core` and calculating in the dashboard, producing two implementations that drift. The fix has a proven shape: an ESLint boundary plus a regression test, exactly as T0.2/T0.6 did for `packages/core`. Cheap now, and the reason to do it before Phase 6 builds the real dashboard | **before Phase 6** |
-| 17 | **T0.10 must re-measure worker boot-failure behaviour against however the worker actually runs on Railway.** T0.8 measured six failure modes under `tsx` **at commit `f9a75a5`** and all exited non-zero, so the worker needs no explicit `process.exit(1)`. **That result is valid for `tsx` only.** If production runs compiled output, a different entry point, or a process supervisor that wraps execution, the measurement must be repeated — believing a tsx result about production would be the minified-name mistake in a different costume. **Also check what Railway does with each exit code**: the lifecycle exits 0 on a clean shutdown and 1 when a hook failed or timed out, and that distinction is only useful if the platform acts on it | **T0.10 — firm** |
+| 17 | **T0.10 must re-measure worker boot-failure behaviour against however the worker actually runs on Railway.** T0.8 measured six failure modes under `tsx` **at commit `f9a75a5`** and all exited non-zero, so the worker needs no explicit `process.exit(1)`. **That result is valid for `tsx` only.** If production runs compiled output, a different entry point, or a process supervisor that wraps execution, the measurement must be repeated — believing a tsx result about production would be the minified-name mistake in a different costume. **Also check what Railway does with each exit code**: the lifecycle exits 0 on a clean shutdown and 1 when a hook failed or timed out, and that distinction is only useful if the platform acts on it | **T6.1 — was "T0.10 — firm"; re-dated 2026-08-31 by ADR-011, since there is no deployment to measure against until then** |
 | ~~18~~ | ~~**OPS-3 end to end is unproven, and CI is the only place it can run.**~~ **DISCHARGED 2026-08-27 by CI #1, on the step output rather than on a green job** — that distinction is the whole point of the obligation. The *Assert the SIGTERM test actually ran* step printed: `Total assertions in report: 10` / `PASSED: "shuts down cleanly and exits 0" ran and passed (/home/runner/work/KaratX/KaratX/apps/worker/src/boot.integration.test.ts)`. **Ten assertions — the same count as the Windows report where that test showed as `skipped`. The contrast is the evidence.** Run: https://github.com/georginamurray2026-eng/KaratX/actions | done |
-| 19 | **`apps/web` resolves the repository root from a BUNDLED module.** Under Turbopack `import.meta.url` points inside `.next/`, so the upward walk for `pnpm-workspace.yaml` may fail. **UPGRADED 2026-08-28 from "watch this" to a defined test** — asking what the symptom would be found a live defect first (see the deferred-risk lesson), now fixed in `fc74b50`. **What to look for in the Railway logs, and what each means:** (a) *no notice* — the walk succeeded, bundling does not break it; (b) *`No repository root found (no pnpm-workspace.yaml above this module)`* — the walk FAILED, which is harmless because Railway injects env vars anyway, but obligation 19 is confirmed real and the message says so; (c) *`FATAL:` and a non-zero exit* — something else broke, and it exits rather than lying. **The silent-pass case no longer exists**: there is no path where a failed walk is indistinguishable from a correctly-absent `.env` | **T0.10 — observe on first deploy** |
+| 19 | **`apps/web` resolves the repository root from a BUNDLED module.** Under Turbopack `import.meta.url` points inside `.next/`, so the upward walk for `pnpm-workspace.yaml` may fail. **UPGRADED 2026-08-28 from "watch this" to a defined test** — asking what the symptom would be found a live defect first (see the deferred-risk lesson), now fixed in `fc74b50`. **What to look for in the Railway logs, and what each means:** (a) *no notice* — the walk succeeded, bundling does not break it; (b) *`No repository root found (no pnpm-workspace.yaml above this module)`* — the walk FAILED, which is harmless because Railway injects env vars anyway, but obligation 19 is confirmed real and the message says so; (c) *`FATAL:` and a non-zero exit* — something else broke, and it exits rather than lying. **The silent-pass case no longer exists**: there is no path where a failed walk is indistinguishable from a correctly-absent `.env` | **T6.1 — was "T0.10 — observe on first deploy"; re-dated 2026-08-31 by ADR-011. There is no first deploy until T6.1** |
 | ~~20~~ | ~~**Crash logging has never run in a real worker process.**~~ **DISCHARGED 2026-08-28.** `apps/worker/test/crash-harness.ts` installs the REAL `installCrashLogging` and crashes itself; `crash-logging.integration.test.ts` spawns it for both `uncaught` and `unhandled` and asserts it started, did not hang, exited non-zero, and emitted a fatal JSON line carrying `category` and `policy`. **A harness, deliberately NOT a `KARATX_CRASH_TEST` env var** — a production affordance existing only for a test is the wrong artefact and a genuine remote-crash primitive. **Proven by TWO mutations, not one** — see the refinement to the positive-control rule. Leaves obligation 23 | done |
 | ~~21~~ | ~~**Pool closure is unverified against a real database.**~~ **DISCHARGED 2026-08-28.** `apps/worker/src/lifecycle.integration.test.ts` opens a real `Pool`, forces three concurrent queries so backends genuinely exist, registers it with a real `Lifecycle` exactly as `boot.ts` does, shuts down, and counts backends in `pg_stat_activity` from a SEPARATE client. **Proven by two mutations, one per assertion:** removing `pool.end()` failed with *"3 backend(s) still attached"* after the full 5s poll; pointing the observer query at a nonexistent `datname` failed the POSITIVE CONTROL, which is the assertion that stops the test passing while verifying nothing. Polls rather than sleeps, and asserts on the last real reading | done |
 | 22 | **`isShuttingDown` has no production consumer.** OPS-3's "stops accepting work" is a SEAM, not a behaviour — `grep` finds it referenced only by `lifecycle.ts` and its own tests. Correct today, since there is no work until the feed exists. **T1.7 must wire the feed consumer to check it**, or the clause is never actually satisfied | **T1.7 — firm** |
 | 23 | **Nothing proves `index.ts` WIRES the crash handlers in.** Obligation 20 proves the module in a real process; delete `installCrashLogging(logger)` from `main()` and all four of its tests still pass. Two closure options, with costs: **(1)** an integration test that boots the real worker and kills its database mid-run — behavioural, but expensive and potentially flaky; **(2)** a static assertion that `index.ts` contains the call — cheap, and "index.ts calls installCrashLogging" is a fact about text that genuinely matters. **Preference recorded 2026-08-28: option 2**, on condition its failure message SAYS it tests text rather than behaviour, so nobody mistakes it for the stronger check. Decide when scheduled | unassigned |
-| 24 | **`apps/worker` has NO build step, so nothing verifies it becomes a deployable artefact.** It has no `build` script and runs `tsx src/index.ts`. CI therefore cannot check that it compiles, and T0.9's "build" criterion is unmeetable for it rather than merely narrowed. **T0.10 must decide whether production runs `tsx` or a compiled artefact** — and that decision drives obligation 17 (re-measure boot-failure behaviour against however it actually runs) and the pino-flush scope limit (buffered crash output was proven to survive under `tsx` only). Three findings, one underlying question | **T0.10 — firm** |
+| 24 | **`apps/worker` has NO build step, so nothing verifies it becomes a deployable artefact.** It has no `build` script and runs `tsx src/index.ts`. CI therefore cannot check that it compiles, and T0.9's "build" criterion is unmeetable for it rather than merely narrowed. **T0.10 must decide whether production runs `tsx` or a compiled artefact** — and that decision drives obligation 17 (re-measure boot-failure behaviour against however it actually runs) and the pino-flush scope limit (buffered crash output was proven to survive under `tsx` only). Three findings, one underlying question | **T6.1 — was "T0.10 — firm"; re-dated 2026-08-31. ADR-009 answered the tsx-vs-artefact question, so what remains is verifying a deployable artefact, which needs a deployment** |
 | 25 | **Split STATUS.md.** Its own anchor lesson set the trigger "if this happens again, the file is telling us it needs splitting" — and it has now happened four times, most recently miscounting obligations by 11 because a regex matched three other tables. The file is past 1,200 lines of nested headings and pipe-delimited tables. **Proposed split: `docs/LESSONS.md` and `docs/OBLIGATIONS.md`**, both read independently of the rest and both edited most often by script; STATUS.md stays the handoff document. Makes scripted edits scope-safe by construction rather than by discipline | **before T1.2** |
 | 26 | **`Dependabot Updates` has been RED since 2026-08-29 — the proactive half of SEC-10 is not running.** `.github/dependabot.yml` defines it as exactly that: "`pnpm audit` in CI reports vulnerabilities that already exist; this opens pull requests to remove them." Enforcement is intact, DISCOVERY is not. **Leading hypothesis, unverified: pnpm 11.23.0 produces a lockfile version Dependabot’s `npm_and_yarn` ecosystem cannot parse** — read the run log before acting on it. Deferred deliberately, not forgotten: a security control that has stopped working may only be left alone WITH A DEADLINE. **At the start of T1.2, check whether the run is still red; if it is, FIX IT rather than deferring again** | **start of T1.2 — firm** |
-| 27 | **`db:restore` atomicity is OBSERVED, not GUARANTEED.** Five deliberate failures on 2026-08-30 all exited non-zero and left the database intact — but that is because `pg_restore` reads the archive table of contents before applying anything, so a 5 KB dump fails before the first `DROP`. **On a multi-gigabyte Phase 1 dump, corruption late in the data stream could fail after earlier statements have committed**, leaving the half-populated database the drill was designed to rule out. `--exit-on-error` makes it stop; it does not make it undo. **Fix: add `--single-transaction`, then re-run the deliberate failures against a dump large enough that the failure lands mid-restore** — the evidence must come from a dump where the old behaviour would actually have differed | **T1.3 — with the first large table** |
-| 28 | **ADR-003’s forward-compatibility amendment does not deliver a usable rollback, and this is now MEASURED.** `packages/db/src/status.ts` computes `inSync` as `pending.length === 0 && unknown.length === 0`, where `unknown` means the database is AHEAD of the code. Proven 2026-08-31 with the most forward-compatible change that exists — an additive nullable column: old code against the newer schema returns **503 `not_ready`**, `expected 503 to be 200`. Since the healthcheck is a DEPLOY GATE, a rolled-back deployment would never go live, so rollback-without-restore is unavailable for any change containing a migration. **Two coherent resolutions, and the choice is real:** (a) the readiness check is right, forward compatibility cannot deliver rollback, and every migration-bearing rollback is a restore — say so in ADR-003 rather than implying otherwise; (b) `unknown` should NOT block readiness, because being ahead is tolerable when migrations are additive, in which case `pending` alone gates and the amendment becomes real. **Do not decide this by editing the code first** | **T6.1 — firm; revisit ADR-003 in the same breath** |
-| 29 | **ADR-003 is enforced by CONVENTION, not by a check.** No application code imports `runMigrations` — verified — but nothing asserts that it stays that way. A commit adding a boot-time migration would leave lint, typecheck, unit, integration and the build all green. The policy is protected by a comment in `migrate.ts` and by the ADR, which is documentation, not a guard. **This is the same shape as T0.7’s unenforced criterion and T0.9’s obligation 23** — a fact about the code that matters and that nothing checks. **Cheapest closure: a static assertion that no file under `apps/` imports `runMigrations`**, whose failure message says it tests imports rather than behaviour, so nobody mistakes it for the stronger check | **before T1.3** |
+| 31 | **`db:restore` atomicity is OBSERVED, not GUARANTEED.** Five deliberate failures on 2026-08-30 all exited non-zero and left the database intact — but that is because `pg_restore` reads the archive table of contents before applying anything, so a 5 KB dump fails before the first `DROP`. **On a multi-gigabyte Phase 1 dump, corruption late in the data stream could fail after earlier statements have committed**, leaving the half-populated database the drill was designed to rule out. `--exit-on-error` makes it stop; it does not make it undo. **Fix: add `--single-transaction`, then re-run the deliberate failures against a dump large enough that the failure lands mid-restore** — the evidence must come from a dump where the old behaviour would actually have differed | **T1.3 — with the first large table** |
+| 32 | **ADR-003’s forward-compatibility amendment does not deliver a usable rollback, and this is now MEASURED.** `packages/db/src/status.ts` computes `inSync` as `pending.length === 0 && unknown.length === 0`, where `unknown` means the database is AHEAD of the code. Proven 2026-08-31 with the most forward-compatible change that exists — an additive nullable column: old code against the newer schema returns **503 `not_ready`**, `expected 503 to be 200`. Since the healthcheck is a DEPLOY GATE, a rolled-back deployment would never go live, so rollback-without-restore is unavailable for any change containing a migration. **Two coherent resolutions, and the choice is real:** (a) the readiness check is right, forward compatibility cannot deliver rollback, and every migration-bearing rollback is a restore — say so in ADR-003 rather than implying otherwise; (b) `unknown` should NOT block readiness, because being ahead is tolerable when migrations are additive, in which case `pending` alone gates and the amendment becomes real. **Do not decide this by editing the code first** | **T6.1 — firm; revisit ADR-003 in the same breath** |
+| 33 | **ADR-003 is enforced by CONVENTION, not by a check.** No application code imports `runMigrations` — verified — but nothing asserts that it stays that way. A commit adding a boot-time migration would leave lint, typecheck, unit, integration and the build all green. The policy is protected by a comment in `migrate.ts` and by the ADR, which is documentation, not a guard. **This is the same shape as T0.7’s unenforced criterion and T0.9’s obligation 23** — a fact about the code that matters and that nothing checks. **Cheapest closure: a static assertion that no file under `apps/` imports `runMigrations`**, whose failure message says it tests imports rather than behaviour, so nobody mistakes it for the stronger check | **before T1.3** |
+| 34 | **DEPLOYMENT.md’s rollback procedure has never been used by anyone who was not present when it was written.** It was drafted and drilled by the same session, so every ambiguity in it was resolved by knowledge the reader will not have. **There is no honest way to close this except by someone running it cold** — and the first genuine test will be the first real incident. **Listed deliberately as a standing limitation rather than a task**: it is EXPECTED, not a gap to be closed now, and it should stay listed rather than being quietly resolved. When it is first used in anger, record what was unclear | **standing — review after first real use** |
 | ~~26~~ | ~~**Confirm the audit step reports without blocking, IN CI.**~~ **DISCHARGED 2026-08-28 by CI #14 at `91b0a55`, on the printed advisory rather than the job colour** — a green security job would have looked identical if the report line had produced nothing. The step printed the full advisory (package, `<=0.24.2`, `>=0.25.0`, the full dependency path, the GHSA link) and then `--- applying the blocking threshold ---`, and the job stayed green. **The `|| true` survived the runner: reporting changed, threshold did not** | done |
 | 27 | **NOTHING WATCHES THE HEALTH ENDPOINTS AFTER A DEPLOY GOES LIVE.** Railway queries the healthcheck only while a deployment is going live — *"Railway does not monitor the healthcheck endpoint after the deployment has gone live"*. **The 3am scenario, written out because "we have health endpoints" reads as covered and is not:** the database becomes unreachable; `/api/ready` starts returning 503, correctly; **nothing restarts the service; nothing alerts anybody**; Railway's UI still shows the deployment as live and healthy; the dashboard serves 503s until a human happens to look. The endpoints are correct — nothing is watching them. Needs an external uptime check or a scheduled probe that can page someone | **OPS-8 — firm** |
 

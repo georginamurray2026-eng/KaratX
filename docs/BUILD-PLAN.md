@@ -60,7 +60,7 @@ Each phase has a **quality gate**. Do not start the next phase until the gate is
 
 ### T0.4 — Database, Drizzle, and the first migration
 
-**Objective:** working Postgres locally and on Railway, with migrations under version control.
+**Objective:** working Postgres locally, with migrations under version control. *(Amended 2026-08-31: "and on Railway" removed — ADR-011. The Railway Postgres was created in T0.4 and DELETED in T0.10.)*
 **Files:** `packages/db/schema/*`, `packages/db/migrations/*`, `drizzle.config.ts`, `docker-compose.yml` (local Postgres only)
 **Depends on:** T0.3
 **Acceptance criteria:**
@@ -70,7 +70,7 @@ Each phase has a **quality gate**. Do not start the next phase until the gate is
 - Migrations are checked into Git and never edited after being applied
 **Tests:** integration test against a real (not mocked) test database: migrate up from empty, assert tables exist
 **Risks:** OPS-2 — migrations must be a deliberate release step, not automatic on boot. Decide and document now.
-**Manual step for you:** installing Docker Desktop, and creating the Railway Postgres instance. I'll give exact click-by-click instructions when we get here.
+**Manual step for you:** installing Docker Desktop. *(Amended 2026-08-31: creating the Railway Postgres is no longer part of this task — ADR-011.)*
 
 ---
 
@@ -223,12 +223,24 @@ Each phase has a **quality gate**. Do not start the next phase until the gate is
 
 ### ✅ Phase 0 Quality Gate
 
+**AMENDED 2026-08-31 by ADR-011.** One criterion was deferred and one split.
+The original wording is kept struck through rather than deleted, so a reader
+can see what changed and why.
+
 - CI green on `main`
-- Both Railway services deployed and healthy
+- ~~Both Railway services deployed and healthy~~ — **DEFERRED to T6.1.** Nothing
+  is deployed; ADR-011 makes the project local-only for Phases 1–5. This is not
+  met and must not be ticked.
 - `pnpm typecheck`, `lint`, `test`, `test:integration`, `build` all pass locally
-- Rollback proven once
+- Rollback proven once — **LOCAL rollback**, drilled 2026-08-31 with three
+  deliberate failures. PLATFORM rollback is deferred to T6.1. The two are not
+  the same drill and neither substitutes for the other.
 - `CLAUDE.md` and `docs/STATUS.md` accurate
 - Zero secrets in Git history
+
+> **The gate cannot be passed in full while ADR-011 stands.** That is the
+> intended state, not a failure: Phase 1 proceeds with the deployment criterion
+> explicitly outstanding rather than quietly reworded away.
 
 ---
 
