@@ -11,9 +11,17 @@ handover document.
 
 ## ▶ START HERE — session handoff, 2026-08-31
 
-**Phase 0 is 10 tasks of 10 written. The PHASE 0 GATE WAS RUN 2026-08-31 AND DID NOT PASS.
-Running it is the next task, and it is a task in its own right — do not fold it
-into whatever comes after.**
+**Phase 0 is 10 tasks of 10 written. The PHASE 0 GATE WAS RUN 2026-08-31 AND
+DID NOT PASS** — two criteria fail, both cheap. **The next task is fixing them
+and re-running the gate**, not starting Phase 1.
+
+1. `CLAUDE.md` documents none of `db:backup`, `db:restore`, `db:drill`,
+   `rollback:check` — criterion 5.
+2. `pnpm build` exits 1; no root `build` script exists — criterion 3. Decide
+   whether to add one or reword the criterion; do not tick it as-is.
+
+Then Phase 0 closes as a **local-scope gate with five deployment criteria
+outstanding**, recorded as outstanding rather than met.
 
 ### Where things stand
 
