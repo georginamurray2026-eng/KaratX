@@ -59,13 +59,18 @@ try {
 
   // --- Question 2 ----------------------------------------------------------
   const files = git('show', '--name-only', '--format=', target).split('\n').filter(Boolean)
-  const migrations = files.filter((f) => f.startsWith(MIGRATIONS) && f.endsWith('.sql'))
+  // ANY file under migrations/, not just .sql. `meta/_journal.json` is what
+  // `shippedMigrations()` reads, so reverting it changes what the code believes
+  // is applied - the exact `pending` / `unknown` computation that gates
+  // readiness - while touching no SQL at all. Filtering on `.sql` was the
+  // obvious detection, and it passed a journal-only commit as SAFE TO REVERT.
+  const migrations = files.filter((f) => f.startsWith(MIGRATIONS))
 
   process.stdout.write(`Commit ${sha}  ${subject}\n  ${files.length} file(s) changed\n\n`)
 
   if (migrations.length > 0) {
     process.stdout.write(
-      `DO NOT REVERT THIS COMMIT. It contains ${migrations.length} migration(s):\n\n` +
+      `DO NOT REVERT THIS COMMIT. It touches ${migrations.length} migration file(s):\n\n` +
         migrations.map((m) => `  ${m}`).join('\n') +
         `\n\n` +
         `Reverting the code leaves the NEW SCHEMA LIVE and the old code meeting a\n` +

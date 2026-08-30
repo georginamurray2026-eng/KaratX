@@ -1126,6 +1126,60 @@ session does not cite it as something that was seen. `--single-transaction`
 would convert it into a guarantee; obligation 27 carries it to T1.3, when a
 table large enough to demonstrate the difference exists.
 
+### Design a recovery procedure for the conditions it will be RUN in, not the ones that make it easy to TEST
+
+**The drill started from a clean tree, a known-good commit and no time
+pressure. That is the state a recovery procedure is LEAST likely to be run
+from.**
+
+Both improvements to the T0.10 L4 rollback procedure came from one question:
+*what is a real user doing differently from the drill?*
+
+| The drill assumed | A real recovery has |
+|---|---|
+| clean working tree | someone **mid-edit**, with unsaved work |
+| a known bad commit | uncertainty about which change broke it |
+| unlimited time | pressure, and a reflex reach for the nearest command |
+
+Both gaps were invisible from inside the drill, because the drill's starting
+state made them impossible to hit. **A procedure tested only under convenient
+conditions is a procedure tested where it will never be used.**
+
+What it produced: `pnpm rollback:check` now REFUSES on a dirty tree and names
+the two safe options, rather than letting `git revert`'s own refusal provoke a
+hurried `git commit -am` or `git checkout .` — which is precisely how T0.9
+destroyed two uncommitted edits. And the procedure now opens with a QUESTION,
+"does this commit contain a migration?", rather than a command, because
+answering it wrong routes someone into a worse state than they started in while
+following the document exactly.
+
+**The general form applies past rollbacks:** ask what the operator's state will
+actually be — tired, interrupted, half-finished, unsure — and design for that
+one.
+
+### Necessary and insufficient, TWICE, in two consecutive drills
+
+**The obvious fix addressed the symptom and left the failure. Both times it took
+a second mechanism found by running the failure path.**
+
+| Drill | The obvious fix | Necessary, but it missed |
+|---|---|---|
+| **L3 restore** | `pg_restore --exit-on-error` | it stops without UNDOING, and skipped integrity entirely when no manifest sat beside the dump |
+| **L4 rollback** | detect `.sql` files under `migrations/` | `meta/_journal.json` is what `shippedMigrations()` READS. A journal-only commit passed as **SAFE TO REVERT** — measured, exit 0 — while reverting it would change what the code believes is applied, and therefore the `pending` / `unknown` computation that gates readiness, without touching a line of SQL |
+
+**Neither gap was found by review.** Both were found by executing the case the
+fix was supposed to handle, and in both the first fix was the one anybody would
+write.
+
+**The shape to watch for: a fix aimed at the OBSERVED SYMPTOM rather than at the
+class of failure.** "The restore reported success on a bad file" invites
+`--exit-on-error`; "reverting a migration is dangerous" invites looking for
+`.sql`. Both are correct and both are narrower than the thing they guard.
+
+**The practical form: after the fix, ask what ELSE is in the same class.** SQL
+files are not the only migration state; a non-zero exit is not the same as an
+unchanged database.
+
 ### A deferred risk should be made CONCRETE before it is deferred
 
 **"Check this later" is not a plan. Ask what the failure would LOOK like — and
