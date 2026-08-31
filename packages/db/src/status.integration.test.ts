@@ -79,7 +79,7 @@ describe('migrated database', () => {
 
   it('names the applied migration by tag rather than by hash', async () => {
     const status = await checkDatabase(databaseUrl)
-    expect(status.migrations?.latestApplied).toBe('0000_init_system_events_and_config')
+    expect(status.migrations?.latestApplied).toBe('0001_damp_roland_deschain')
   })
 
   it('reports nothing pending and nothing unknown', async () => {

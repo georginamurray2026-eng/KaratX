@@ -52,6 +52,14 @@ beforeAll(async () => {
   })
 })
 
+/**
+ * Updated deliberately whenever a migration lands. The exact-set assertions
+ * below are kept exact ON PURPOSE: they are what catches a migration creating
+ * a table nobody intended. Loosening them to "contains" would remove the only
+ * check on unintended schema changes.
+ */
+const MIGRATION_COUNT = 2
+
 describe('migrations against an empty database', () => {
   it('starts from a genuinely empty schema', async () => {
     // Asserted, not assumed. Without this, a migration that silently did
@@ -84,14 +92,22 @@ describe('migrations against an empty database', () => {
     // about what is absent as much as what is present. Drizzle's own
     // bookkeeping table lives in a separate schema, so public should hold
     // exactly these two.
-    expect(tables).toEqual(['config', 'system_events'])
+    expect(tables).toEqual([
+      'config',
+      'instruments',
+      'market_holidays',
+      'market_hours',
+      'provider_instruments',
+      'providers',
+      'system_events',
+    ])
   })
 
   it('records the migration in Drizzle bookkeeping', async () => {
     const applied = await withPool(testDatabaseUrl, (pool) =>
       pool.query<{ hash: string }>('select hash from drizzle.__drizzle_migrations order by id'),
     )
-    expect(applied.rowCount).toBe(1)
+    expect(applied.rowCount).toBe(MIGRATION_COUNT)
     expect(applied.rows[0]?.hash).toBeTruthy()
   })
 
@@ -144,7 +160,15 @@ describe('migrations against an empty database', () => {
          order by table_name`,
       ),
     )
-    expect(constraints.rows.map((r) => r.table_name)).toEqual(['config', 'system_events'])
+    expect(constraints.rows.map((r) => r.table_name)).toEqual([
+      'config',
+      'instruments',
+      'market_holidays',
+      'market_hours',
+      'provider_instruments',
+      'providers',
+      'system_events',
+    ])
 
     const indexes = await withPool(testDatabaseUrl, (pool) =>
       pool.query<{ indexname: string }>(
@@ -162,10 +186,18 @@ describe('migrations against an empty database', () => {
     const applied = await withPool(testDatabaseUrl, (pool) =>
       pool.query('select id from drizzle.__drizzle_migrations'),
     )
-    expect(applied.rowCount).toBe(1)
+    expect(applied.rowCount).toBe(MIGRATION_COUNT)
 
     const tables = await withPool(testDatabaseUrl, listTables)
-    expect(tables).toEqual(['config', 'system_events'])
+    expect(tables).toEqual([
+      'config',
+      'instruments',
+      'market_holidays',
+      'market_hours',
+      'provider_instruments',
+      'providers',
+      'system_events',
+    ])
   })
 
   it('accepts a write to each table, proving the shape is usable', async () => {

@@ -52,7 +52,7 @@ describe('when the database is reachable and migrated', () => {
     expect(body.status).toBe('ready')
     expect(body.database.connected).toBe(true)
     expect(body.database.migrations.inSync).toBe(true)
-    expect(body.database.migrations.latestApplied).toBe('0000_init_system_events_and_config')
+    expect(body.database.migrations.latestApplied).toBe('0001_damp_roland_deschain')
   })
 
   it('is never cached', async () => {
