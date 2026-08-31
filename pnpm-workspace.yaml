@@ -12,3 +12,25 @@ packages:
 # (T0.4), so no third-party install script needs to execute in this workspace.
 allowBuilds:
   esbuild: false
+
+# GHSA-67mh-4wv8-2f99 (esbuild <=0.24.2, moderate). Dependabot's security
+# update for it has failed on every run since 2026-08-27 because there is no
+# update for it to make:
+#
+#   packages/db > drizzle-kit@0.31.10 > @esbuild-kit/esm-loader@2.6.5
+#                                     > @esbuild-kit/core-utils@3.3.2
+#                                     > esbuild@0.18.20
+#
+# drizzle-kit 0.31.10 is the LATEST release and every 0.31.x still depends on
+# `@esbuild-kit/esm-loader ^2.5.5`. Both `@esbuild-kit/*` packages are
+# DEPRECATED ("Merged into tsx"), so no upstream fix is coming. Dependabot
+# cannot bump a transitive dependency pinned by an abandoned intermediate, so
+# the job fails rather than opening a pull request - and a permanently red
+# security job is indistinguishable from one that has stopped checking.
+#
+# SCOPED deliberately. A bare `esbuild: ^0.25.0` would also apply to vite 8,
+# which resolves esbuild 0.28.2, and would DOWNGRADE it. This targets only the
+# abandoned path. ^0.25.0 resolves to 0.25.12, which drizzle-kit already
+# depends on directly, so the override introduces no new package version.
+overrides:
+  '@esbuild-kit/core-utils>esbuild': ^0.25.0
