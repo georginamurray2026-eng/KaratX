@@ -109,9 +109,11 @@ returned "no response" before the suite ran.
 
 ### Due NOW, and overdue
 
-1. **Obligation 35 — `Dependabot Updates` red since 2026-08-29.** Due at the
-   **start of T1.2**, which has now been worked through without it being
-   checked. It is overdue, not pending.
+1. ~~**Obligation 35 — `Dependabot Updates` red since 2026-08-29.**~~
+   **DISCHARGED 2026-09-01 in `7754628`**, and the recorded hypothesis was
+   REFUTED rather than confirmed — discovery had never stopped. Replaced by
+   **obligation 36**, which asks the one question this session could not
+   answer: whether the job is actually green.
 2. **Obligation 10 — CSV fixture quoted commas.** Due at T1.2. Untouched.
 3. **Obligation 25 — split STATUS.md.** Due before T1.2. Untouched, and this
    session added two more anchor-collision incidents to its case.
@@ -120,7 +122,7 @@ returned "no response" before the suite ran.
 
 | Lands at | Obligations |
 |---|---|
-| **OVERDUE (T1.2)** | 10, 25, 35 |
+| **OVERDUE (T1.2)** | 10, 25 |
 | before T1.3 | 14, 23, 33 |
 | T1.3 | 31 |
 | T1.7 | 22 |
@@ -128,6 +130,7 @@ returned "no response" before the suite ran.
 | before Phase 6 | 16 |
 | T6.1 | 3, 4, 17, 19, 24, 27, 32 |
 | standing | 34 |
+| next session | 36, 37 |
 | unscheduled | 5, 7, 9 |
 
 **Obligation 12 blocks all of Phase 2, not a task.** Read its section before
@@ -225,7 +228,7 @@ afternoon; discovering it at the start of Phase 2 costs the phase.
 | Phase 0 gate | **CLOSED AT LOCAL SCOPE 2026-08-31.** All local criteria pass; five deployment criteria DEFERRED to T6.1, never run |
 | T0.10 | **CLOSED at local scope.** L5 (CLAUDE.md) was FIXED before the gate closed; L1 remains unenforced (obligation 33) and L4 remains partial — the destructive-migration variant was never run |
 | Deployment | **NONE.** ADR-011 makes the project local-only for Phases 1–5 |
-| Open obligations | **22** (plus 10 closed; 32 rows total — count OPEN rows only) |
+| Open obligations | **23** as of 2026-09-01 (plus 11 closed). 35 discharged; 36 and 37 opened. Sub-lettered rows (10b–10e) are notes, not counted |
 
 ### Verified counts — from an actual run, 2026-08-31
 
@@ -611,7 +614,17 @@ The criterion says the file must be *accurate*; it is currently *stale*.
 ### 1 — UNVERIFIABLE from this machine, and not assumed
 
 `gh` is not installed and the repository is private, so GitHub Actions' status
-cannot be read from here. **What WAS verified:** `git ls-remote origin
+cannot be read from here.
+
+> **CORRECTION, 2026-09-01: THE REPOSITORY IS NOT PRIVATE.**
+> `GET /repos/georginamurray2026-eng/KaratX` returns `"private": false`,
+> `"visibility": "public"`, **unauthenticated** — verified with no
+> `GITHUB_TOKEN` or `GH_TOKEN` in the environment. Actions run status, job
+> steps and check-run annotations ARE readable from this machine without `gh`
+> and without credentials, and obligation 35 was diagnosed that way. The
+> paragraph below is kept because its CAUTION still holds — a red run can sit
+> unnoticed — but its stated REASON was wrong, and it cost the project a
+> capability it had all along. **What WAS verified:** `git ls-remote origin
 refs/heads/main` returns the same SHA as local `HEAD`, so the remote has every
 commit and CI has had something to run on.
 
@@ -842,6 +855,12 @@ history result was trusted.
 
 **It DETECTS; it does not PREVENT.** GitHub push protection would block a secret
 before it lands, but on private repositories that needs paid Secret Protection.
+
+> **CORRECTION, 2026-09-01: this repository is PUBLIC** (`"visibility":
+> "public"`, verified unauthenticated). **Secret scanning and push protection
+> are FREE on public repositories.** The limitation recorded below was accepted
+> on the belief that prevention had to be bought; it does not. See obligation
+> 37 — this is a free upgrade from DETECT to PREVENT, and it is not enabled.
 The deliberate-red exercise demonstrated the consequence directly: a planted
 token entered the repository permanently, broke `main` until the branch was
 deleted, and remains visible in the closed PR forever.
@@ -1143,7 +1162,7 @@ exit code or the absence of an error:
 | **T0.9 deliberate-red, first attempt** | A detailed prediction of which four jobs would go red, and why | **PRECONDITION NEVER VERIFIED.** The `push` trigger is filtered to `main` and the accompanying instruction was "do not open a pull request" — so nothing ran at all. The most confident output of the exercise was produced before anything could possibly happen |
 | **T0.10 Railway SDK type search** | `preDeploy 0 / restartPolicy 0 / watchPattern 0` — read as "IaC cannot express these" | **Every zero was fake.** The pipeline was `grep … | paste -sd+ | bc` and `bc` is not installed; each `0` came from the author's own `|| echo 0` fallback. The types support **all three**. **The first time a positive control saved a DECISION rather than a test** |
 | **T0.10 `railway iac plan` output** | A plan diff reported back in detail: which resources would be created, which settings would change | **THE COMMAND HAD NEVER RUN SUCCESSFULLY.** The SDK version check was still failing. The output was not a misread of a real result — there was no result. Caught only because the other party said so outright. **The only instance where the artefact did not exist at all** |
-| **Dependabot Updates, 2026-08-29** | No dependency-update PRs arriving — indistinguishable from having no outdated dependencies | **THE UPDATE JOB HAD BEEN FAILING SINCE 2026-08-29.** The healthy signal for this control is SILENCE, so a broken checker and a clean repository produce identical observable output. Found by scrolling past a red run while looking at something else. **The first instance where the broken check was VENDOR-OPERATED and not ours** |
+| **Dependabot Updates, 2026-08-29** | No dependency-update PRs arriving — indistinguishable from having no outdated dependencies | **PARTLY WRONG — corrected 2026-09-01, see obligation 35.** What was recorded: *the update job had been failing since 2026-08-29.* What the run log actually shows: the SCHEDULED update job was **succeeding**, and only the esbuild SECURITY update was red. The lesson survives; the diagnosis under it did not, and it was never checked against the log. Original text follows. **THE UPDATE JOB HAD BEEN FAILING SINCE 2026-08-29.** The healthy signal for this control is SILENCE, so a broken checker and a clean repository produce identical observable output. Found by scrolling past a red run while looking at something else. **The first instance where the broken check was VENDOR-OPERATED and not ours** |
 
 The leak probe is the sharpest: it produced confident reassurance from a code
 path that never executed. Its exit code and its output both looked like a pass.
@@ -1637,7 +1656,7 @@ push, so:
 | | |
 |---|---|
 | **Enforcement against KNOWN advisories** | **INTACT** — the blocking gate is unaffected |
-| **DISCOVERY of new advisories** | **LOST** — nothing opens the PRs that act on them |
+| **DISCOVERY of new advisories** | ~~**LOST**~~ **— THIS ROW WAS WRONG. Corrected 2026-09-01: the scheduled update job was succeeding the whole time; only the esbuild SECURITY update was red. See obligation 35** |
 
 So the repository is not blind, and the loss is real but narrower than it first
 looks. Saying "security scanning is broken" would overstate it; saying "it may
@@ -2585,7 +2604,11 @@ signal rather than noise.
 ## Carried-forward obligations
 
 
-**21 open, 10 discharged.** Where the open ones land:
+**23 open, 11 discharged**, recounted 2026-09-01. The previous "21 open" had
+been stale for two sessions while the handoff table above said 22 — a
+disagreement inside one file, and obligation 25's case in miniature. Counted by
+listing the numbered rows of THIS table only: 3, 4, 5, 7, 9, 10, 11, 12, 14, 16,
+17, 19, 22, 23, 24, 25, 27, 31, 32, 33, 34, 36, 37. Where the open ones land:
 
 - **T0.10** — 3
 - **before Phase 2** — 2
@@ -2641,7 +2664,9 @@ wondering whether it was ever considered.
 | 23 | **Nothing proves `index.ts` WIRES the crash handlers in.** Obligation 20 proves the module in a real process; delete `installCrashLogging(logger)` from `main()` and all four of its tests still pass. Two closure options, with costs: **(1)** an integration test that boots the real worker and kills its database mid-run — behavioural, but expensive and potentially flaky; **(2)** a static assertion that `index.ts` contains the call — cheap, and "index.ts calls installCrashLogging" is a fact about text that genuinely matters. **Preference recorded 2026-08-28: option 2**, on condition its failure message SAYS it tests text rather than behaviour, so nobody mistakes it for the stronger check. Decide when scheduled  | **before T1.3 — was unassigned. Same family as obligation 33 — a fact about the code that matters and nothing checks. Do both in one pass** |
 | 24 | **`apps/worker` has NO build step, so nothing verifies it becomes a deployable artefact.** It has no `build` script and runs `tsx src/index.ts`. CI therefore cannot check that it compiles, and T0.9's "build" criterion is unmeetable for it rather than merely narrowed. **T0.10 must decide whether production runs `tsx` or a compiled artefact** — and that decision drives obligation 17 (re-measure boot-failure behaviour against however it actually runs) and the pino-flush scope limit (buffered crash output was proven to survive under `tsx` only). Three findings, one underlying question | **T6.1 — was "T0.10 — firm"; re-dated 2026-08-31. ADR-009 answered the tsx-vs-artefact question, so what remains is verifying a deployable artefact, which needs a deployment** |
 | 25 | **Split STATUS.md.** Its own anchor lesson set the trigger "if this happens again, the file is telling us it needs splitting" — and it has now happened four times, most recently miscounting obligations by 11 because a regex matched three other tables. The file is past 1,200 lines of nested headings and pipe-delimited tables. **Proposed split: `docs/LESSONS.md` and `docs/OBLIGATIONS.md`**, both read independently of the rest and both edited most often by script; STATUS.md stays the handoff document. Makes scripted edits scope-safe by construction rather than by discipline | **before T1.2** |
-| 35 | **`Dependabot Updates` has been RED since 2026-08-29 — the proactive half of SEC-10 is not running.** `.github/dependabot.yml` defines it as exactly that: "`pnpm audit` in CI reports vulnerabilities that already exist; this opens pull requests to remove them." Enforcement is intact, DISCOVERY is not. **Leading hypothesis, unverified: pnpm 11.23.0 produces a lockfile version Dependabot’s `npm_and_yarn` ecosystem cannot parse** — read the run log before acting on it. Deferred deliberately, not forgotten: a security control that has stopped working may only be left alone WITH A DEADLINE. **At the start of T1.2, check whether the run is still red; if it is, FIX IT rather than deferring again** | **start of T1.2 — firm** |
+| ~~35~~ | ~~**`Dependabot Updates` has been RED since 2026-08-29 — the proactive half of SEC-10 is not running.**~~ **DISCHARGED 2026-09-01, and THE RECORDED HYPOTHESIS WAS WRONG.** Reading the run log first — as the obligation instructed — refuted it in one step: the scheduled `npm_and_yarn in /. - Update #1` run **SUCCEEDED** on 2026-08-31 (id 33350101588), and an unparseable lockfile would have failed that run too. **Discovery was never lost.** All three red runs (33105196543, 33184569966, 33254585583) are named `npm_and_yarn in /. for esbuild` — the SECURITY update for GHSA-67mh-4wv8-2f99, a different job — and they failed because there was no update to make: `drizzle-kit@0.31.10` is the LATEST release, every `0.31.x` depends on the DEPRECATED `@esbuild-kit/esm-loader`, and that chain pins `esbuild@0.18.20`. Fixed in `7754628` by the scoped override `@esbuild-kit/core-utils>esbuild: ^0.25.0` — scoped because a bare `esbuild` override would have DOWNGRADED vite 8 from 0.28.2. `pnpm audit` went 1 moderate → 0, with the before-run as its positive control. **NOT PROVEN: that the job turns green.** The cause is removed, but that is an assertion about a future run — see obligation 36 | **CLOSED 2026-09-01** |
+| 37 | **Enable GitHub secret-scanning PUSH PROTECTION — it is free, and it is off.** T0.9 recorded gitleaks as DETECT-not-PREVENT and accepted that gap because push protection "needs paid Secret Protection on private repositories". **The repository is PUBLIC** (verified unauthenticated 2026-09-01), and secret scanning with push protection is free on public repositories. So the accepted limitation is not a limitation, it is an unset toggle. gitleaks scans history AFTER a push; push protection blocks the push. **They are complementary — do not remove gitleaks.** Requires a settings change by the repository owner: Settings → Code security → Secret protection. **Also worth a deliberate test once on:** push a fake PAT-shaped value to a throwaway branch and confirm the push is REJECTED, since "enabled" and "enforcing" are not the same claim | **next session — needs the owner** |
+| 36 | **Confirm `Dependabot Updates` is actually GREEN.** Obligation 35 removed the CAUSE of the failing esbuild security update, verified locally — but no Dependabot run has executed since `7754628` landed, so the job turning green is inference, not evidence. **This is the same shape as the obligation it replaces:** the healthy signal for this control is silence, so a still-broken checker and a fixed one produce identical observable output. Check for a green `npm_and_yarn` run dated after 2026-09-01 at `/actions/runs`; if the esbuild security run reappears red, the diagnosis was incomplete and the override is not the whole fix | **next session — firm** |
 | 31 | **`db:restore` atomicity is OBSERVED, not GUARANTEED.** Five deliberate failures on 2026-08-30 all exited non-zero and left the database intact — but that is because `pg_restore` reads the archive table of contents before applying anything, so a 5 KB dump fails before the first `DROP`. **On a multi-gigabyte Phase 1 dump, corruption late in the data stream could fail after earlier statements have committed**, leaving the half-populated database the drill was designed to rule out. `--exit-on-error` makes it stop; it does not make it undo. **Fix: add `--single-transaction`, then re-run the deliberate failures against a dump large enough that the failure lands mid-restore** — the evidence must come from a dump where the old behaviour would actually have differed | **T1.3 — with the first large table** |
 | 32 | **ADR-003’s forward-compatibility amendment does not deliver a usable rollback, and this is now MEASURED.** `packages/db/src/status.ts` computes `inSync` as `pending.length === 0 && unknown.length === 0`, where `unknown` means the database is AHEAD of the code. Proven 2026-08-31 with the most forward-compatible change that exists — an additive nullable column: old code against the newer schema returns **503 `not_ready`**, `expected 503 to be 200`. Since the healthcheck is a DEPLOY GATE, a rolled-back deployment would never go live, so rollback-without-restore is unavailable for any change containing a migration. **Two coherent resolutions, and the choice is real:** (a) the readiness check is right, forward compatibility cannot deliver rollback, and every migration-bearing rollback is a restore — say so in ADR-003 rather than implying otherwise; (b) `unknown` should NOT block readiness, because being ahead is tolerable when migrations are additive, in which case `pending` alone gates and the amendment becomes real. **Do not decide this by editing the code first** | **T6.1 — firm; revisit ADR-003 in the same breath** |
 | 33 | **ADR-003 is enforced by CONVENTION, not by a check.** No application code imports `runMigrations` — verified — but nothing asserts that it stays that way. A commit adding a boot-time migration would leave lint, typecheck, unit, integration and the build all green. The policy is protected by a comment in `migrate.ts` and by the ADR, which is documentation, not a guard. **This is the same shape as T0.7’s unenforced criterion and T0.9’s obligation 23** — a fact about the code that matters and that nothing checks. **Cheapest closure: a static assertion that no file under `apps/` imports `runMigrations`**, whose failure message says it tests imports rather than behaviour, so nobody mistakes it for the stronger check | **before T1.3** |
