@@ -9,23 +9,130 @@ handover document.
 
 ---
 
-## ▶ START HERE — session handoff, 2026-08-31
+## ▶ START HERE — session handoff, 2026-08-31 (evening)
 
-**PHASE 0 IS CLOSED AT LOCAL SCOPE.** All local gate criteria pass; **five
-deployment criteria were DEFERRED to T6.1 and never run** — see the closure
-below, and do not read "Phase 0 closed" as "Phase 0 complete".
+**PHASE 0 IS CLOSED AT LOCAL SCOPE.** Five deployment criteria were DEFERRED to
+T6.1 and never run — see the closure below. Do not read "Phase 0 closed" as
+"Phase 0 complete".
 
-**The next task is T1.2** — contracts and instrument reference data. **T1.1 is
-already CLOSED**: it was completed early, reopened when OANDA v20 turned out to
-be unavailable, re-run, and closed with ADR-008 superseding ADR-005. Two things
-to know before starting T1.2:
+**T1.2 is SUBSTANTIALLY COMPLETE.** Two commits: `30bf592` (contracts) and
+`9c7890b` (reference tables and the seeded calendar). Working tree clean.
 
-1. **Obligation 35 has a date on it**: `Dependabot Updates` has been red since
-   2026-08-29, so the proactive half of SEC-10 is not running. The deal was that
-   it gets checked at the **start of T1.2**, not deferred again.
-2. **Obligation 12 blocks all of Phase 2**, not a task. Read its section below
-   before planning that far ahead — the workaround is untried and the fallback
-   costs money.
+### What T1.2 has delivered, against its own criteria
+
+| Criterion | State |
+|---|---|
+| `Candle`, `Instrument`, `Timeframe`, `Provider` schemas | **DONE** — `packages/contracts/src/market.ts`, 68 unit tests |
+| `Tick` schema | **NOT DEFINED — deliberately.** See below |
+| defined once and **imported everywhere** | **NOT YET TRUE.** Nothing consumes them |
+| Prices `NUMERIC`, timestamps `timestamptz`, all UTC | **DONE**, with an integration test asserting no naive timestamp column exists |
+| `market_hours` encodes weekly open/close and the daily break | **DONE and SEEDED** |
+
+**`Tick` is not defined, and that is a decision awaiting confirmation.** ADR-008
+chose 15min bars from `/time_series`; there is no tick source anywhere in Phase
+1 and no consumer. Writing a contract nothing imports means writing one that
+will be wrong by the time something does. **Either confirm the deferral and
+record it, or say Tick is wanted and it gets written.** It is the one criterion
+still openly unmet.
+
+**"Imported everywhere" is not yet true either** — `grep` finds `@karatx/contracts`
+in exactly three places and none is a real import: a comment, a
+`transpilePackages` entry, and a string inside a test fixture. **The first real
+consumer is T1.3.** That clause of the criterion cannot be satisfied by T1.2
+alone, which is worth knowing before anyone ticks it.
+
+### The next task is T1.3 — candles. NOT part of T1.2.
+
+**Its migration must NOT be written until the primary key, unique constraint and
+index reasoning have been presented and APPROVED.** That is a standing
+instruction from the user, and the reason is that `candles` is the table every
+other table references, it will hold hundreds of thousands of rows per provider
+per year, and its query patterns are only partly knowable because the engine
+that queries it does not exist yet.
+
+The reasoning as it currently stands, for re-presentation rather than for
+copying into a migration:
+
+- **Primary key `(instrument_id, provider_id, timeframe, open_time)`** —
+  composite and natural, no surrogate `id`. That tuple IS the bar's identity; a
+  surrogate would let two rows claim to be the same bar with different prices,
+  both valid, which is the corruption T1.3's idempotent upsert exists to prevent
+  and would move the guarantee out of the database, which §9 forbids.
+- **The unique constraint IS that primary key.** A separate unique index over
+  identical columns would be a duplicate paying write cost for nothing.
+- **Column order is deliberate**: `instrument_id` first because every query
+  filters it, `open_time` last because it is the only ranged column and a B-tree
+  range-scans only on its trailing column.
+- **One extra index**: partial, `WHERE is_final = false`, for the forming bar —
+  at most one per series.
+- **Deliberately NOT added**: an index on `open_time` alone. It serves "all
+  instruments at time T", which does not exist in Phase 1, and would cost a
+  write on every insert of a ~161,000-row backfill.
+
+### ⚠️ Hazards a cold session needs
+
+**`config.value` is `jsonb` — NOT NUMERIC.** There are no NUMERIC columns
+outside migration 0001. The hazard is real but different from prices: `jsonb`
+returns through `JSON.parse`, so **any number stored in `config.value` becomes a
+float64**. If a price, tick size or threshold is ever put there it acquires
+exactly the corruption the `NUMERIC`-as-string design avoids, by another route,
+with no type to stop it. **Nothing reads `config.value` yet — latent, not
+broken.** Whoever writes the first consumer needs to know.
+
+**A failed restore leaves the database EMPTY and must be run TWICE.** Observed
+live on 2026-08-31: restoring a pre-migration backup over the migrated schema
+made layer-3 content verification fire correctly and quarantine `public` to
+`failed_restore_<timestamp>` — leaving an empty `public`. The second invocation
+then restored properly. **The error message does not say this**, and an operator
+mid-incident would reasonably think everything had been lost. Worse, the
+documented rollback path in DEPLOYMENT.md trips it every time, because a
+pre-migration backup by definition has fewer tables than the current schema.
+**Owed: fix the message, and document the two-step behaviour.**
+
+### Verified counts — PHASE 0 CLOSURE SNAPSHOT, 2026-08-31 morning
+
+**Superseded.** Current counts are in the handoff at the top of this file; T1.2
+has since added tests. Kept because it is the run the Phase 0 closure was
+assessed against.
+
+```
+install --frozen-lockfile  exit=0     unit tests          307 passed
+lint                       exit=0     integration tests    66 passed
+format:check               exit=0
+typecheck                  exit=0     migrations applied     2
+test [PostgreSQL STOPPED]  exit=0     market_hours rows      6
+test:integration           exit=0
+```
+
+The PostgreSQL-stopped run was verified with a positive control: `pg_isready`
+returned "no response" before the suite ran.
+
+### Due NOW, and overdue
+
+1. **Obligation 35 — `Dependabot Updates` red since 2026-08-29.** Due at the
+   **start of T1.2**, which has now been worked through without it being
+   checked. It is overdue, not pending.
+2. **Obligation 10 — CSV fixture quoted commas.** Due at T1.2. Untouched.
+3. **Obligation 25 — split STATUS.md.** Due before T1.2. Untouched, and this
+   session added two more anchor-collision incidents to its case.
+
+### Obligations by where they land
+
+| Lands at | Obligations |
+|---|---|
+| **OVERDUE (T1.2)** | 10, 25, 35 |
+| before T1.3 | 14, 23, 33 |
+| T1.3 | 31 |
+| T1.7 | 22 |
+| before Phase 2 | 11, 12 |
+| before Phase 6 | 16 |
+| T6.1 | 3, 4, 17, 19, 24, 27, 32 |
+| standing | 34 |
+| unscheduled | 5, 7, 9 |
+
+**Obligation 12 blocks all of Phase 2, not a task.** Read its section before
+planning that far ahead: the Pine Script workaround is untried and the fallback
+is a purchase.
 
 ## ⛔ PHASE 0 CLOSED AT LOCAL SCOPE — 2026-08-31. A DEPLOYMENT GATE WAS NEVER RUN.
 
@@ -116,7 +223,7 @@ afternoon; discovering it at the start of Phase 2 costs the phase.
 |---|---|
 | Phase 0 tasks | **10 of 10 implemented** |
 | Phase 0 gate | **CLOSED AT LOCAL SCOPE 2026-08-31.** All local criteria pass; five deployment criteria DEFERRED to T6.1, never run |
-| T0.10 | **NOT CLOSED** — see its close-out; L5 fails, L1 unenforced, L4 partial |
+| T0.10 | **CLOSED at local scope.** L5 (CLAUDE.md) was FIXED before the gate closed; L1 remains unenforced (obligation 33) and L4 remains partial — the destructive-migration variant was never run |
 | Deployment | **NONE.** ADR-011 makes the project local-only for Phases 1–5 |
 | Open obligations | **22** (plus 10 closed; 32 rows total — count OPEN rows only) |
 
