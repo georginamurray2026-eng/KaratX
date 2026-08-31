@@ -1,0 +1,46 @@
+{
+  // Obligation 14. `pnpm -r typecheck` reaches only what each package's
+  // tsconfig includes, and every package includes `src/` (plus `test/` where
+  // it exists). The build and test CONFIG files sit outside that, so until
+  // this project existed nothing typechecked them.
+  //
+  // MEASURED, not assumed. `tsc --listFilesOnly` across all nine projects
+  // listed 80 of the repository's 90 TypeScript files. These are the other
+  // ten. Proven with a planted error: misspelling `fileParallelism` as
+  // `fileParallelisim` in `packages/db/vitest.integration.config.ts` left
+  // `pnpm typecheck` at exit 0, and turned the db integration suite from
+  // 28 passed into 4 failed - four files racing against one shared database,
+  // reported as missing columns, with nothing pointing at the config.
+  //
+  // A type-stripping loader is not a typechecker. Vitest and drizzle-kit load
+  // these files through esbuild/tsx, which deletes the types without checking
+  // them, so "it runs" says nothing about whether it is correct.
+  //
+  // `vitest.shared.ts` is listed EXPLICITLY even though it was already
+  // covered. Its only coverage came from `apps/web/tsconfig.json`, whose
+  // include is `**/*.ts` and which therefore pulled in
+  // `apps/web/vitest.config.ts` and followed its import upward. The other
+  // seven packages import the same file and reach none of it. That coverage
+  // is an accident of one glob in one app, and narrowing that glob or
+  // removing that app would silently restore the original defect.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+
+    // The vitest configs import `../../vitest.shared.ts` by its real
+    // extension, because Vite’s native config loader requires it. Same
+    // setting and same reason as `apps/web/tsconfig.json`, which is where
+    // this was discovered - and where it was, until now, the only place the
+    // shared file got typechecked at all.
+    "allowImportingTsExtensions": true
+  },
+  "include": [
+    "vitest.shared.ts",
+    "apps/*/vitest.config.ts",
+    "apps/*/vitest.integration.config.ts",
+    "packages/*/vitest.config.ts",
+    "packages/*/vitest.integration.config.ts",
+    "packages/*/drizzle.config.ts"
+  ]
+}
