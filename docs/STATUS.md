@@ -1662,6 +1662,46 @@ So the repository is not blind, and the loss is real but narrower than it first
 looks. Saying "security scanning is broken" would overstate it; saying "it may
 clear itself" would understate it. Obligation 35 carries the deadline.
 
+#### THE CONCRETE INSTANCE, measured 2026-09-01 — and how it was actually found
+
+**It was found because a human asked about a red run in a list.** Nothing
+alerted. Nothing failed. CI stayed green throughout. There was no mechanism
+anywhere in this project that would have surfaced it, and there still is not.
+
+**We wrote this lesson about `pnpm audit`'s silence, and then lived it in a
+different service without noticing.** Writing a lesson down does not install it.
+The rule was on the page while the instance was running.
+
+**THE DATES, from the run list rather than from memory** — and they do not match
+what was recorded:
+
+| | |
+|---|---|
+| First failing run | **2026-08-27** (33105196543), not 2026-08-29 as recorded |
+| Last failing run | 2026-08-29 (33254585583) |
+| Most recent Dependabot activity | **2026-08-31 — three runs, all GREEN** |
+| Noticed | 2026-09-01, by a human scrolling a list |
+
+So "red since 2026-08-29" was wrong in both directions: the failures started two
+days earlier, and by the time it was investigated the most recent Dependabot
+runs were already succeeding. **The job had stopped being ATTEMPTED, not stopped
+succeeding** — after three consecutive failures nothing tried again, so even the
+red signal decayed into no signal at all. An absence that used to be a failure
+is worse than a failure, because the one piece of evidence that existed stopped
+being produced.
+
+**What makes this instance sharper than the audit-gate one.** There, a control
+we own reported uselessly. Here the control is VENDOR-OPERATED and partially
+degraded: version updates kept working, security updates did not, and the two
+are indistinguishable from outside without opening individual runs. Any check of
+the form "is Dependabot working?" would have answered yes.
+
+**The uncomfortable part, stated rather than softened.** The detection mechanism
+was a person's curiosity, exercised once, five days late. That is not a
+mechanism. Nothing in this repository monitors a vendor-operated job, and until
+something does, the honest position is that the next such failure will also be
+found by accident or not at all.
+
 ### The FIRST fix that addresses a symptom is not always the fix that addresses the failure
 
 **Three mechanisms were needed where one looked sufficient, and the drill is
