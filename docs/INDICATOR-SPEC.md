@@ -1,6 +1,6 @@
 # Indicator Specification (Phase 2 reference)
 
-**Status:** Stoch RSI CONFIRMED. EMA CONFIRMED.
+**Status:** Stoch RSI CONFIRMED. EMA CONFIRMED. **Golden fixtures CAPTURED 2026-09-02 (route 1 proven); PARITY NOT YET ASSERTED — obligation 12.**
 **Source of truth:** the user's TradingView chart — `OANDA:XAUUSD`, 1H.
 **Purpose:** guarantee that the engine's indicator values match what the user sees on their chart (audit finding C3). Divergence here destroys trust in every alert regardless of how good the strategy logic is.
 
@@ -114,6 +114,16 @@ Many libraries derive both from `raw`. That produces a %D that is subtly wrong i
 **3. Division by zero when `highest(rsi,14) == lowest(rsi,14)`.**
 Occurs in dead-flat conditions. TradingView's behaviour must be verified; do not silently emit 0, 50 or 100 without checking. Add an explicit test for the flat-market case (required by §12 anyway).
 
+> **STILL UNVERIFIED as of 2026-09-02 — and the 2026-09-02 capture does NOT settle it, despite looking like it does.**
+>
+> The 15m fixture contains bars where `k` is **exactly 0** (i = 5908, 6082, 6083, 6120) and **exactly 100** (ten bars, including three consecutive at i = 6160-6162). It is tempting to read those as trap 3 observed. **They are not.**
+>
+> `k = 0` is the NORMAL result when RSI sits at its own 14-period low — `raw = 100 * (rsi - lowest) / (highest - lowest)` is legitimately zero, with no division by zero anywhere. The bar context confirms it: at i = 6082-6083 close falls 4383 → 4375 → 4370, and at i = 5908 it falls 4603 → 4600 → 4598. **Those are trending markets hitting a period low, which is the opposite of the dead-flat condition trap 3 describes.** `d` is never exactly 0 in the capture, as expected — it is a 3-period SMA of `k`.
+>
+> **What the capture DOES establish, and it is worth having:** the boundary values 0 and 100 occur in ordinary data and are EXACT. An engine that produces `1.4e-15` instead of `0`, or `99.9999999997` instead of `100`, disagrees with TradingView on 14 of 299 bars. That is a real parity requirement and it is now evidenced.
+>
+> **Trap 3 itself remains open.** Confirming it needs a window where RSI is genuinely constant across 14 bars, which this capture does not contain. Do not mark it verified on the strength of the zeros above — that would be concluding from a symptom that has a second, likelier cause.
+
 **4. Warmup.** RSI(14) then Stoch(14) then two 3-period SMAs. Emit no value until at least `14 + 14 + 3 + 3` bars exist, and per the audit's warmup rule prefer a substantially longer margin before treating values as trustworthy.
 
 ---
@@ -157,13 +167,45 @@ Captured 2026-08-25 ~17:06 UTC+7, `OANDA:XAUUSD` 1H.
 
 Sanity read: bullish EMA stack (20 > 50 > 100 > 200) with price pulled back below the 20; Stoch RSI deeply oversold with K above D. Internally coherent.
 
-**This is a spot check, not a test fixture.** Before Phase 2, export proper CSVs via TradingView's *Export chart data*, with all indicators applied to the chart first:
+**This is a spot check, not a test fixture.** It was read off the chart legend at three decimal places.
 
-- 1H, several hundred bars
-- 15M, several hundred bars
-- 1D, several hundred bars
+---
 
-Commit these under `test/fixtures/tradingview/`. The engine must reproduce them within a documented tolerance. Any bar that fails is a bug in our implementation, not in TradingView.
+## ROUTE 1 IS PROVEN — real fixtures captured 2026-09-02
+
+**Obligation 12's recorded blocker is resolved.** *Export chart data* is a paid feature we do not have; **Pine `log.info` works instead**, via `tools/tradingview/karatx-golden-export.pine`. Routes 2 (buy a month of TradingView) and 3 (transcribe ~20 bars by hand) are no longer needed.
+
+**Committed at `test/fixtures/tradingview/`, 299 consecutive bars each:**
+
+| File | `i` range | `tf` |
+|---|---|---|
+| `karatx-golden-15m.txt` | 5903 – 6201 | `"15"` |
+| `karatx-golden-1H.txt` | 9575 – 9873 | `"60"` |
+| `karatx-golden-1D.txt` | 14541 – 14839 | `"1D"` |
+
+### What was VERIFIED, rather than assumed
+
+- **Historical bars DO log.** This was the open question that decided whether the route worked at all; `i` starts thousands of bars before the live edge.
+- **`t` is a plain 13-digit integer** on all 897 lines — *checked, not assumed*. Pine could have rendered ~1.79 × 10¹² in scientific notation and produced well-formed-looking, unparseable JSON.
+- **`i` is consecutive with no gaps and no duplicates**, verified as `max - min + 1 == unique count` rather than by a sorted-order glance: sorting looks correct when a gap and a duplicate cancel out.
+- **Full precision: 8–10 decimal places**, against the legend's 3.
+- Every `t` round-trips to its own `iso`; all 15 fields present on every line; **zero null indicator values**, so every bar is past warmup.
+
+### THE FILE FORMAT, and the parser rule
+
+Not the log-pane paste that was expected — **TradingView's CSV export**: a `Date,Message` header, then each row is an ISO date, a comma, and the JSON payload as a **CSV-quoted field with doubled-quote (`""`) escaping**. Unescape before `JSON.parse`.
+
+> **USE THE JSON `t` OR `iso` FOR THE BAR TIME. NEVER THE `Date` COLUMN OR A LOG PREFIX.**
+>
+> The Pine Logs **pane** shows **wall-clock emit time**; the CSV **export** writes **bar time**. Two different fields that look alike. In these three files they agree on all 897 lines — **that is a property of the export format, not a guarantee.** A pane paste shows the divergence directly: a bar with `"iso":"2026-09-02T15:00:00Z"` was emitted at prefix `15:15:00.589`, fifteen minutes later, because `barstate.isconfirmed` fires at bar close.
+
+The engine must reproduce these within a documented tolerance. **Any bar that fails is a bug in our implementation, not in TradingView.**
+
+### Still unproven, and both are tracked
+
+- **PARITY. Nothing has been asserted yet.** Having something to compare against is necessary and insufficient. Obligation 12 stays open and is narrowed to "parity not yet asserted".
+- **The engine needs ~1000 bars of history BEFORE the first golden bar** to reproduce EMA200 — obligation 41. These files are expected OUTPUT and contain no input history.
+- **The 300-row export cap is an INFERENCE, not a measurement.** All three files came back at 299 data rows + 1 header while the script requested 300, and identical counts across three different timeframes is not chance. But every capture requested 300, so a cap of exactly 300 has never been distinguished from any other explanation. **One re-run at `logLastNBars = 500` would settle it.** Until then, do not record 300 as the limit.
 
 ---
 
