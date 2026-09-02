@@ -15,14 +15,13 @@ was deliberate, so this commit is reviewable as a move rather than as a rewrite.
 ## Carried-forward obligations
 
 
-**19 open, 16 discharged**, recounted 2026-09-02 after adding obligation 38 and
-discharging obligations 10 and 25 in the same session. **The previous figure was 20**,
-recounted 2026-09-01 after discharging 14, 23, 33 and 35 — it returns to 20 by
-one addition cancelling one discharge, not by standing still. (Earlier still, before 2026-09-01, the file said "21 open" while the
-handoff table above said 22 — a disagreement inside one file, and obligation 25's
-case in miniature.) Counted by listing the numbered rows of
-THIS table only: 3, 4, 5, 7, 9, 11, 12, 16, 17, 19, 22, 24, 27, 31, 32, 34, 36,
-37, 38. Where the open ones land:
+**19 open, 16 discharged**, as of 2026-09-02. Counted by listing the numbered
+rows of THIS table only: 3, 4, 5, 7, 9, 11, 12, 16, 17, 19, 22, 24, 27, 31, 32,
+34, 36, 37, 38.
+
+**This count has been wrong before** — it read 21 here while a summary elsewhere
+said 22 — which is part of why obligation 25 split this file out and why no
+summary is kept outside it. Where the open ones land:
 
 | Lands in | Obligations |
 | --- | --- |

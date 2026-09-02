@@ -114,7 +114,7 @@ test:integration           exit=0
 The PostgreSQL-stopped run was verified with a positive control: `pg_isready`
 returned "no response" before the suite ran.
 
-### Due NOW, and overdue
+### Due NOW, and overdue — ALL CLEAR as of 2026-09-02
 
 1. ~~**Obligation 35 — `Dependabot Updates` red since 2026-08-29.**~~
    **DISCHARGED 2026-09-01 in `7754628`**, and the recorded hypothesis was
@@ -126,24 +126,33 @@ returned "no response" before the suite ran.
    section.
 2. ~~**Obligation 10 — CSV fixture quoted commas.**~~ **DISCHARGED 2026-09-02** —
    the loader now REFUSES a quoted field instead of mis-parsing it.
-3. **Obligation 25 — split STATUS.md.** Due before T1.2. Untouched, and this
-   session added two more anchor-collision incidents to its case.
+3. ~~**Obligation 25 — split STATUS.md.**~~ **DISCHARGED 2026-09-02** — split
+   into `docs/LESSONS.md` and `docs/OBLIGATIONS.md`, moved verbatim and
+   verified byte-identical. This file went 3,248 → 1,872 lines.
 
-### Obligations by where they land
+**NOTHING IS OVERDUE.** 10 and 25 were the last two, both discharged
+2026-09-02.
 
-| Lands at | Obligations |
-|---|---|
-| ~~**OVERDUE (T1.2)**~~ | ~~10, 25~~ — **both DISCHARGED 2026-09-02.** No overdue obligations remain |
-| ~~before T1.3~~ | ~~14, 23, 33~~ — **all three DISCHARGED 2026-09-01** |
-| T1.3 | 31 (flag only — see below), 38 |
-| T1.4 | 31 (evidence) |
-| T1.7 | 22 |
-| before Phase 2 | 11, 12 |
-| before Phase 6 | 16 |
-| T6.1 | 3, 4, 17, 19, 24, 27, 32 |
-| standing | 34 |
-| next session | 36, 37 |
-| unscheduled | 5, 7, 9 |
+### Obligations — see [OBLIGATIONS.md](./OBLIGATIONS.md)
+
+**The summary table that stood here until 2026-09-02 is DELETED, not
+regenerated.** It had already diverged from the ledger it summarised: it filed
+obligation 5 as `unscheduled` where the ledger says `T1.4, T1.7`, omitted that
+row entirely, and drifted on a label. A second copy inside the Phase 0 gate
+section below was worse — fourteen disagreements between the two copies in
+total, most of them obligations discharged days earlier.
+
+**Deleted rather than regenerated because there is no mechanism to keep a copy
+in step.** Regenerating would have produced a correct table with the same
+future: it goes stale the next time the ledger changes, and the only thing
+holding it accurate is someone remembering to edit two files — the discipline
+obligation 25's split exists to replace. A CI check diffing the two was the
+alternative, and it is real, but building a checker to guard a convenience copy
+costs more than not having the copy.
+
+**What a cold session should do instead:** open
+[OBLIGATIONS.md](./OBLIGATIONS.md) and read the "Lands in" table. It is one
+file, and it is the only place an obligation's schedule is recorded.
 
 **Obligation 12 blocks all of Phase 2, not a task.** Read its section before
 planning that far ahead: the Pine Script workaround is untried and the fallback
@@ -290,9 +299,18 @@ state.** Phase 1 proceeds with the deployment criterion explicitly outstanding.
 commands T0.10 added (`db:backup`, `db:restore`, `db:drill`, `rollback:check`).
 Fix that before or during the gate; it is the only cheap failure on the list.
 
-### Obligations by where they land
+### Obligations by where they land — FROZEN SNAPSHOT, 2026-08-31. DO NOT READ AS CURRENT.
 
-| Lands at | Obligations |
+**This table records what was believed during the Phase 0 gate run on
+2026-08-31 and is kept as part of that record. It is WRONG as of 2026-09-02**
+and is deliberately not updated: obligations 6, 10, 14, 23, 25, 33 and 35 below
+are all DISCHARGED, 3 and 4 are T6.1 rather than unscheduled, 11 is missing from
+"before Phase 2", and 36, 37 and 38 did not exist yet.
+
+**The authoritative ledger is [OBLIGATIONS.md](./OBLIGATIONS.md).** Nothing here
+should be used to plan anything.
+
+| Lands at | Obligations (AS BELIEVED ON 2026-08-31) |
 |---|---|
 | **before T1.2** | 25 (split STATUS.md) |
 | **start of T1.2 — firm** | 35 (Dependabot red since 2026-08-29) |
@@ -1383,10 +1401,11 @@ signal rather than noise.
 and discharged obligation, with where each one lands — now lives in
 **[OBLIGATIONS.md](./OBLIGATIONS.md)**. Nothing was reworded in the move.
 
-**The "Obligations by where they land" summary near the top of this file stays
-here**, because a cold session needs it in the handoff. It is a SUMMARY; the
-ledger is authoritative. If they disagree, the ledger wins and the summary is
-the defect.
+**No summary of the ledger is kept in this file.** One stood near the top until
+2026-09-02 and was deleted the same day, because it had already diverged from
+the ledger it summarised — see the note there. The only obligations table that
+is safe to read is the one in OBLIGATIONS.md; a second copy inside the Phase 0
+gate section below is a dated snapshot and is labelled as wrong.
 
 ---
 
