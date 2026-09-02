@@ -33,9 +33,18 @@ export const CANDLE_UPSERT_OUTCOMES = [
   'applied',
 
   /**
-   * A final bar was re-delivered unchanged. Nothing was written - not even
-   * `updated_at`, which is what keeps that column meaning "when this row last
-   * changed" rather than "when we last saw it".
+   * A bar was re-delivered UNCHANGED - final or forming. Nothing was written,
+   * not even `updated_at`, which is what keeps that column meaning "when this
+   * row last changed" rather than "when we last saw it".
+   *
+   * FORMING BARS COUNT. A forming bar re-polled with identical values is a
+   * no-op, not an `applied` rewrite: in a quiet 15-minute bar that happens many
+   * times per bar, and writing each one would bump `updated_at` while nothing
+   * changed. ADR-013's six-case table was amended to say so.
+   *
+   * ALSO RETURNED, AND NOT DISTINGUISHED: a final bar whose prices match but
+   * whose `raw_datetime` text differs. The stored text is kept and the variant
+   * is discarded. Detecting that is T1.5's, against T1.4's captured payloads.
    */
   'noop',
 

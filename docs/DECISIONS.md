@@ -1131,12 +1131,34 @@ Branching on the **stored** row's `is_final`, because the forming bar legitimate
 
 | Stored    | Incoming                                       | Behaviour                          | Event         |
 | --------- | ---------------------------------------------- | ---------------------------------- | ------------- |
-| non-final | non-final                                      | update the forming bar             | none          |
+| non-final | non-final, anything differs                    | update the forming bar             | none          |
+| non-final | non-final, IDENTICAL                           | **no-op**; `updated_at` unchanged   | none          |
 | non-final | final                                          | update and finalise                | none          |
 | final     | identical                                      | no-op; `updated_at` unchanged      | none          |
 | final     | different value                                | **reject**; original preserved     | conflict      |
 | final     | non-final                                      | **reject**; do not un-finalise     | conflict      |
 | final     | `null → value` on `volume` / `bid` / `ask`     | **enrichment**; apply              | informational |
+
+**AMENDED 2026-09-02, before any code was written.** The first row originally
+read "non-final + non-final → update the forming bar", unconditionally. That
+contradicted decision 4 of this ADR, which says `updated_at` advances **only when
+a column value actually changes**: a forming bar re-polled with identical values
+— common in a quiet 15-minute bar, perhaps a dozen times per bar — would have
+bumped it on every poll. The alternative was to redefine `updated_at` as "last
+write" for forming bars only, and a split definition is worse than an extra
+predicate. An identical forming re-poll is now a `noop` and writes nothing.
+
+**`raw_datetime` HAS NO DETECTION MECHANISM, and this ADR previously implied one.**
+A stored FINAL bar re-delivered with identical prices but a DIFFERENT
+`raw_datetime` satisfies `coreSame` and `enrichOnly` with no enrichment, so it
+returns `noop`: nothing is written, the stored text is kept, and **the incoming
+variant is discarded without being recorded**. That is acceptable — the stored
+text is the one `open_time` was parsed from — but "recorded separately" was a
+claim with nothing behind it. **A `raw_datetime`-only change is CURRENTLY
+UNDETECTED.** Detection lands at **T1.5**, against the raw payloads T1.4's
+adapter captures; it is a provider changing its datetime rendering, which is the
+canary for exactly the timezone class of bug that column exists to make
+recoverable.
 
 **Enrichment is `null → value` ONLY, and the asymmetry is the point.** `value → null` is a provider losing data, and it rejects like any other conflict. Without that asymmetry stated explicitly, the sixth case becomes a hole through which real data loss passes as an upgrade.
 

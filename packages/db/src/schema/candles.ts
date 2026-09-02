@@ -125,8 +125,26 @@ export const candles = pgTable(
      * price columns do not: a mis-parsed instant is unrecoverable, a padded
      * decimal is not.
      *
-     * DELIBERATELY EXCLUDED from the conflict comparison. A formatting change
-     * here is recorded separately, not treated as a changed bar.
+     * DELIBERATELY EXCLUDED from the conflict comparison of a FINAL bar, so a
+     * formatting change is not treated as a changed bar.
+     *
+     * AND THERE IS NO MECHANISM BEHIND THAT YET - stated plainly, because an
+     * earlier version of this comment said such a change was "recorded
+     * separately" and nothing recorded it. A stored final bar re-delivered with
+     * identical prices and a DIFFERENT raw_datetime returns `noop`: nothing is
+     * written, the stored text is kept, and the incoming variant is DISCARDED
+     * WITHOUT BEING RECORDED. Keeping the stored text is right - it is the one
+     * `open_time` was parsed from - but the arrival of a variant is information
+     * we currently lose.
+     *
+     * A raw_datetime-only change is therefore CURRENTLY UNDETECTED. Detection
+     * lands at T1.5, against the raw payloads T1.4's adapter captures. It
+     * deserves detection because a provider changing its datetime rendering is
+     * the canary for exactly the timezone bug this column exists to make
+     * recoverable.
+     *
+     * On a FORMING bar the incoming text is stored, and a change to it alone
+     * counts as a difference - so the forming path does not lose it.
      */
     rawDatetime: text('raw_datetime').notNull(),
 

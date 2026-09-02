@@ -88,6 +88,42 @@ returns zero rows on a weekday too) and it is the ONLY thing that caught
 instance 8, where the older rules all passed and the conclusion was still wrong.
 Reach for this first.
 
+#### The same shape in a TEST: a test that passes under both the right answer and the wrong one
+
+**Recorded 2026-09-02, T1.3.** The candle upsert classifies six cases in a SQL
+`CASE`, and the `rejected` branch must precede the value comparisons. The user
+asked for that ordering to be CONFIRMED before any code was written. It was
+confirmed, in writing, with a worked trace: stored-final plus incoming-non-final
+with IDENTICAL values, which would otherwise fall through to `noop`.
+
+**The trace was wrong, and both of us had accepted it.** A test was written for
+exactly that case. Then the ordering was deliberately mutated — the `rejected`
+branch moved below `conflict` — and **the test still passed.**
+
+**Why:** with identical values the `conflict` branch does not fire either, so
+`rejected` is still reached before the `ELSE`. The case chosen to demonstrate the
+ordering was the one case that cannot demonstrate it. The ordering IS
+load-bearing — for DIFFERING values, where `conflict` fires first and reports the
+wrong outcome for an attempt to un-finalise history — and nothing tested that.
+
+**This is the Saturday-sweep shape, one level up.** There the query could not
+distinguish "no bars" from "no access". Here the TEST could not distinguish the
+right ordering from the wrong one, while appearing to be precisely the test for
+it. A green result meant nothing, and looked like proof.
+
+**What caught it was the mutation, and only the mutation.** Not review — the
+claim had been read and accepted twice. Not the test — it was written for this
+exact property and passed either way. **The rule this project already had is what
+worked: a test never seen to fail is a test whose assertions have never been
+shown to be connected to anything.** Applying it to a NEW test, immediately,
+before trusting it, is what turned a false confirmation into a finding.
+
+**Generalise it:** when a test is written to pin a specific ordering, precedence
+or short-circuit, the input must be one where the branches actually COMPETE. An
+input that only one branch can match proves the branch exists, not that it comes
+first. Ask: which other branch would claim this input if mine were removed? If
+the answer is "none", the test is not testing the order.
+
 ---
 
 The earlier, weaker form is kept because it is cheap and catches the common case:
