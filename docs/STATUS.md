@@ -919,8 +919,16 @@ before it lands, but on private repositories that needs paid Secret Protection.
 > **CORRECTION, 2026-09-01: this repository is PUBLIC** (`"visibility":
 > "public"`, verified unauthenticated). **Secret scanning and push protection
 > are FREE on public repositories.** The limitation recorded below was accepted
-> on the belief that prevention had to be bought; it does not. See obligation
-> 37 — this is a free upgrade from DETECT to PREVENT, and it is not enabled.
+> on the belief that prevention had to be bought; it does not.
+>
+> **SUPERSEDED 2026-09-02: push protection is now ENABLED AND PROVEN ENFORCING.**
+> Obligation 37 is DISCHARGED. A throwaway branch carrying two fake baits — a
+> checksummed GitHub PAT and a Slack bot token — was **REJECTED** with `GH013`,
+> GitHub naming both. The bait was proven detectable by `gitleaks` FIRST, so an
+> accepted push could not have been mistaken for a passing test. **The sentence
+> below is now historical: this repository PREVENTS as well as DETECTS.**
+> gitleaks stays — it scans history after a push and across every ref, which
+> push protection does not do.
 The deliberate-red exercise demonstrated the consequence directly: a planted
 token entered the repository permanently, broke `main` until the branch was
 deleted, and remains visible in the closed PR forever.
