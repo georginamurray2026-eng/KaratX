@@ -91,10 +91,14 @@ then restored properly. **The error message does not say this**, and an operator
 mid-incident would reasonably think everything had been lost. Worse, the
 documented rollback path in DEPLOYMENT.md trips it every time, because a
 pre-migration backup by definition has fewer tables than the current schema.
-**Owed: fix the message, and document the two-step behaviour. TRACKED AS
-OBLIGATION 38 from 2026-09-02** — it had been carried as an unnumbered "Owed"
-line since 2026-08-31, which meant nothing scheduled it and no obligation row
-carried it.
+~~**Owed: fix the message, and document the two-step behaviour.**~~
+**OBLIGATION 38 — DISCHARGED 2026-09-02.** The failure message now says the
+data is not lost, prints the exact command to re-run, explains WHY a
+pre-migration backup trips this every time, and says that a SECOND failure is a
+different problem. DEPLOYMENT.md gained "A failed restore leaves `public` EMPTY
+and must be run TWICE", and the rollback step itself now warns inline rather
+than leaving the reader to find it. It had been an unnumbered "Owed" line from
+2026-08-31 to 2026-09-02, which is precisely why nothing scheduled it.
 
 ### Verified counts — PHASE 0 CLOSURE SNAPSHOT, 2026-08-31 morning
 

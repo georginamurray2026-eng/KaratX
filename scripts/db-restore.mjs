@@ -129,7 +129,23 @@ try {
           `the failure this check exists for.\n\n` +
           `The damaged schema has been renamed to "${quarantined}" and an empty\n` +
           `"public" left in its place, so nothing can run against partial data by\n` +
-          `accident. The evidence is preserved for diagnosis.`,
+          `accident. The evidence is preserved for diagnosis.\n\n` +
+          `------------------------------------------------------------------\n` +
+          `YOUR DATA IS NOT LOST, AND "public" IS NOW EMPTY BY DESIGN.\n\n` +
+          `  RUN THE SAME COMMAND AGAIN:\n\n` +
+          `      pnpm db:restore ${file}\n\n` +
+          `The second run restores into the empty schema and normally SUCCEEDS.\n\n` +
+          `WHY THIS HAPPENS, so you can tell it apart from real corruption:\n` +
+          `this check compares table counts against the manifest. Restoring a\n` +
+          `backup taken BEFORE a migration into a database that is AFTER it means\n` +
+          `the dump legitimately has fewer tables than the live schema, so the\n` +
+          `comparison fails on the FIRST run every time - the dump is fine.\n` +
+          `THE DOCUMENTED ROLLBACK PATH IN DEPLOYMENT.md TRIPS THIS BY\n` +
+          `DEFINITION, because a pre-migration backup always has fewer tables.\n\n` +
+          `If the SECOND run fails too, that is a different problem: the dump\n` +
+          `itself does not match its manifest. Do not run it a third time -\n` +
+          `the quarantined schema "${quarantined}" holds the evidence.\n` +
+          `------------------------------------------------------------------`,
       )
     }
   }

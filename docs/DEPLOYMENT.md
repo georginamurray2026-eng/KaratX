@@ -313,6 +313,9 @@ something.
    migration immutable, and there is no down path.
 
      pnpm db:restore <backup taken BEFORE that migration>
+       EXPECT THE FIRST RUN TO FAIL AND LEAVE "public" EMPTY. Run the SAME
+       command a SECOND time - see "A failed restore must be run TWICE"
+       below. This path trips it EVERY time, by definition.
      read "WHAT A RESTORE CANNOT RECOVER" before you do - it tells you what
        you are about to lose
      write a NEW forward migration correcting the mistake
@@ -403,6 +406,37 @@ to install and the client version always matches the server. Both refuse to run
 unless the volume the database is actually using is the volume the compose file
 declares — a drill that destroys an unused volume would otherwise pass while
 proving nothing. `backups/` is git-ignored.
+
+### ⚠️ A failed restore leaves `public` EMPTY and must be run TWICE
+
+**Observed live on 2026-08-31. Read this BEFORE you are mid-incident**, because
+the moment you need it is the moment it looks like total data loss.
+
+Restoring a **pre-migration** backup over a **migrated** schema makes layer-3
+content verification fire correctly: the dump legitimately has fewer tables than
+the live schema, the counts disagree, and the script quarantines `public` to
+`failed_restore_<timestamp>` and leaves an **empty `public`** behind. That is
+the design working — nothing may run against half-restored data by accident.
+
+**Run the same command again. The second invocation restores into the now-empty
+schema and normally succeeds.**
+
+```
+pnpm db:restore <file>     → FAILS, quarantines public, leaves it empty
+pnpm db:restore <file>     → SUCCEEDS
+```
+
+**The rollback procedure above trips this EVERY time**, because a pre-migration
+backup by definition has fewer tables than the current schema. It is not a sign
+that the dump is bad.
+
+**If the SECOND run also fails, that is a different problem** — the dump does
+not match its own manifest. Stop, and read the quarantined schema
+`failed_restore_<timestamp>`, which holds the evidence.
+
+**This was owed from 2026-08-31 and carried as an unnumbered note until it
+became obligation 38 on 2026-09-02.** Nothing scheduled it in between, which is
+why it sat unwritten while the rollback procedure kept pointing at it.
 
 ### ⚠️ WHAT A RESTORE CANNOT RECOVER
 
