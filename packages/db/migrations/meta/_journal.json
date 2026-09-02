@@ -15,6 +15,13 @@
       "when": 1788180341503,
       "tag": "0001_damp_roland_deschain",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788341836259,
+      "tag": "0002_young_karen_page",
+      "breakpoints": true
     }
   ]
 }

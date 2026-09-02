@@ -15,6 +15,7 @@ export {
   type Provider,
   type ProviderInstrument,
 } from './providers'
+export { candles, type CandleRow, type NewCandleRow } from './candles'
 export {
   marketHolidays,
   marketHours,
