@@ -53,6 +53,43 @@ export function readJsonFixture<T = unknown>(relativePath: string): T {
   }
 }
 
+/**
+ * Refuse a CSV line containing a double quote.
+ *
+ * THE FAILURE THIS PREVENTS IS SILENT, WHICH IS WHY IT IS AN ERROR AND NOT A
+ * PARSER. Splitting on `,` turns a quoted field into two, so a line like
+ *
+ *   time,"4,637.29",4637.290,4633.175      (4 real fields, 5-column header)
+ *
+ * splits into exactly 5 values, PASSES the column-count check, and shifts every
+ * subsequent column by one - `close` silently receives `low`'s number. The
+ * count check catches the noisy case and cannot catch this one.
+ *
+ * Since these fixtures carry prices asserted byte-for-byte (NFR-12), a shifted
+ * column is wrong numbers presented as right ones.
+ *
+ * DO NOT "FIX" THIS BY ADDING A QUOTE PARSER HERE. Obligation 10's point is
+ * that a half-correct one is worse than none: it would look right on the easy
+ * cases and mis-parse escaped quotes and embedded newlines. If a real fixture
+ * ever needs quoting, take a tested CSV parser as a dependency - or convert the
+ * fixture, which is usually the cheaper answer.
+ */
+function assertNoQuotedField(relativePath: string, line: string, lineNumber: number): void {
+  if (!line.includes('"')) return
+
+  throw new Error(
+    `CSV fixture ${relativePath} line ${String(lineNumber)} contains a double quote, ` +
+      `which this loader deliberately refuses to parse.\n\n` +
+      `  ${line}\n\n` +
+      `Splitting on "," would break a quoted field in two. When the resulting ` +
+      `count still matches the header, the row parses "successfully" with every ` +
+      `column after the quote shifted by one - wrong numbers, no error. ` +
+      `Refusing is the only honest answer a splitter can give.\n\n` +
+      `Fix the fixture, or use a real CSV parser. Do not add partial quote ` +
+      `handling here (obligation 10).`,
+  )
+}
+
 export interface CsvFixture {
   /** Column names from the first line. */
   readonly header: readonly string[]
@@ -68,9 +105,9 @@ export interface CsvFixture {
  * backtests reproduce byte-for-byte), so parsing them to numbers here would
  * discard information before the caller can decide how to handle it.
  *
- * Handles CRLF and a trailing newline. It does NOT handle quoted fields
- * containing commas - the exports this serves do not use them, and a partial
- * quote implementation that looks correct is worse than none.
+ * Handles CRLF and a trailing newline. It does NOT handle quoted fields, and
+ * REFUSES them loudly rather than mis-parsing them - see `assertNoQuotedField`.
+ * A partial quote implementation that looks correct is worse than none.
  */
 export function readCsvFixture(relativePath: string): CsvFixture {
   const text = readFixture(relativePath)
@@ -81,9 +118,11 @@ export function readCsvFixture(relativePath: string): CsvFixture {
     throw new Error(`CSV fixture is empty: ${relativePath}`)
   }
 
+  assertNoQuotedField(relativePath, headerLine, 1)
   const header = headerLine.split(',').map((column) => column.trim())
 
   const rows = lines.slice(1).map((line, index) => {
+    assertNoQuotedField(relativePath, line, index + 2)
     const values = line.split(',')
 
     if (values.length !== header.length) {

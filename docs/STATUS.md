@@ -124,7 +124,8 @@ returned "no response" before the suite ran.
    not pushed until 2026-09-02, so no Dependabot run could have executed against
    it. **There is no automatic push** — see the refutation in the Phase 0 gate
    section.
-2. **Obligation 10 — CSV fixture quoted commas.** Due at T1.2. Untouched.
+2. ~~**Obligation 10 — CSV fixture quoted commas.**~~ **DISCHARGED 2026-09-02** —
+   the loader now REFUSES a quoted field instead of mis-parsing it.
 3. **Obligation 25 — split STATUS.md.** Due before T1.2. Untouched, and this
    session added two more anchor-collision incidents to its case.
 
@@ -132,7 +133,7 @@ returned "no response" before the suite ran.
 
 | Lands at | Obligations |
 |---|---|
-| **OVERDUE (T1.2)** | 10, 25 |
+| **OVERDUE (T1.2)** | ~~10~~ **DISCHARGED 2026-09-02**, 25 |
 | ~~before T1.3~~ | ~~14, 23, 33~~ — **all three DISCHARGED 2026-09-01** |
 | T1.3 | 31 (flag only — see below), 38 |
 | T1.4 | 31 (evidence) |
@@ -2683,14 +2684,14 @@ signal rather than noise.
 ## Carried-forward obligations
 
 
-**21 open, 14 discharged**, recounted 2026-09-02 after adding obligation 38.
-**The previous figure was 20**, recounted 2026-09-01 after discharging 14, 23, 33
-and 35. (Earlier still, before 2026-09-01, the file said "21 open" while the
+**20 open, 15 discharged**, recounted 2026-09-02 after adding obligation 38 AND
+discharging obligation 10 in the same session. **The previous figure was 20**,
+recounted 2026-09-01 after discharging 14, 23, 33 and 35 — it returns to 20 by
+one addition cancelling one discharge, not by standing still. (Earlier still, before 2026-09-01, the file said "21 open" while the
 handoff table above said 22 — a disagreement inside one file, and obligation 25's
-case in miniature. That the count is 21 again now is a coincidence of arithmetic,
-not a reversion to that stale figure.) Counted by listing the numbered rows of
-THIS table only: 3, 4, 5, 7, 9, 10, 11, 12, 16, 17, 19, 22, 24, 25, 27, 31, 32,
-34, 36, 37, 38. Where the open ones land:
+case in miniature.) Counted by listing the numbered rows of
+THIS table only: 3, 4, 5, 7, 9, 11, 12, 16, 17, 19, 22, 24, 25, 27, 31, 32, 34,
+36, 37, 38. Where the open ones land:
 
 | Lands in | Obligations |
 | --- | --- |
@@ -2701,12 +2702,12 @@ THIS table only: 3, 4, 5, 7, 9, 10, 11, 12, 16, 17, 19, 22, 24, 25, 27, 31, 32,
 | **T6.1** | 3, 4, 17, 19, 24, 27, 32 |
 | **before Phase 2** | 11, 12 |
 | **before Phase 6** | 16 |
-| **OVERDUE — was due at/before T1.2** | 10, 25 |
+| **OVERDUE — was due at/before T1.2** | 25 (10 discharged 2026-09-02) |
 | **next session** | 36, 37 |
 | **standing** | 34 |
 | **unscheduled** | 7, 9 |
 
-**The table's entries sum to 22 for 21 obligations, deliberately.** Obligation 31
+**The table's entries sum to 21 for 20 obligations, deliberately.** Obligation 31
 is listed TWICE — T1.3 for the flag, T1.4 for the evidence — because it is split
 across two tasks. Any other disagreement between this count and this table is a
 defect; this one is the split being visible.
@@ -2733,7 +2734,7 @@ wondering whether it was ever considered.
 | 7 | **ESLint flat-config trap.** Flat config *replaces* a rule's options rather than merging. Any future repo-wide `no-restricted-syntax` rule must be repeated inside the `packages/core` block or it silently switches off there. Verify with `eslint --print-config` | ongoing |
 | ~~8~~ | ~~**`ARCHITECTURE.md` §D is wrong and needs correcting.**~~ **DISCHARGED in T0.8.** §D no longer says "holding a websocket" and carries a dated correction note; §E/U-1's matrix row now records that the question is resolved for OANDA and that its original answer ("websocket is better for sweep detection") was exactly backwards for this provider — kept as a criterion because it still applies to evaluating a replacement. The F.2 amendment, which had flagged both as uncorrected, now says both were fixed | done |
 | 9 | **Migration CLI duplicates redaction logic.** `packages/db/src/bin/migrate.ts` hand-rolls error redaction predating T0.5's logger. **Its `.env` loading was deduplicated in T0.8** — that copy and three others now share `loadEnvFileIfPresent` in `@karatx/config` — but the redaction itself is untouched | low priority |
-| 10 | **The CSV fixture loader does not handle quoted fields containing commas.** `readCsvFixture` in `@karatx/test-support` splits on `,` with no quote handling. The TradingView exports it serves are not believed to use quoted fields, and a half-implemented quote parser that looks correct is worse than none — but **this fails as silently wrong numbers, not as an error**, because a quoted `"4,637.29"` would split into two values and either throw a column-count error or, worse, shift every subsequent column. **When real golden data arrives, check whether any field contains a quoted comma before trusting the loader.** **STAYS OPEN, and may become moot:** TradingView's export is a paid feature we do not have (obligation 12). If golden values instead arrive via Pine Script `log.info()`, the format is one we control rather than TradingView's, and this limitation stops mattering. Do not close it on the assumption that the format will be CSV  | **T1.2 — was "open — may become moot". It stops being moot the moment a fixture contains a quoted comma** |
+| ~~10~~ | ~~**The CSV fixture loader does not handle quoted fields containing commas.**~~ **DISCHARGED 2026-09-02.** `readCsvFixture` now REFUSES any line containing a double quote rather than mis-parsing it, and the error says why and says not to add partial quote handling. **A refusal, deliberately NOT a quote parser** — the obligation's own argument is that a half-correct parser is worse than none, and that argument does not stop applying because we are the ones writing it. **The gap was DEMONSTRATED, not asserted:** the new fixture `sample/quoted-comma.csv` splits into exactly 5 values against a 5-column header, so the existing column-count check does NOT fire — it parsed "successfully" with `high` receiving `637.29"` and `close` silently receiving `low`'s number. **Proven by mutation:** with both guard calls removed, the refusal test fails and the other 12 still pass, which is the evidence that the old path was silent rather than merely untested. A positive control asserts the ordinary unquoted fixture still parses, so the guard is not a blanket refusal | **DISCHARGED 2026-09-02 — was "T1.2", OVERDUE** |
 | ~~10a~~ | ~~**REQUIRED, not optional: a CI job that runs unit tests with NO PostgreSQL service attached.**~~ **DISCHARGED 2026-08-27.** The `unit` job declares no `services:` block AND asserts nothing is listening on 5432 before running — omission is invisible, an assertion fails loudly if someone adds one. Green on CI #1 and every run since | done |
 | 10b | **Integration isolation is per *run*, not per *file*.** Each run gets its own ephemeral database, so two runs — CI and local, or two CI jobs — cannot collide. **Within** a run, files still share that one database and rely on `fileParallelism: false`. Revisit per-worker schemas if the integration suite becomes slow in Phase 1 | if suite slows |
 | 10c | **A pre-T0.6 leftover database `karatx_test` exists on the local server.** It does not match the current anchored naming pattern, so the sweep will correctly never touch it — "unrecognised means untouched". It is harmless clutter from the T0.4 scheme and can be dropped manually whenever convenient | cosmetic |

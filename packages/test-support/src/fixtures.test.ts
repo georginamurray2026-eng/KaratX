@@ -83,4 +83,38 @@ describe('readCsvFixture', () => {
       /line 2 has 3 values but the header declares 5 columns/,
     )
   })
+
+  // --- obligation 10: quoted fields are refused, not mis-parsed -------------
+
+  it('REFUSES a quoted field rather than mis-parsing it (obligation 10)', () => {
+    expect(() => readCsvFixture('sample/quoted-comma.csv')).toThrow(
+      /line 2 contains a double quote, which this loader deliberately refuses to parse/,
+    )
+  })
+
+  it('POSITIVE CONTROL: the refused fixture is one the column check CANNOT catch', () => {
+    // Without this, the test above proves only that some fixture throws - it
+    // would pass just as happily against a quoted comma that produced the wrong
+    // column count, which the existing check already catches loudly.
+    //
+    // This reproduces what the OLD loader did with that exact line: split on
+    // "," and key by header. The counts MATCH, so nothing would have thrown,
+    // and `close` silently receives `low`'s number. That is the silent failure
+    // obligation 10 describes, demonstrated rather than asserted.
+    const line = readFixture('sample/quoted-comma.csv').split(/\r?\n/)[1] ?? ''
+    const header = ['time', 'open', 'high', 'low', 'close']
+    const values = line.split(',')
+
+    expect(values).toHaveLength(header.length) // the count check would NOT fire
+
+    const asOldLoaderParsedIt = Object.fromEntries(header.map((c, i) => [c, values[i]]))
+    expect(asOldLoaderParsedIt['high']).toBe('637.29"') // shifted, and not a price
+    expect(asOldLoaderParsedIt['close']).toBe('4633.175') // silently `low`'s value
+  })
+
+  it('still parses an unquoted fixture - the guard is not a blanket refusal', () => {
+    // The refusal must not be so broad that it rejects the ordinary case; a
+    // guard that fails everything proves nothing about what it selects for.
+    expect(readCsvFixture('sample/candles.csv').rows).toHaveLength(3)
+  })
 })
