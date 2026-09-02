@@ -119,11 +119,14 @@ returned "no response" before the suite ran.
 1. ~~**Obligation 35 — `Dependabot Updates` red since 2026-08-29.**~~
    **DISCHARGED 2026-09-01 in `7754628`**, and the recorded hypothesis was
    REFUTED rather than confirmed — discovery had never stopped. Replaced by
-   **obligation 36**, which asks the one question this session could not
-   answer: whether the job is actually green. **Added 2026-09-02:** `7754628` was
-   not pushed until 2026-09-02, so no Dependabot run could have executed against
-   it. **There is no automatic push** — see the refutation in the Phase 0 gate
-   section.
+   **obligation 36**, which asked the one question that session could not
+   answer: whether the job is actually green. **Obligation 36 is now DISCHARGED
+   ON EVIDENCE (2026-09-02)** — Dependabot alert #1 observed **CLOSED AS FIXED**,
+   with a dependency rescan postdating the push. Not "no red runs": that job will
+   never run again, so silence proved nothing either way. See OBLIGATIONS.md.
+   **Note also:** `7754628` was not pushed until 2026-09-02, so no Dependabot run
+   could have executed against it before then. **There is no automatic push** —
+   see the refutation in the Phase 0 gate section.
 2. ~~**Obligation 10 — CSV fixture quoted commas.**~~ **DISCHARGED 2026-09-02** —
    the loader now REFUSES a quoted field instead of mis-parsing it.
 3. ~~**Obligation 25 — split STATUS.md.**~~ **DISCHARGED 2026-09-02** — split
@@ -247,9 +250,9 @@ afternoon; discovering it at the start of Phase 2 costs the phase.
 |---|---|
 | Phase 0 tasks | **10 of 10 implemented** |
 | Phase 0 gate | **CLOSED AT LOCAL SCOPE 2026-08-31.** All local criteria pass; five deployment criteria DEFERRED to T6.1, never run |
-| T0.10 | **CLOSED at local scope.** L5 (CLAUDE.md) was FIXED before the gate closed; L1 remains unenforced (obligation 33) and L4 remains partial — the destructive-migration variant was never run |
+| T0.10 | **CLOSED at local scope.** L5 (CLAUDE.md) was FIXED before the gate closed; L4 remains partial — the destructive-migration variant was never run. **L1 is no longer unenforced:** obligation 33 was DISCHARGED 2026-09-01 by `wiring-assertions.test.ts`, and this cell said otherwise for a day |
 | Deployment | **NONE.** ADR-011 makes the project local-only for Phases 1–5 |
-| Open obligations | **20** as of 2026-09-01 (plus 14 closed). Discharged this session: 14, 23, 33, 35. Opened: 36, 37. Sub-lettered rows (10b–10e) are notes, not counted |
+| Open obligations | **See [OBLIGATIONS.md](./OBLIGATIONS.md)** — the count is deliberately not restated here. This cell read "**20** as of 2026-09-01" until 2026-09-02, by which point 10, 25 and 36 had also been discharged and 38 opened. It was the fourth copy of a number that lives in one place |
 
 ### Verified counts — from an actual run, 2026-08-31
 
@@ -661,9 +664,12 @@ had happened at some point; it was never evidence that anything pushes by
 itself. **REFUTED 2026-09-02** — see the correction below.
 
 **Whether it went green is unknown and must not be inferred.** A human needs to
-look. Note also that obligation 35 records `Dependabot Updates` red since
-2026-08-29 — a different workflow from CI, but a reminder that a red run can sit
-unnoticed.
+look. **The Dependabot case is now CLOSED and is worth reading as the worked
+example of this exact caution:** obligation 35 recorded `Dependabot Updates` red
+since 2026-08-29, obligation 36 refused to call it fixed without looking, and
+the closure finally came from a POSITIVE observation — alert #1 CLOSED AS FIXED —
+because the failing job would never run again and silence could not distinguish
+a fixed control from a broken one.
 
 **REFUTED 2026-09-02 — THERE IS NO AUTOMATIC PUSH.** This paragraph previously
 recorded that no `git push` had been issued yet the remote was current, and
