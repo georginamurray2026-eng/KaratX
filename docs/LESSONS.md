@@ -124,6 +124,81 @@ input that only one branch can match proves the branch exists, not that it comes
 first. Ask: which other branch would claim this input if mine were removed? If
 the answer is "none", the test is not testing the order.
 
+#### A SYMPTOM THAT MATCHES A DOCUMENTED FAILURE MODE IS NOT EVIDENCE OF IT
+
+**Recorded 2026-09-02, obligation 12. Second instance of this shape in one
+session — see the entry above.**
+
+INDICATOR-SPEC.md flags trap 3: division by zero when
+`highest(rsi,14) == lowest(rsi,14)`, in dead-flat conditions, with the
+instruction that TradingView's behaviour "must be verified". The 15m golden
+fixture contains `k` **exactly 0**, four times (i = 5908, 6082, 6083, 6120), and
+exactly 100 ten times. That was read as trap 3 observed, and the instruction was
+to record it as such.
+
+**It is not trap 3.** `k = 0` is the NORMAL result when RSI sits at its own
+14-period low: `raw = 100 * (rsi - lowest) / (highest - lowest)` has a zero
+NUMERATOR, and nothing divides by zero.
+
+**What settled it was reading the SURROUNDING BARS, not the zero.** At
+i = 6082-6083 close falls 4383 → 4375 → 4370; at i = 5908 it falls
+4603 → 4600 → 4598. Those are TRENDING markets reaching a period low — the
+opposite of the dead-flat condition trap 3 describes. A second, independent
+confirmation came free: `d` is never exactly 0 anywhere in the capture, which is
+what a 3-period SMA of `k` should do when only isolated `k` values are zero, and
+is not what a genuine flat window would produce.
+
+**THE GENERAL FORM: a symptom that matches a documented failure mode is not
+evidence of that failure mode until the ORDINARY explanation has been ruled
+out.** And the documented explanation is MORE available precisely because it is
+written down — someone took the trouble to record it, so it is the first thing
+reached for and, for the same reason, the least likely to be checked. A
+well-maintained list of known traps makes this failure more likely, not less.
+
+The practical form: before matching an observation to a named trap, ask what
+else produces this exact symptom, and what the data would look like under each.
+Here the two hypotheses made DIFFERENT predictions about the neighbouring bars,
+which is what made a five-minute check decisive.
+
+**Had it been recorded as instructed, the engine would have inherited a parity
+requirement derived from a misdiagnosis**, in the document that exists
+specifically to stop indicator implementations going quietly wrong.
+
+**What the zeros DO establish** — kept, because the observation was valuable
+even though the label was wrong: the boundary values 0 and 100 occur in ordinary
+data and are EXACT. An engine emitting `1.4e-15` instead of `0` disagrees with
+TradingView on 14 of 299 bars. Trap 3 itself stays open; confirming it needs a
+window where RSI is constant across 14 bars, which this capture does not
+contain.
+
+#### A REVIEW LAYER IS NOT A VERIFICATION LAYER — twice in one session
+
+**Both of the entries above are instances of the same thing, and the honest part
+is where the wrong answer came from.**
+
+| | The claim | How it was caught |
+|---|---|---|
+| **CASE ordering** | The `rejected` branch must precede the value comparisons, demonstrated with identical values. Put in writing, reviewed, and **accepted by both parties** | A MUTATION. The confirming test passed under both orderings |
+| **Trap 3** | `k = 0` in the fixture is the documented division-by-zero case, and should be recorded as observed | READING THE ARTEFACT. The surrounding bars showed a trending market, not a flat one |
+
+**In both cases the wrong answer originated with the reviewer** — the party whose
+role was catching wrong answers. In both cases the author had already agreed. And
+in both cases what caught it was **checking the artefact rather than re-reading
+the reasoning**: running the mutation, opening the data.
+
+**This matters to anyone relying on a review step as their safety net.** Review
+catches things reading alone does not, and both of these sessions were better for
+it. But review operates on the ARGUMENT, and an argument that is internally sound
+can still be about the wrong thing. Two people agreeing is two readings of the
+same reasoning, not two independent measurements — and the failure mode of
+agreement is that it FEELS like verification.
+
+**So: a claim that survived review has not been verified. It has been reviewed.**
+The verification step is separate and is always the same shape — make the artefact
+answer. Mutate the code and watch the test fail. Open the data and check the
+neighbouring rows. Run the exact command the gate runs. **If a claim has been
+agreed but nothing has been made to fail, nothing has been tested yet.**
+
 #### The GREP DISCIPLINE was applied to documents and not to code, in the same session
 
 **Recorded 2026-09-02, T1.3. CI went RED on `4a8bdd6`.**
