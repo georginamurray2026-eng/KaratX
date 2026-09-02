@@ -1,0 +1,205 @@
+//@version=6
+
+// ═══════════════════════════════════════════════════════════════════════════
+// KaratX golden-value exporter — obligation 12, ROUTE 1 (Pine log.info)
+//
+// PURPOSE. Make the TradingView chart emit its OWN computed EMA and Stoch RSI
+// values, so the engine can be asserted against them (audit finding C3, parity
+// within a documented tolerance). TradingView's "Export chart data" is a paid
+// feature we do not have; this is the free route, and it is UNTRIED. If it does
+// not work, Phase 2 stalls on a purchase — so the point of this run is as much
+// to find out WHETHER it works as to collect data.
+//
+// ───────────────────────────────────────────────────────────────────────────
+// WHAT TO CLICK
+//
+//   1. Open a chart and set the symbol to  OANDA:XAUUSD  (exactly this — the
+//      golden values in INDICATOR-SPEC.md were captured on OANDA, and a
+//      different venue is a different price series, not a rounding difference).
+//   2. Set the timeframe you want to capture: 15m, 1H or 1D. Run them one at a
+//      time. The script records which timeframe produced each line, so the
+//      files cannot be mixed up later, but capture them separately anyway.
+//   3. Open the Pine Editor — bottom panel, tab "Pine Editor".
+//   4. Paste this whole file in, replacing anything already there.
+//   5. Click "Save", give it a name (e.g. "KaratX golden export").
+//   6. Click "Add to chart".
+//   7. Open the "Pine Logs" tab in that same bottom panel. On current
+//      TradingView it sits beside "Pine Editor" / "Strategy Tester"; if it is
+//      not visible, it can also be reached from the indicator's "More" (…)
+//      menu on the chart legend. THE EXACT UI PATH IS THE PART MOST LIKELY TO
+//      HAVE MOVED — if you cannot find it, say so and I will adjust.
+//   8. Select all in that pane, copy, and paste into a file.
+//
+// ───────────────────────────────────────────────────────────────────────────
+// WHAT IS UNKNOWN. These are what this run is FOR. Do not read the script as
+// though any of them are settled — none has been tested.
+//
+//   • HOW MANY LINES TRADINGVIEW RETAINS. There is a cap on the Pine Logs
+//     buffer and I do not know what it is. If it is smaller than the bar count,
+//     the OLDEST lines are the ones lost. `logLastNBars` below exists purely to
+//     stay under whatever that cap turns out to be — start small, confirm the
+//     count matches, then raise it.
+//
+//   • WHETHER HISTORICAL BARS LOG AT ALL, or only bars that form while the
+//     script is running. If only real-time bars log, this route produces one
+//     line per closed bar going forward and NO history — which would make it
+//     useless for backfilled parity and would mean the route has failed for
+//     its actual purpose. CHECK THIS FIRST: add the script and immediately look
+//     at whether lines appear for past bars, before waiting for anything.
+//
+//   • WHETHER ANYTHING IS TRUNCATED. Long single lines may be cut, and the
+//     pane may elide the middle of a large buffer rather than the ends. Every
+//     line carries `i` (bar_index), so gaps and truncation are DETECTABLE
+//     rather than silent — check that the `i` values are consecutive.
+//
+//   • WHETHER LOGS SURVIVE A CHART RELOAD, or must be re-collected each time.
+//
+// A NOTE ON WHY THOSE ARE LISTED RATHER THAN ASSUMED: an export that silently
+// drops the oldest 80% of bars and looks complete is exactly the failure this
+// project keeps recording. `i` being consecutive is the check that catches it.
+//
+// ───────────────────────────────────────────────────────────────────────────
+// A SHORT COUNT IS AMBIGUOUS, AND `i` IS WHAT RESOLVES IT.
+//
+// If FEWER lines appear than `logLastNBars` requested, that is TWO different
+// findings wearing the same symptom, and they must not be conflated:
+//
+//   • `i` values CONSECUTIVE, covering a shorter range than requested, ending
+//     at the latest bar  →  THE BUFFER CAP IS BELOW logLastNBars. History logs
+//     fine; the pane simply holds less. Lower logLastNBars until the emitted
+//     count equals the requested count, and that number is the cap.
+//
+//   • `i` values SPARSE, or present only for the most recent bar(s), or
+//     starting at whatever bar was current when the script was added
+//     →  HISTORICAL BARS ARE NOT LOGGING. This is the finding that decides
+//     whether route 1 works at all, and no amount of lowering logLastNBars
+//     will change it.
+//
+// Read `i` before adjusting anything. Reacting to a short count by lowering
+// logLastNBars would "fix" the symptom of the second case and produce a small,
+// clean, real-time-only file that looks exactly like a successful export.
+//
+// ───────────────────────────────────────────────────────────────────────────
+// `barstate.isconfirmed` IS CORRECT HERE BUT COULD MASK THE ANSWER.
+//
+// It is used so that a forming bar is not logged repeatedly as it updates. On
+// HISTORICAL bars every bar is already confirmed, so if history logs at all, it
+// should log through this guard.
+//
+// BUT THAT IS REASONING, NOT AN OBSERVATION. If the first run shows nothing for
+// past bars, REMOVE THIS GUARD ONCE AS A CONTROL before concluding the route
+// has failed — delete `barstate.isconfirmed and` from the `if` below and re-add
+// the script. If history then appears, the finding is about the guard. If it
+// still does not, the finding is about TradingView.
+//
+// Without that control, "historical bars do not log" is a claim about our own
+// script as much as about the platform — which is the shape this project keeps
+// catching: a negative result from a check that could not have produced a
+// positive one.
+//
+// ───────────────────────────────────────────────────────────────────────────
+// FORMAT: ONE JSON OBJECT PER LINE, and the reason is not aesthetic.
+//
+//   • TradingView PREFIXES each log entry with its own timestamp, so the pane
+//     contents are NOT clean CSV. A JSON object can be extracted by taking the
+//     first "{" to the last "}" on each line and ignoring everything else.
+//   • Fields are NAMED, so nothing depends on column order. A CSV whose columns
+//     shift by one is silently wrong numbers — which is obligation 10, and the
+//     fixture loader now refuses quoted fields for exactly that reason.
+//   • Each line parses INDEPENDENTLY. If the buffer is truncated mid-line, one
+//     line is lost rather than every subsequent field being misaligned.
+//
+// PRECISION: values are formatted with "#.##########" — up to 10 decimal
+// places, no trailing-zero padding. This is deliberate and it matters:
+//   • str.tostring(x) with NO format applies a display-oriented default and can
+//     round. INDICATOR-SPEC.md's golden values were read off the chart legend
+//     at 3 decimals, which is a SPOT CHECK and not a fixture; the whole point
+//     of this export is to get more precision than the legend shows.
+//   • format.mintick would round to the instrument tick — the wrong direction
+//     entirely, and it would look correct.
+//   • Pine floats are IEEE 754 doubles; 10 decimals on a ~4600 price is at the
+//     limit of what a double carries, so this is not lossy in practice.
+//   • `na` is emitted as JSON null, never as "NaN", so warmup bars are
+//     unambiguous and the file stays valid JSON per line.
+//
+// FORMULAS: taken from INDICATOR-SPEC.md, which records both as CONFIRMED.
+// NOT re-derived here.
+//   • EMA — standard ta.ema, seeded with SMA. The community script "EMA
+//     20/50/100/200 by dr sweeps" was verified identical to the built-in.
+//   • Stoch RSI — TradingView's BUILT-IN formulation, used as-is:
+//         rsi1 = ta.rsi(close, 14)
+//         k    = ta.sma(ta.stoch(rsi1, rsi1, rsi1, 14), 3)
+//         d    = ta.sma(k, 3)
+//     This is what makes the two documented traps come out right without
+//     restating them: ta.rsi uses Wilder's RMA internally (trap 1), and %D is
+//     smoothed from %K rather than from the raw stochastic (trap 2).
+//   • Trap 3, division by zero when highest(rsi,14) == lowest(rsi,14): whatever
+//     TradingView does in that case is CAPTURED, not corrected. Its behaviour
+//     is the thing being recorded — the engine has to match it, so a "fix" here
+//     would destroy the evidence.
+//   • Warmup is NOT filtered out. Early bars are emitted with null indicator
+//     values, and `i` lets the consumer drop them. INDICATOR-SPEC requires 5×
+//     the period before an EMA is trustworthy — 1000 bars for EMA200 — and that
+//     judgement belongs to whoever builds the fixture, not to the exporter.
+// ═══════════════════════════════════════════════════════════════════════════
+
+indicator("KaratX golden export", overlay = false)
+
+// Kept small on purpose. Raise it only after confirming the emitted line count
+// matches the requested count — if it does not, the buffer cap is below this
+// number and the oldest lines are already being dropped.
+logLastNBars = input.int(300, "Bars to log (newest N)", minval = 1, maxval = 20000)
+
+emitWarmup = input.bool(true, "Emit warmup bars (indicators null)")
+
+// ── Indicators, per INDICATOR-SPEC.md ──────────────────────────────────────
+ema20  = ta.ema(close, 20)
+ema50  = ta.ema(close, 50)
+ema100 = ta.ema(close, 100)
+ema200 = ta.ema(close, 200)
+
+rsi1 = ta.rsi(close, 14)
+k    = ta.sma(ta.stoch(rsi1, rsi1, rsi1, 14), 3)
+d    = ta.sma(k, 3)
+
+// ── Serialisation ──────────────────────────────────────────────────────────
+// One helper, used for every numeric field, so no field can quietly get a
+// different precision from the others.
+f(float x) =>
+    na(x) ? "null" : str.tostring(x, "#.##########")
+
+// Bar OPEN time. `time` is the bar's open in UNIX milliseconds UTC.
+//
+// BOTH FORMS ARE EMITTED AND THE EPOCH IS AUTHORITATIVE. The ISO string is for
+// reading; `t` is what should be parsed. A naive local-time string is the exact
+// failure ADR-008 and the Timestamp contract exist to prevent — Twelve Data
+// returns times with no offset and an account default of UTC+10, which would be
+// wrong by ten hours on every bar, silently.
+isoTime = str.format_time(time, "yyyy-MM-dd'T'HH:mm:ss'Z'", "UTC")
+
+shouldLog = bar_index > last_bar_index - logLastNBars
+inWarmup  = na(ema200) or na(d)
+
+if barstate.isconfirmed and shouldLog and (emitWarmup or not inWarmup)
+    log.info(
+      '{"sym":"' + syminfo.tickerid + '"' +
+      ',"tf":"' + timeframe.period + '"' +
+      ',"i":' + str.tostring(bar_index) +
+      ',"t":' + str.tostring(time) +
+      ',"iso":"' + isoTime + '"' +
+      ',"o":' + f(open) +
+      ',"h":' + f(high) +
+      ',"l":' + f(low) +
+      ',"c":' + f(close) +
+      ',"ema20":'  + f(ema20) +
+      ',"ema50":'  + f(ema50) +
+      ',"ema100":' + f(ema100) +
+      ',"ema200":' + f(ema200) +
+      ',"k":' + f(k) +
+      ',"d":' + f(d) +
+      '}')
+
+// A single visible plot, so the indicator pane is not blank and it is obvious
+// the script is actually running on the chart.
+plot(k, "Stoch RSI %K", color = color.blue)
+plot(d, "Stoch RSI %D", color = color.orange)
