@@ -124,6 +124,41 @@ input that only one branch can match proves the branch exists, not that it comes
 first. Ask: which other branch would claim this input if mine were removed? If
 the answer is "none", the test is not testing the order.
 
+#### The GREP DISCIPLINE was applied to documents and not to code, in the same session
+
+**Recorded 2026-09-02, T1.3. CI went RED on `4a8bdd6`.**
+
+Migration 0002 broke a test that hard-coded `'0001_damp_roland_deschain'`. It was
+fixed in `packages/db/src/status.integration.test.ts` by reading the tag from the
+journal instead. **Nobody grepped for the literal.** A fifth copy sat in
+`apps/web/app/api/ready/route.integration.test.ts` and went straight to CI.
+
+**This is obligation 25's protocol, ignored where it was not written down.** That
+protocol — grep every site FIRST, list every hit, edit them all — had been
+applied rigorously to STATUS.md three times that same day, because STATUS.md is
+where the anchor collisions had happened before. It was not applied to a CODE
+change with exactly the same shape: one literal, unknown number of copies.
+**A one-line `grep -rn` would have found it. The habit existed and the trigger
+did not fire, because the trigger had been attached to a FILE rather than to a
+SHAPE.**
+
+**The second half is worse, and is the reportable part.** Local verification ran
+`pnpm --filter @karatx/db test:integration`. CI runs `pnpm -r test:integration`.
+The narrower command passed, and it was reported as "all gates green" — a claim
+about the gate, made from something that was not the gate. **The failing test was
+in a package the local command never loaded.** Running the exact command CI runs
+reproduced it in one attempt.
+
+**Two rules, both cheap:**
+
+1. **When replacing a literal, grep for it before and after.** Not "where do I
+   remember it being" — the repository is the memory. The protocol is not about
+   STATUS.md, it is about anything appearing in an unknown number of places.
+2. **Verify with the command the gate runs, not a faster subset of it.** A
+   filtered run is a development convenience. Reporting it as the gate is
+   reporting a different measurement under the gate's name — the same substitution
+   this file records elsewhere as "necessary and insufficient".
+
 ---
 
 The earlier, weaker form is kept because it is cheap and catches the common case:

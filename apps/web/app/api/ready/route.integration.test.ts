@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+
 import { resetConfigCache } from '@karatx/config'
 import { loadRepoEnv } from '@karatx/test-support'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
@@ -52,7 +54,25 @@ describe('when the database is reachable and migrated', () => {
     expect(body.status).toBe('ready')
     expect(body.database.connected).toBe(true)
     expect(body.database.migrations.inSync).toBe(true)
-    expect(body.database.migrations.latestApplied).toBe('0001_damp_roland_deschain')
+    // READ FROM THE JOURNAL, NOT HARD-CODED. This assertion's point is that
+    // latestApplied is a TAG and not a hash; pinning the literal tag made it
+    // fail on every new migration for a reason unrelated to what it checks.
+    //
+    // IT DID EXACTLY THAT ON MIGRATION 0002, and was missed because the same
+    // defect in packages/db was fixed without checking whether it appeared
+    // anywhere else - it did, here. The shape assertions are what keep this
+    // honest once the literal is gone.
+    const journal = JSON.parse(
+      readFileSync(
+        new URL('../../../../../packages/db/migrations/meta/_journal.json', import.meta.url),
+        'utf8',
+      ),
+    ) as { entries: { tag: string }[] }
+    const latestTag = journal.entries.at(-1)?.tag
+
+    expect(latestTag).toMatch(/^\d{4}_[a-z0-9_]+$/)
+    expect(body.database.migrations.latestApplied).toBe(latestTag)
+    expect(body.database.migrations.latestApplied).not.toMatch(/^[0-9a-f]{64}$/)
   })
 
   it('is never cached', async () => {
