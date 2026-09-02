@@ -3,20 +3,102 @@
 Handoff file between Claude Code sessions (§27, §44). The repository is the
 project memory — do not rely on conversation history.
 
-**Last verified:** 2026-08-28, by inspecting the repository and running the
+**Last verified:** 2026-09-02, by inspecting the repository and running the
 commands below. Every figure here came from an actual run, not from a
 handover document.
 
+**Obligation counts live in [OBLIGATIONS.md](./OBLIGATIONS.md) and are
+deliberately not restated here** — see the note where the summary table used to
+be. As of 2026-09-02: nothing overdue, nothing awaiting a person.
+
 ---
 
-## ▶ START HERE — session handoff, 2026-08-31 (evening)
+## ▶ START HERE — session handoff, 2026-09-02
 
 **PHASE 0 IS CLOSED AT LOCAL SCOPE.** Five deployment criteria were DEFERRED to
 T6.1 and never run — see the closure below. Do not read "Phase 0 closed" as
 "Phase 0 complete".
 
-**T1.2 is SUBSTANTIALLY COMPLETE.** Two commits: `30bf592` (contracts) and
-`9c7890b` (reference tables and the seeded calendar). Working tree clean.
+**T1.2 COMPLETE. T1.3 COMPLETE. T1.4 IS NEXT AND HAS PRECONDITIONS.**
+Working tree clean, `main` pushed and green.
+
+### T1.3 — COMPLETE, and what "complete" covers
+
+Five commits: the outcome contract, the schema and migration 0002, the query
+layer, and two rounds of test-alarm updates. **Migration 0002 is APPLIED
+locally and was verified AGAINST THE CATALOG, not against the exit code** —
+`pnpm db:migrate` prints `Migrations applied.` and does not say what it
+applied, which is now obligation 39. The proof that 0002 landed is
+`drizzle.__drizzle_migrations` going 2 rows to 3 with row 3's timestamp
+matching the journal.
+
+| Delivered | |
+|---|---|
+| `candles` table | PK `(instrument_id, provider_id, timeframe, open_time)`, and the PK **IS** the unique constraint |
+| One forming bar per series | partial unique index `WHERE NOT is_final`, enforced by the DATABASE (§9) |
+| Six-case conflict rule | ADR-013, expressed in one statement so classification reads the pre-write snapshot atomically |
+| Typed outcome | `packages/contracts/src/ingestion.ts` — **T1.5 must IMPORT it, never redefine it** |
+| Tests | 46 integration, 17 of them on the upsert, every quiet case paired to a loud sibling |
+
+**`@karatx/contracts` HAS ITS FIRST REAL CONSUMER.** `packages/db` now imports
+it, which is the clause T1.2's "defined once and imported everywhere" criterion
+was waiting on.
+
+### Obligation 12 — ROUTE 1 PROVEN, PARITY NOT ASSERTED
+
+**The blocker is gone and the obligation is still open, deliberately.** Pine
+`log.info` works; `test/fixtures/tradingview/` holds 299 consecutive bars each
+at 15m, 1H and 1D, full precision (8–10 decimals against the legend's 3). Routes
+2 (buy a month of TradingView) and 3 (transcribe by hand) are retired.
+
+**Nothing has been compared yet.** Having something to assert against is
+necessary and insufficient. Obligation 12 is narrowed to "parity not yet
+asserted", with a discharge condition stated as a NUMBER rather than "close
+enough".
+
+### T1.4 — WHAT IT NEEDS BEFORE IT STARTS
+
+1. **A COST AND REQUEST-COUNT ESTIMATE, PUT TO THE USER FIRST.** BUILD-PLAN:
+   "backfill can be the largest single line item on your bill. Estimate the
+   request count and cost *before* running it in full." Nothing should fetch
+   until that estimate has been seen.
+2. **Obligation 41 — the backfill window is set by the PARITY TEST, not only by
+   Phase 9.** Reproducing EMA200 needs ~1000 bars BEFORE the first golden bar:
+   15m from ~2026-08-13, 1H from ~mid-June 2026, 1D from ~2021. Twelve Data's
+   depth starts 2020-01-24, so all three are covered.
+3. **Obligation 31's EVIDENCE half lands here.** `--single-transaction` is
+   already on `db:restore`; what is missing is a dump large enough that a
+   failure lands MID-restore. That volume does not exist until this task has
+   run. **Do not tick 31 off because the flag exists.**
+
+### Not blocking T1.4, but queued and easy to lose
+
+- **Obligation 42 — the Pine export row cap is UNMEASURED.** One re-run at
+  `logLastNBars = 500`. It BLOCKS obligation 40, because settling the calendar
+  question needs ~930+ bars and one export returned 299.
+- **Obligation 40 — the OANDA 15m break looks like 60 minutes, the seed says
+  45.** If real, T1.5 emits a false data-quality event EVERY TRADING DAY. The
+  seed is deliberately NOT changed. `market_hours` has no venue column, so the
+  schema may not be able to express the answer.
+- **Obligation 39 — `db:migrate` does not say what it applied.** Lands at T1.5,
+  before the next migration.
+
+### Two things this session got WRONG, both caught by the artefact
+
+Recorded in LESSONS.md because the pattern matters more than either instance.
+**Both wrong answers came from the reviewer, both had been agreed in writing,
+and in neither case did re-reading the reasoning catch it.**
+
+- The SQL `CASE` ordering was confirmed by both parties using identical values
+  as the worked example. A mutation showed the confirming test passed under
+  **both** orderings — the case chosen to demonstrate the ordering was the one
+  case that could not.
+- `k = 0` in the 15m fixture was read as trap 3 (division by zero) and
+  instructed to be recorded as such. It is the NORMAL result of RSI at its
+  14-period low. Reading the neighbouring bars settled it in minutes.
+
+**A review layer is not a verification layer.** If a claim has been agreed but
+nothing has been made to fail, nothing has been tested yet.
 
 ### What T1.2 has delivered, against its own criteria
 

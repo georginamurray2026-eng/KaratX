@@ -205,7 +205,7 @@ The engine must reproduce these within a documented tolerance. **Any bar that fa
 
 - **PARITY. Nothing has been asserted yet.** Having something to compare against is necessary and insufficient. Obligation 12 stays open and is narrowed to "parity not yet asserted".
 - **The engine needs ~1000 bars of history BEFORE the first golden bar** to reproduce EMA200 — obligation 41. These files are expected OUTPUT and contain no input history.
-- **The 300-row export cap is an INFERENCE, not a measurement.** All three files came back at 299 data rows + 1 header while the script requested 300, and identical counts across three different timeframes is not chance. But every capture requested 300, so a cap of exactly 300 has never been distinguished from any other explanation. **One re-run at `logLastNBars = 500` would settle it.** Until then, do not record 300 as the limit.
+- **The 300-row export cap is an INFERENCE, not a measurement.** All three files came back at 299 data rows + 1 header while the script requested 300, and identical counts across three different timeframes is not chance. But every capture requested 300, so a cap of exactly 300 has never been distinguished from any other explanation. **One re-run at `logLastNBars = 500` would settle it — tracked as obligation 42, which blocks obligation 40's longer capture.** Until then, do not record 300 as the limit.
 
 ---
 
