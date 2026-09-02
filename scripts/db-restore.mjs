@@ -113,6 +113,28 @@ try {
       '--clean',
       '--if-exists',
       '--exit-on-error',
+      // Obligation 31, FLAG HALF ONLY - this is NOT proven and NOT discharged.
+      //
+      // `--exit-on-error` makes a restore STOP at the first error; it does not
+      // make it UNDO what already ran. On a small dump that distinction never
+      // shows: pg_restore reads the archive table of contents before applying
+      // anything, so a 5 KB dump fails before the first DROP and the database
+      // is left intact by accident of size, not by guarantee. On a
+      // multi-gigabyte Phase 1 dump, corruption late in the data stream can
+      // fail AFTER earlier statements have committed.
+      //
+      // `--single-transaction` closes that: everything applies or nothing
+      // does. It implies `--exit-on-error`, and is compatible with
+      // `--clean --if-exists` here because no `--jobs` is used (they conflict).
+      //
+      // WHAT IS STILL UNPROVEN, and why this is not ticked off: the five
+      // deliberate failures on 2026-08-30 all passed under the OLD flags too,
+      // because the dump was too small to fail mid-restore. Re-running them now
+      // would demonstrate nothing - the old behaviour and the new are
+      // indistinguishable at this size. The evidence needs a dump large enough
+      // that the failure lands MID-restore, and that volume does not exist
+      // until T1.4's backfill. See obligation 31 in docs/OBLIGATIONS.md.
+      '--single-transaction',
     ],
     { input: dump, maxBuffer: 1024 * 1024 * 1024, stdio: ['pipe', 'pipe', 'inherit'] },
   )
