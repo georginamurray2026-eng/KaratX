@@ -998,3 +998,174 @@ At that point re-open: hosting cost against current usage, whether `web` needs h
 - **ADR-003 stands.** Migrations remain a deliberate step, run by hand rather than by a pre-deploy container. The property being protected — no application process running while migrations apply — is easier to guarantee locally, not harder.
 - **ADR-009 stands**, and its `tsx` provision must still be applied.
 - **`packages/core` performs no I/O.** Unaffected, and the reason the backtest can be honest at all.
+
+---
+
+## ADR-012: The `Tick` contract is deferred, not forgotten
+
+**Date:** 2026-09-02
+**Status:** **Accepted.**
+**Task:** T1.2 (closing its one unmet criterion) / T1.3
+**Related:** ADR-008 (Twelve Data, 15min bars), BUILD-PLAN T1.2, STATUS.md — "T1.2 is SUBSTANTIALLY COMPLETE"
+
+---
+
+### Decision
+
+**No `Tick` schema is written until a Phase 1 source or consumer for tick data exists.** T1.2's acceptance criterion naming `Tick` is answered by this deferral rather than left open.
+
+**Reopening trigger, explicit:** the first of — a provider adapter that receives tick or quote data, or a `packages/core` consumer that requires sub-bar granularity. Whichever arrives first reopens this ADR; neither exists in Phases 1–5 as planned.
+
+---
+
+### Reasoning
+
+**ADR-008 selected 15-minute bars from Twelve Data's `/time_series`. There is no tick source anywhere in the architecture**, and `grep` for a `Tick` consumer across the repository finds nothing.
+
+**A contract nothing imports will be wrong by the time something does.** The shape of a tick — whether it carries bid and ask, a single mid, a size, a provider sequence number — is determined by the provider that supplies it. Guessing that shape now means either migrating it later or, worse, keeping a wrong contract because it is already there.
+
+**It would also make a criterion look met when it is not.** T1.2 requires schemas "defined once and **imported everywhere**". A type with no importer cannot satisfy that clause, but its presence in the file would read as if it had.
+
+**This is the reasoning ADR-011 applies to deployment**: defer with a recorded trigger, rather than build against a requirement that does not exist yet.
+
+---
+
+### ACCEPTED CONSEQUENCES
+
+- **T1.2's criterion is closed by decision, not by delivery.** Anyone auditing the criterion list will find `Tick` named in BUILD-PLAN and absent from the code. This ADR is the answer to that question, and STATUS.md points at it.
+- **If a tick source arrives mid-phase, the contract gets written then, under time pressure.** Accepted, because the alternative is writing it now with strictly less information.
+
+---
+
+## ADR-013: Candle identity, conflict resolution and null comparison
+
+**Date:** 2026-09-02
+**Status:** **Accepted.**
+**Task:** T1.3
+**Related:** ADR-002 (Postgres + Drizzle), ADR-008 (decimal text), ARCHITECTURE.md F.5 and F.3 invariant 3, BUILD-PLAN T1.3/T1.4/T1.5, obligations 31 and 38
+
+---
+
+### Decision
+
+**1. Primary key: `(instrument_id, provider_id, timeframe, open_time)`.** Composite and natural. No surrogate `id`.
+
+**2. The unique constraint IS the primary key.** No second unique index over the same columns.
+
+**3. At most one forming bar per series**, enforced by a partial unique index:
+
+```sql
+CREATE UNIQUE INDEX candles_one_forming_idx
+  ON candles (instrument_id, provider_id, timeframe)
+  WHERE NOT is_final;
+```
+
+**4. Two ingestion timestamps:** `ingested_at timestamptz NOT NULL DEFAULT now()` — first arrival, never rewritten — and `updated_at timestamptz NOT NULL DEFAULT now()`, advanced **only when a column value actually changes**. Set explicitly in SQL. No triggers.
+
+**5. Identity is exact `NUMERIC` equality**, never text equality and never float. Comparison uses `IS DISTINCT FROM` on every compared column.
+
+**6. Six conflict cases**, branching on the **stored** row's `is_final`.
+
+**7. The outcome is a typed value defined in `packages/contracts`.** T1.3 writes no event row.
+
+---
+
+### Reasoning
+
+#### The primary key
+
+That tuple **is** the bar's identity. A surrogate `id` would permit two rows claiming to be the same bar with different prices, both valid — the corruption the idempotent upsert exists to prevent — and would move the guarantee out of the database, which §9 forbids.
+
+`provider_id` is in the key because candles are per-provider, not canonical: T1.9 reconciles Twelve Data against Massive, so both providers' bars for one instrument and timeframe must coexist as distinct rows.
+
+**Column order is deliberate.** Three equality-filtered columns first, the single ranged column last, because a B-tree range-scans only on its trailing column. The dominant query — "last N final bars for instrument+provider+timeframe, newest first" — becomes a backwards index scan with no sort step.
+
+**`provider_id` is second rather than last, and that is a bet with a known shape.** Every Phase 1 reader supplies a provider: T1.4 backfill, T1.5 validation, T1.7 live feed. T1.9 reconciliation is the only multi-provider reader, and under this ordering it would use the `instrument_id` prefix and then scan. **Those access patterns are known from BUILD-PLAN prose, not from code — the engine that queries this table does not exist yet.** The ordering is therefore chosen on the asymmetry of being wrong: a missing index is a forward migration and cheap, while a wrong primary key means rewriting the largest table in the system.
+
+#### Indexes, separated by confidence
+
+**Confident:** the primary key's index, and nothing else for read performance. It fully serves the dominant query.
+
+**Confident about omitting** — an index on `open_time` alone, which serves "all instruments at time T" (a query that does not exist in Phase 1) and would cost a write on every insert of a ~161,000-row backfill; and a separate `provider_id` index, since both foreign keys are `ON DELETE no action` against reference tables that are never deleted from.
+
+**Speculative, and deliberately NOT created:** a reconciliation index for T1.9. It is named here so that a later session adds it against a measured query plan rather than rediscovering the need from scratch.
+
+**Note a reversal:** an earlier STATUS.md draft proposed a partial `WHERE is_final = false` index for *lookup*. That was wrong — at most one forming bar exists per series and every access supplies the full three-column equality prefix, so the primary key already answers it in one descending scan. The partial index in decision 3 exists for **correctness**, not for speed.
+
+#### Prices: exact values, normalised text
+
+`NUMERIC(12,5)` **pads to the declared scale**: `'8.1'` is stored and returned as `'8.10000'`. This is asserted by an existing test, `numeric-precision.integration.test.ts`. Two consequences follow.
+
+**The useful one:** `'4635.06'` and `'4635.060'` are the same stored value *and* the same returned text, so a formatting-only difference is unrepresentable and cannot raise a conflict. That requirement is satisfied by the storage layer rather than by comparison logic.
+
+**The one that must be recorded honestly: ADR-008's "preserve the decimal text as received" is NOT fully honoured at the storage layer, and that is accepted here.** The provider's original decimal rendering is unrecoverable once stored. It is accepted because:
+
+- **NUMERIC pads rather than truncates.** The *value* is exact; only the rendering differs. Nothing numeric is lost.
+- **ADR-008 itself says not to reconstruct full precision**, because Twelve Data supplies mid prices that were never precise. A rendering carries no information the value lacks.
+- **`raw_datetime` earns its column and prices do not.** A timezone mis-parse is both **unrecoverable and undetectable** after the fact — which is the entire reason that column exists. A padded decimal is neither: the value is intact and any difference is visible.
+- **Four extra text columns on ~161,000 rows per year**, to preserve a rendering that carries no information, is the wrong trade.
+
+**Do not "fix" this by adding a `raw_ohlc` column.** It was considered and rejected here, with reasons.
+
+#### Null comparison — why `=` is wrong
+
+`volume` is nullable and the contracts file records that **0 and null are different facts**. `bid` and `ask` are null for Twelve Data today.
+
+Under SQL, `null = null` is UNKNOWN. A rule written with `<>` therefore fails in **both** directions at once: null-vs-null yields NULL and stays quiet by accident, and `null <> 123` *also* yields NULL — so **a real volume arriving where there was none would be invisible.** A null-volume bar is the ordinary case for spot gold, so this is the common path, not an edge case.
+
+`IS DISTINCT FROM` returns `false` for null/null and `true` for null/123. Applied per column:
+
+| Column                         | Nullable | Comparison                                          |
+| ------------------------------ | -------- | --------------------------------------------------- |
+| `open`, `high`, `low`, `close` | no       | `IS DISTINCT FROM` (identical to `=` here; uniform) |
+| `volume`                       | **yes**  | `IS DISTINCT FROM`                                  |
+| `bid`, `ask`                   | **yes**  | `IS DISTINCT FROM`                                  |
+| `raw_datetime`                 | no       | **excluded** — recorded separately, not a conflict   |
+| `is_final`                     | no       | branches the rule; not compared                     |
+
+Incoming decimal strings are cast `::numeric`, so the comparison uses NUMERIC semantics rather than text.
+
+#### The six cases
+
+Branching on the **stored** row's `is_final`, because the forming bar legitimately changes on every poll. A rule that compared values without that branch would either raise a false event on every poll of the current bar, or silently overwrite finalised history.
+
+| Stored    | Incoming                                       | Behaviour                          | Event         |
+| --------- | ---------------------------------------------- | ---------------------------------- | ------------- |
+| non-final | non-final                                      | update the forming bar             | none          |
+| non-final | final                                          | update and finalise                | none          |
+| final     | identical                                      | no-op; `updated_at` unchanged      | none          |
+| final     | different value                                | **reject**; original preserved     | conflict      |
+| final     | non-final                                      | **reject**; do not un-finalise     | conflict      |
+| final     | `null → value` on `volume` / `bid` / `ask`     | **enrichment**; apply              | informational |
+
+**Enrichment is `null → value` ONLY, and the asymmetry is the point.** `value → null` is a provider losing data, and it rejects like any other conflict. Without that asymmetry stated explicitly, the sixth case becomes a hole through which real data loss passes as an upgrade.
+
+Enrichment exists at all because `provider_id` is in the primary key, so **changing provider creates new rows rather than conflicts.** The only way this case arises is a tier change within one provider that begins supplying bid/ask on a series already stored. Treating that as mass historical corruption would be wrong; so would overwriting a non-null price with a different non-null price.
+
+#### Why T1.3 writes no event row
+
+`data_quality_events` does not exist as of 2026-09-02 (T1.5 creates it). BUILD-PLAN assigns it to **T1.5**, yet makes raising such an event a **T1.3** acceptance criterion. Rather than have T1.3 define a table T1.5 owns, the upsert returns a typed outcome — `applied | noop | conflict | rejected | enriched` — and the caller decides what to persist.
+
+**T1.5's criteria require detection logic to be pure and to live in `packages/core`.** A minimal table at T1.3 would mean the schema is designed twice, by two tasks with different information, and the second design would inherit the first's guesses.
+
+**Condition, and it is load-bearing: the outcome type is defined once in `packages/contracts` and CONSUMED by T1.5, never redefined there.** A second definition is exactly the drift F.1 exists to prevent — two implementations of one concept, free to diverge silently.
+
+`system_events` is not the home for this either: its own schema comment states that nothing in it is a derived market fact.
+
+---
+
+### ACCEPTED CONSEQUENCES
+
+**1. The forming-bar index makes finalisation order-sensitive, and can stall the feed.** Bar N+1 cannot be inserted while bar N is still non-final, so ingestion must finalise N and insert N+1 in **one transaction**.
+
+**This is not a free win.** If finalising bar N fails, bar N+1 **cannot be inserted at all** — the feed stalls rather than degrading, and every subsequent bar for that series is blocked until the stuck forming bar is resolved. That may well be the right behaviour for a system whose purpose is to refuse corrupt history, but it is a consequence we are choosing, not a property we get for free. **T1.7 must know the feed can be blocked by a stuck forming bar, and must alert on it rather than retry silently.**
+
+**2. ADR-008's decimal-text preservation is partially unmet at the storage layer**, as set out above. Recorded so that it is not later rediscovered and filed as a defect.
+
+**3. T1.3 cannot satisfy its own BUILD-PLAN criterion as written.** "Raises a data-quality event" becomes "returns a typed outcome that the caller persists". BUILD-PLAN is amended to say so, rather than the criterion being quietly reinterpreted.
+
+**4. `updated_at` is only as truthful as the upsert's `WHERE` clause.** If a later change drops the distinctness guard from `DO UPDATE`, the column silently degrades from "when this row last changed" into "when we last saw it", and nothing fails. The test asserting that a no-op leaves `updated_at` untouched is what protects it.
+
+**5. THE ENRICHMENT CASE HAS NO REAL PRODUCER, and its test is therefore synthetic.** `bid` and `ask` are null on every Twelve Data bar today, so the `null → value` path has no natural source: the test must construct the row itself. **A passing test is evidence about the RULE, not about the PATH.** Nothing has ever exercised this case with data a provider actually sent, and until something does, "enrichment works" is a statement about a fixture.
+
+**What would first exercise it for real:** a Twelve Data tier change that begins supplying bid/ask, or a second provider supplying them — noting that a second *provider* creates new rows rather than enrichment, since `provider_id` is in the primary key, so it would have to be bid/ask arriving on a series already stored under the same provider. Whichever happens first is the moment to check this rule against reality rather than against the fixture.

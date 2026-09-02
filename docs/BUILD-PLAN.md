@@ -285,7 +285,7 @@ can see what changed and why.
 **Files:** `packages/contracts/market.ts`, `packages/db/schema/{instruments,providers,market_hours}.ts`, migration
 **Depends on:** T1.1
 **Acceptance criteria:**
-- `Candle`, `Tick`, `Instrument`, `Timeframe`, `Provider` schemas defined once and imported everywhere
+- `Candle`, `Instrument`, `Timeframe`, `Provider` schemas defined once and imported everywhere. **`Tick` is DEFERRED by ADR-012**, with a recorded reopening trigger — there is no tick source or consumer in Phase 1, and a contract nothing imports cannot satisfy "imported everywhere"
 - Prices stored as `NUMERIC`, timestamps as `timestamptz`, all in UTC (NFR-4)
 - `market_hours` encodes weekly open/close and the daily break for the chosen provider (FR-1.8)
 **Tests:** schema unit tests including malformed, negative, zero and absurd values
@@ -306,11 +306,13 @@ has not been performed, do it first.
 **Files:** `packages/db/schema/candles.ts`, migration, `packages/db/queries/candles.ts`
 **Depends on:** T1.2
 **Acceptance criteria:**
-- Unique constraint on `(instrument_id, provider_id, timeframe, open_time)` — enforced by the **database**, not TypeScript (§9)
-- `is_final` boolean distinguishes closed bars from the forming bar
+- Unique constraint on `(instrument_id, provider_id, timeframe, open_time)` — enforced by the **database**, not TypeScript (§9). **ADR-013 makes it the PRIMARY KEY**, so there is no second index over the same columns
+- `is_final` boolean distinguishes closed bars from the forming bar, and a partial unique index `WHERE NOT is_final` enforces **at most one forming bar per series** (ADR-013)
 - Index supporting the dominant query: "last N final candles for instrument+timeframe ordered by open_time desc"
-- Re-inserting an identical candle is a no-op; a *different* candle for the same key raises a data-quality event rather than silently overwriting
-**Tests:** integration — insert twice (no duplicate); insert conflicting values (event raised, original preserved); ordered retrieval correctness
+- Re-inserting an identical candle is a no-op; a *different* candle for the same key does not silently overwrite
+- **AMENDED by ADR-013 — this criterion cannot be met as originally written.** It said a conflict "raises a data-quality event", but `data_quality_events` is created by **T1.5**, not T1.3, and T1.5 requires its detection logic to be pure and to live in `packages/core`. T1.3 therefore returns a **typed outcome** — `applied | noop | conflict | rejected | enriched` — defined once in `packages/contracts` and CONSUMED by T1.5, never redefined there. T1.3 writes no event row
+- Comparison uses `IS DISTINCT FROM` per column, not `=`: `volume`, `bid` and `ask` are nullable, and `=` would make a real value arriving where there was none **invisible** (ADR-013)
+**Tests:** integration — insert twice (no duplicate); insert conflicting values (conflict outcome, original preserved); insert a second forming bar (rejected by the partial index); the three QUIET cases asserted as deliberately as the loud ones, each paired with a loud sibling using the same detector so that a broken detector cannot pass both; ordered retrieval correctness
 **Risks:** §22. This constraint is the foundation of every idempotency guarantee downstream.
 
 ---
@@ -325,6 +327,7 @@ has not been performed, do it first.
 - Respects the provider's rate limits with backoff
 - Progress logged; a `job_runs` row records start, end, bars imported, errors
 - Running it twice imports nothing the second time
+- **Obligation 31's EVIDENCE half lands here, not in T1.3.** T1.3 adds `--single-transaction` to `db:restore`; proving it required a dump large enough that a failure lands *mid*-restore, and that volume does not exist until this task has run. Re-run the deliberate restore failures against a post-backfill dump — the evidence must come from a dump where the old behaviour would actually have differed
 **Tests:** integration with a recorded provider fixture — full run, interrupted-and-resumed run, duplicate run
 **Risks:** backfill can be the largest single line item on your bill. Estimate the request count and cost *before* running it in full.
 

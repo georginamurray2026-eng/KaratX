@@ -347,7 +347,7 @@ Not final — this is the proposal to review before Phase 1's schema task. Group
 
 **Reference:** `instruments`, `providers`, `market_hours`, `config`
 
-**Market data:** `candles` (unique on `instrument_id, provider_id, timeframe, open_time`; `is_final`; `ingested_at`), `macro_observations` (DXY, yields), `data_quality_events`
+**Market data:** `candles` — primary key IS the unique constraint on `instrument_id, provider_id, timeframe, open_time`; `is_final`; `ingested_at` and `updated_at`; a partial unique index `WHERE NOT is_final` enforcing at most one forming bar per series. Identity, the six-case conflict rule and the null comparison are settled in **ADR-013**, which also records that T1.3 returns a typed outcome rather than writing an event row. Also `macro_observations` (DXY, yields), `data_quality_events` (created by T1.5, not T1.3)
 
 **Derived structure:** `swings`, `zones`, `zone_reactions`, `liquidity_pools`, `liquidity_events` — all carrying `occurred_at`, `confirmed_at`, `rule_version`
 

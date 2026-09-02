@@ -23,17 +23,21 @@ T6.1 and never run — see the closure below. Do not read "Phase 0 closed" as
 | Criterion | State |
 |---|---|
 | `Candle`, `Instrument`, `Timeframe`, `Provider` schemas | **DONE** — `packages/contracts/src/market.ts`, 68 unit tests |
-| `Tick` schema | **NOT DEFINED — deliberately.** See below |
+| `Tick` schema | **DEFERRED — settled by ADR-012 (2026-09-02).** No longer an open criterion |
 | defined once and **imported everywhere** | **NOT YET TRUE.** Nothing consumes them |
 | Prices `NUMERIC`, timestamps `timestamptz`, all UTC | **DONE**, with an integration test asserting no naive timestamp column exists |
 | `market_hours` encodes weekly open/close and the daily break | **DONE and SEEDED** |
 
-**`Tick` is not defined, and that is a decision awaiting confirmation.** ADR-008
-chose 15min bars from `/time_series`; there is no tick source anywhere in Phase
-1 and no consumer. Writing a contract nothing imports means writing one that
-will be wrong by the time something does. **Either confirm the deferral and
-record it, or say Tick is wanted and it gets written.** It is the one criterion
-still openly unmet.
+**`Tick` IS DEFERRED, and the deferral is now RECORDED — [ADR-012](./DECISIONS.md),
+2026-09-02.** ADR-008 chose 15min bars from `/time_series`; there is no tick
+source anywhere in Phase 1 and no consumer. Writing a contract nothing imports
+means writing one that will be wrong by the time something does — and it would
+make T1.2's "imported everywhere" clause LOOK met while being unmeetable.
+**The reopening trigger is explicit in the ADR:** the first provider adapter
+receiving tick or quote data, or the first `packages/core` consumer needing
+sub-bar granularity. This was T1.2's last openly unmet criterion; it is now
+closed by decision rather than by delivery, which is a distinction the ADR
+states plainly.
 
 **"Imported everywhere" is not yet true either** — `grep` finds `@karatx/contracts`
 in exactly three places and none is a real import: a comment, a
@@ -87,7 +91,10 @@ then restored properly. **The error message does not say this**, and an operator
 mid-incident would reasonably think everything had been lost. Worse, the
 documented rollback path in DEPLOYMENT.md trips it every time, because a
 pre-migration backup by definition has fewer tables than the current schema.
-**Owed: fix the message, and document the two-step behaviour.**
+**Owed: fix the message, and document the two-step behaviour. TRACKED AS
+OBLIGATION 38 from 2026-09-02** — it had been carried as an unnumbered "Owed"
+line since 2026-08-31, which meant nothing scheduled it and no obligation row
+carried it.
 
 ### Verified counts — PHASE 0 CLOSURE SNAPSHOT, 2026-08-31 morning
 
@@ -127,7 +134,8 @@ returned "no response" before the suite ran.
 |---|---|
 | **OVERDUE (T1.2)** | 10, 25 |
 | ~~before T1.3~~ | ~~14, 23, 33~~ — **all three DISCHARGED 2026-09-01** |
-| T1.3 | 31 |
+| T1.3 | 31 (flag only — see below), 38 |
+| T1.4 | 31 (evidence) |
 | T1.7 | 22 |
 | before Phase 2 | 11, 12 |
 | before Phase 6 | 16 |
@@ -1789,8 +1797,16 @@ schema — **detection, not prevention.**
 
 **Recorded as a reasoned risk, not a measurement**, precisely so a future
 session does not cite it as something that was seen. `--single-transaction`
-would convert it into a guarantee; obligation 31 carries it to T1.3, when a
-table large enough to demonstrate the difference exists.
+would convert it into a guarantee.
+
+**CORRECTED 2026-09-02 — obligation 31 is SPLIT across two tasks.** This
+paragraph previously said obligation 31 "carries it to T1.3, when a table large
+enough to demonstrate the difference exists". **T1.3 creates the candles table;
+T1.4 fills it.** At T1.3 the database still holds only reference rows, so a
+dump would fail before the first statement applies and the old behaviour and
+the new would be indistinguishable. The FLAG lands at T1.3; the EVIDENCE lands
+at T1.4, against a post-backfill dump. Adding the flag does not discharge the
+obligation.
 
 ### Design a recovery procedure for the conditions it will be RUN in, not the ones that make it easy to TEST
 
@@ -2667,29 +2683,40 @@ signal rather than noise.
 ## Carried-forward obligations
 
 
-**20 open, 14 discharged**, recounted 2026-09-01 after discharging 14, 23, 33 and 35. The previous "21 open" had
-been stale for two sessions while the handoff table above said 22 — a
-disagreement inside one file, and obligation 25's case in miniature. Counted by
-listing the numbered rows of THIS table only: 3, 4, 5, 7, 9, 10, 11, 12, 16, 17,
-19, 22, 24, 25, 27, 31, 32, 34, 36, 37. Where the open ones land:
+**21 open, 14 discharged**, recounted 2026-09-02 after adding obligation 38.
+**The previous figure was 20**, recounted 2026-09-01 after discharging 14, 23, 33
+and 35. (Earlier still, before 2026-09-01, the file said "21 open" while the
+handoff table above said 22 — a disagreement inside one file, and obligation 25's
+case in miniature. That the count is 21 again now is a coincidence of arithmetic,
+not a reversion to that stale figure.) Counted by listing the numbered rows of
+THIS table only: 3, 4, 5, 7, 9, 10, 11, 12, 16, 17, 19, 22, 24, 25, 27, 31, 32,
+34, 36, 37, 38. Where the open ones land:
 
-- **T0.10** — 3
-- **before Phase 2** — 2
-- **T0.10 — firm** — 2
-- **audit — not urgent** — 1
-- **before Phase 6** — 1
-- **before T1.2** — 1
-- **cosmetic** — 1
-- **do not "fix"** — 1
-- **if suite slows** — 1
-- **low priority** — 1
-- **ongoing** — 1
-- **open — may become moot** — 1
-- **rationale** — 1
-- **T1.4, T1.7** — 1
-- **T1.7 — firm** — 1
-- **unassigned** — 1
-- **unassigned — suggest T0.10** — 1
+| Lands in | Obligations |
+| --- | --- |
+| **T1.3** | 31 (flag only), 38 |
+| **T1.4** | 31 (evidence) |
+| **T1.4, T1.7** | 5 |
+| **T1.7 — firm** | 22 |
+| **T6.1** | 3, 4, 17, 19, 24, 27, 32 |
+| **before Phase 2** | 11, 12 |
+| **before Phase 6** | 16 |
+| **OVERDUE — was due at/before T1.2** | 10, 25 |
+| **next session** | 36, 37 |
+| **standing** | 34 |
+| **unscheduled** | 7, 9 |
+
+**The table's entries sum to 22 for 21 obligations, deliberately.** Obligation 31
+is listed TWICE — T1.3 for the flag, T1.4 for the evidence — because it is split
+across two tasks. Any other disagreement between this count and this table is a
+defect; this one is the split being visible.
+
+**The bullet-list breakdown that stood here until 2026-09-02 was STALE and is
+replaced.** It still named "T0.10" categories after ADR-011 re-dated those to
+T6.1, and it counted the lettered rows (10b–10e) that the sentence above
+explicitly excludes — so its totals never matched its own stated method. A
+derived list maintained by hand inside a 3,200-line document drifts from the
+table it summarises; that is obligation 25's argument, restated by example.
 
 Sorted ascending. Discharged obligations are struck through and kept, so a
 later session can see that a question was asked and answered rather than
@@ -2730,8 +2757,9 @@ wondering whether it was ever considered.
 | ~~35~~ | ~~**`Dependabot Updates` has been RED since 2026-08-29 — the proactive half of SEC-10 is not running.**~~ **DISCHARGED 2026-09-01, and THE RECORDED HYPOTHESIS WAS WRONG.** Reading the run log first — as the obligation instructed — refuted it in one step: the scheduled `npm_and_yarn in /. - Update #1` run **SUCCEEDED** on 2026-08-31 (id 33350101588), and an unparseable lockfile would have failed that run too. **Discovery was never lost.** All three red runs (33105196543, 33184569966, 33254585583) are named `npm_and_yarn in /. for esbuild` — the SECURITY update for GHSA-67mh-4wv8-2f99, a different job — and they failed because there was no update to make: `drizzle-kit@0.31.10` is the LATEST release, every `0.31.x` depends on the DEPRECATED `@esbuild-kit/esm-loader`, and that chain pins `esbuild@0.18.20`. Fixed in `7754628` by the scoped override `@esbuild-kit/core-utils>esbuild: ^0.25.0` — scoped because a bare `esbuild` override would have DOWNGRADED vite 8 from 0.28.2. `pnpm audit` went 1 moderate → 0, with the before-run as its positive control. **NOT PROVEN: that the job turns green.** The cause is removed, but that is an assertion about a future run — see obligation 36. **`7754628` was LOCAL-ONLY until 2026-09-02**, so for the whole period this row described the fix as made, it was invisible to GitHub and to Dependabot | **CLOSED 2026-09-01** |
 | 37 | **Enable GitHub secret-scanning PUSH PROTECTION — it is free, and it is off.** T0.9 recorded gitleaks as DETECT-not-PREVENT and accepted that gap because push protection "needs paid Secret Protection on private repositories". **The repository is PUBLIC** (verified unauthenticated 2026-09-01), and secret scanning with push protection is free on public repositories. So the accepted limitation is not a limitation, it is an unset toggle. gitleaks scans history AFTER a push; push protection blocks the push. **They are complementary — do not remove gitleaks.** Requires a settings change by the repository owner: Settings → Code security → Secret protection. **Also worth a deliberate test once on:** push a fake PAT-shaped value to a throwaway branch and confirm the push is REJECTED, since "enabled" and "enforcing" are not the same claim | **next session — needs the owner** |
 | 36 | **Confirm `Dependabot Updates` is actually GREEN.** Obligation 35 removed the CAUSE of the failing esbuild security update, verified locally — and **`7754628` was never pushed until 2026-09-02** — it sat on local `main` only, so Dependabot could not have seen it, let alone run against it. This row previously read "no Dependabot run has executed since `7754628` landed", which quietly assumed the commit had reached GitHub at all. It had not. The job turning green was therefore an inference resting on a second, unexamined inference. **This is the same shape as the obligation it replaces:** the healthy signal for this control is silence, so a still-broken checker and a fixed one produce identical observable output. Check for a green `npm_and_yarn` run dated **after the 2026-09-02 push** at `/actions/runs` — dating it from the commit rather than the push would match runs that never contained the fix; if the esbuild security run reappears red, the diagnosis was incomplete and the override is not the whole fix | **next session — firm** |
-| 31 | **`db:restore` atomicity is OBSERVED, not GUARANTEED.** Five deliberate failures on 2026-08-30 all exited non-zero and left the database intact — but that is because `pg_restore` reads the archive table of contents before applying anything, so a 5 KB dump fails before the first `DROP`. **On a multi-gigabyte Phase 1 dump, corruption late in the data stream could fail after earlier statements have committed**, leaving the half-populated database the drill was designed to rule out. `--exit-on-error` makes it stop; it does not make it undo. **Fix: add `--single-transaction`, then re-run the deliberate failures against a dump large enough that the failure lands mid-restore** — the evidence must come from a dump where the old behaviour would actually have differed | **T1.3 — with the first large table** |
+| 31 | **`db:restore` atomicity is OBSERVED, not GUARANTEED.** Five deliberate failures on 2026-08-30 all exited non-zero and left the database intact — but that is because `pg_restore` reads the archive table of contents before applying anything, so a 5 KB dump fails before the first `DROP`. **On a multi-gigabyte Phase 1 dump, corruption late in the data stream could fail after earlier statements have committed**, leaving the half-populated database the drill was designed to rule out. `--exit-on-error` makes it stop; it does not make it undo. **Fix: add `--single-transaction`, then re-run the deliberate failures against a dump large enough that the failure lands mid-restore** — the evidence must come from a dump where the old behaviour would actually have differed. **SPLIT 2026-09-02 (ADR-013 session), and the split is the point: DO NOT MARK THIS COMPLETE BECAUSE THE FLAG EXISTS.** T1.3 creates the candles table; T1.4 fills it. At T1.3 the database still holds only reference rows, so a dump fails before the first statement applies and the new behaviour is indistinguishable from the old — adding the flag would demonstrate nothing. `--single-transaction` also implies `--exit-on-error`, and is compatible with the existing `--clean --if-exists` because no `--jobs` is used | **FLAG at T1.3; EVIDENCE at T1.4, against a post-backfill dump** |
 | 32 | **ADR-003’s forward-compatibility amendment does not deliver a usable rollback, and this is now MEASURED.** `packages/db/src/status.ts` computes `inSync` as `pending.length === 0 && unknown.length === 0`, where `unknown` means the database is AHEAD of the code. Proven 2026-08-31 with the most forward-compatible change that exists — an additive nullable column: old code against the newer schema returns **503 `not_ready`**, `expected 503 to be 200`. Since the healthcheck is a DEPLOY GATE, a rolled-back deployment would never go live, so rollback-without-restore is unavailable for any change containing a migration. **Two coherent resolutions, and the choice is real:** (a) the readiness check is right, forward compatibility cannot deliver rollback, and every migration-bearing rollback is a restore — say so in ADR-003 rather than implying otherwise; (b) `unknown` should NOT block readiness, because being ahead is tolerable when migrations are additive, in which case `pending` alone gates and the amendment becomes real. **Do not decide this by editing the code first** | **T6.1 — firm; revisit ADR-003 in the same breath** |
+| 38 | **A failed `db:restore` leaves `public` EMPTY and must be run TWICE, and the error message does not say so.** Observed live 2026-08-31: restoring a pre-migration backup over the migrated schema made layer-3 content verification fire correctly and quarantine `public` to `failed_restore_<timestamp>`, leaving an empty `public`; the second invocation restored properly. **This is not merely a message fix.** DEPLOYMENT.md’s documented rollback path trips the two-run behaviour **every time**, because a pre-migration backup by definition has fewer tables than the current schema — and obligation 34 records that the procedure has never been run by anyone who was not present when it was written. **So the first person to follow it cold hits a failure mode the document does not mention, while mid-incident, and would reasonably conclude everything had been lost.** Carried as an unnumbered "Owed" line from 2026-08-31 until 2026-09-02, which is why nothing scheduled it. **Fix the message AND document the two-step behaviour in DEPLOYMENT.md** | **T1.3 — firm. T1.3 is the task that makes the database expensive to lose** |
 | ~~33~~ | ~~**ADR-003 is enforced by CONVENTION, not by a check.**~~ **DISCHARGED 2026-09-01 in `dd03445`**, same pass as obligation 23. `wiring-assertions.test.ts` asserts no file under `apps/` imports `runMigrations`, matching the IMPORT rather than the call so a comment mentioning the name is not a false positive. Proven by mutation — planting the import in `apps/worker/src/boot.ts` fails the test and NAMES the file — then reverted. **Being an ABSENCE check it carries its own positive controls:** the same detector must find single-line, multi-line and mixed-specifier imports in synthetic source, must not fire on a comment or a string, and the file walk asserts a non-empty list anchored to a file known to exist. An empty file list answers "nothing found" to every question |
 | 34 | **DEPLOYMENT.md’s rollback procedure has never been used by anyone who was not present when it was written.** It was drafted and drilled by the same session, so every ambiguity in it was resolved by knowledge the reader will not have. **There is no honest way to close this except by someone running it cold** — and the first genuine test will be the first real incident. **Listed deliberately as a standing limitation rather than a task**: it is EXPECTED, not a gap to be closed now, and it should stay listed rather than being quietly resolved. When it is first used in anger, record what was unclear | **standing — review after first real use** |
 | ~~26~~ | ~~**Confirm the audit step reports without blocking, IN CI.**~~ **DISCHARGED 2026-08-28 by CI #14 at `91b0a55`, on the printed advisory rather than the job colour** — a green security job would have looked identical if the report line had produced nothing. The step printed the full advisory (package, `<=0.24.2`, `>=0.25.0`, the full dependency path, the GHSA link) and then `--- applying the blocking threshold ---`, and the job stayed green. **The `|| true` survived the runner: reporting changed, threshold did not** | done |
