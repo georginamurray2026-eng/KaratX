@@ -159,6 +159,52 @@ reproduced it in one attempt.
    reporting a different measurement under the gate's name — the same substitution
    this file records elsewhere as "necessary and insufficient".
 
+#### The recurring shape appears in TOOLING, not just in code — twice in one pre-flight
+
+**Recorded 2026-09-02, obligation 37.** The push-protection enforcement test
+depended entirely on a pre-flight: prove the planted bait is DETECTABLE before
+pushing it, because otherwise an accepted push cannot distinguish "push
+protection is not enforcing" from "the bait was never detectable". The whole
+value of the exercise sat on that one check. **Two separate defects in the check
+itself, either of which would have produced a confident "pre-flight passed" from
+something that never ran.**
+
+**1. A version check reported a tool that was not the tool about to be invoked.**
+Availability was probed as `gitleaks version || docker run … gitleaks version ||
+echo NO_GITLEAKS`. It printed `v8.30.1`, which was read as "gitleaks is on
+PATH". It was not — the check had silently fallen through to the DOCKER
+fallback, and the printed version came from the container. The next command
+invoked the bare binary and failed with `command not found`.
+
+**This is the `bc` defect in a new place.** There, a missing tool plus an
+`|| echo 0` fallback manufactured three zeros that were read as a finding about
+Railway's IaC types. Here, an `||` chain manufactured a version string that was
+read as a fact about PATH. **In both cases the fallback did not fail, it
+answered** — and an answer from the wrong source is indistinguishable from an
+answer from the right one.
+
+**2. The exit code captured belonged to the wrong command.** `gitleaks … | tail
+-30; echo "EXIT=$?"` reported `EXIT=0`. `$?` after a pipeline is the status of
+the LAST command, and `tail` succeeds whatever gitleaks did. gitleaks had in
+fact not run at all. **A pipeline that ends in a formatter always exits 0**, so
+this reads as success for every possible input — including no input.
+
+**How they were caught: by re-reading the output, and by nothing else.** No
+mechanism fired. `EXIT=0` alongside `command not found` in the same block is
+only a contradiction if someone reads both lines. Neither defect would have
+failed anything; both would have handed the next step a false premise, and the
+next step was the one thing the exercise existed to establish.
+
+**Two rules, both one line of shell:**
+
+1. **A version check tells you a tool EXISTS somewhere, not WHICH tool you are
+   about to invoke.** If a fallback chain can satisfy the check, the check
+   cannot tell you which branch answered. Probe the exact invocation you will
+   use, or make the fallback loud.
+2. **Capture the exit code of the command you care about, not of the pipeline.**
+   Redirect to a file and check the status directly, or use `PIPESTATUS`. Never
+   `$?` after a pipe when the first command is the one under test.
+
 ---
 
 The earlier, weaker form is kept because it is cheap and catches the common case:
