@@ -2,7 +2,7 @@
 
 XAU/USD market-intelligence and setup-alerting system. Watches gold, detects setups, grades them, alerts. **Never places trades.**
 
-**Read in this order:** `docs/ENGINEERING_PROMPT.md` (how to build — 47 sections, the source of truth) → `docs/STATUS.md` (where we are, what is unproven, what is owed) → `docs/BUILD-PLAN.md` (tasks and acceptance criteria) → `docs/DECISIONS.md` (ADRs). Detail lives in the other `docs/` files.
+**Read in this order:** `docs/ENGINEERING_PROMPT.md` (how to build — 47 sections, the source of truth) → `docs/STATUS.md` (where we are, what is unproven, what is owed) → `docs/BUILD-PLAN.md` (tasks and acceptance criteria) → `docs/DECISIONS.md` (ADRs) → `docs/OBLIGATIONS.md` (what is owed, and where each item lands — the authoritative ledger) → `docs/LESSONS.md` (patterns worth applying). The last two were split out of `docs/STATUS.md` on 2026-09-02. Detail lives in the other `docs/` files.
 
 **Non-negotiable** — the rest is in the engineering prompt:
 
