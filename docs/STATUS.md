@@ -113,7 +113,10 @@ returned "no response" before the suite ran.
    **DISCHARGED 2026-09-01 in `7754628`**, and the recorded hypothesis was
    REFUTED rather than confirmed — discovery had never stopped. Replaced by
    **obligation 36**, which asks the one question this session could not
-   answer: whether the job is actually green.
+   answer: whether the job is actually green. **Added 2026-09-02:** `7754628` was
+   not pushed until 2026-09-02, so no Dependabot run could have executed against
+   it. **There is no automatic push** — see the refutation in the Phase 0 gate
+   section.
 2. **Obligation 10 — CSV fixture quoted commas.** Due at T1.2. Untouched.
 3. **Obligation 25 — split STATUS.md.** Due before T1.2. Untouched, and this
    session added two more anchor-collision incidents to its case.
@@ -322,7 +325,7 @@ was unclear.
 | Complete | **T0.1 – T0.9** (9 of 10). T0.9 closed 2026-08-28 with two partials |
 | Next task | **T0.10 — Railway deploy + project documentation** (not started) |
 | Branch | `main`, working tree clean. (Commit count deliberately not stated — a self-referential number in a committed file is stale the moment it lands. Use `git log --oneline`.) |
-| Remote | `origin` = `github.com/georginamurray2026-eng/KaratX` (**private**). `main` is pushed and CI runs on it |
+| Remote | `origin` = `github.com/georginamurray2026-eng/KaratX` (**public**, verified unauthenticated 2026-09-01). `main` is pushed MANUALLY — there is no automatic push, and it can sit ahead of the remote. `git status` reports the divergence; `git ls-remote origin refs/heads/main` asks the server. `git rev-parse origin/main` reads a local tracking ref and can agree with `main` even when nothing was ever sent |
 
 Phase 1 task **T1.1** (provider evaluation) was completed early, then **REOPENED
 and RE-RUN on 2026-08-27** when OANDA v20 proved unavailable. **It is now
@@ -624,19 +627,39 @@ cannot be read from here.
 > and without credentials, and obligation 35 was diagnosed that way. The
 > paragraph below is kept because its CAUTION still holds — a red run can sit
 > unnoticed — but its stated REASON was wrong, and it cost the project a
-> capability it had all along. **What WAS verified:** `git ls-remote origin
-refs/heads/main` returns the same SHA as local `HEAD`, so the remote has every
-commit and CI has had something to run on.
+> capability it had all along. **What WAS verified — A SINGLE OBSERVATION, LATER MIS-READ AS A MECHANISM:**
+on 2026-08-31, `git ls-remote origin refs/heads/main` returned the same SHA as
+local `HEAD`. That was ONE reading at ONE moment. It showed only that a push
+had happened at some point; it was never evidence that anything pushes by
+itself. **REFUTED 2026-09-02** — see the correction below.
 
 **Whether it went green is unknown and must not be inferred.** A human needs to
 look. Note also that obligation 35 records `Dependabot Updates` red since
 2026-08-29 — a different workflow from CI, but a reminder that a red run can sit
 unnoticed.
 
-**Unexpected, and worth someone's attention:** no `git push` was issued in this
-session, yet the remote is current. Something is pushing automatically. That
-means anything committed here is published immediately — including, if it ever
-happened, a secret.
+**REFUTED 2026-09-02 — THERE IS NO AUTOMATIC PUSH.** This paragraph previously
+recorded that no `git push` had been issued yet the remote was current, and
+concluded "something is pushing automatically... anything committed here is
+published immediately". **That conclusion was wrong, and it was wrong on the
+day it was written.** It rested on a single matching `ls-remote` reading, which
+is evidence that a push occurred at some point and is not evidence of a
+mechanism. One observation of a matching state cannot distinguish "it pushes
+itself" from "someone pushed".
+
+**How it was refuted:** on 2026-09-02, local `main` stood at `fa8ec1d` with SIX
+commits (`7754628`, `5949282`, `c6e4538`, `dd03445`, `10c0195`, `fa8ec1d`)
+absent from the remote, which was still at `edfbf3d`. Confirmed with `git
+ls-remote origin refs/heads/main`, which asks the server, rather than `git
+rev-parse origin/main`, which reads a local tracking ref and can agree with
+`main` even when nothing was ever sent.
+
+**The practical consequence: commits are NOT published on commit.** Nothing
+reaches GitHub, CI or Dependabot until someone runs an explicit `git push`.
+**This cuts both ways.** The reassurance was false — work can sit unpushed and
+un-CI'd for days, as six commits did here, including a security fix believed to
+be live. So was the alarm: a committed secret is not published immediately,
+which means a window exists in which history can still be rewritten.
 
 ### 6 — MET, with a documented exception that should be stated rather than ticked past
 
@@ -2704,9 +2727,9 @@ wondering whether it was ever considered.
 | ~~23~~ | ~~**Nothing proves `index.ts` WIRES the crash handlers in.**~~ **DISCHARGED 2026-09-01 in `dd03445`**, option 2 as preferred. `packages/test-support/src/wiring-assertions.test.ts` asserts `apps/worker/src/index.ts` calls `installCrashLogging`, and **its failure message says in those words that it checks TEXT, not behaviour** — the recorded condition for accepting the cheap check. **The gap was MEASURED rather than inherited:** with the call commented out, all **33 worker unit tests and all 14 worker integration tests still pass**, including the one that spawns a real process and crashes it. Proven by mutation against the real file, then reverted |
 | 24 | **`apps/worker` has NO build step, so nothing verifies it becomes a deployable artefact.** It has no `build` script and runs `tsx src/index.ts`. CI therefore cannot check that it compiles, and T0.9's "build" criterion is unmeetable for it rather than merely narrowed. **T0.10 must decide whether production runs `tsx` or a compiled artefact** — and that decision drives obligation 17 (re-measure boot-failure behaviour against however it actually runs) and the pino-flush scope limit (buffered crash output was proven to survive under `tsx` only). Three findings, one underlying question | **T6.1 — was "T0.10 — firm"; re-dated 2026-08-31. ADR-009 answered the tsx-vs-artefact question, so what remains is verifying a deployable artefact, which needs a deployment** |
 | 25 | **Split STATUS.md.** Its own anchor lesson set the trigger "if this happens again, the file is telling us it needs splitting" — and it has now happened four times, most recently miscounting obligations by 11 because a regex matched three other tables. The file is past 1,200 lines of nested headings and pipe-delimited tables. **Proposed split: `docs/LESSONS.md` and `docs/OBLIGATIONS.md`**, both read independently of the rest and both edited most often by script; STATUS.md stays the handoff document. Makes scripted edits scope-safe by construction rather than by discipline | **before T1.2** |
-| ~~35~~ | ~~**`Dependabot Updates` has been RED since 2026-08-29 — the proactive half of SEC-10 is not running.**~~ **DISCHARGED 2026-09-01, and THE RECORDED HYPOTHESIS WAS WRONG.** Reading the run log first — as the obligation instructed — refuted it in one step: the scheduled `npm_and_yarn in /. - Update #1` run **SUCCEEDED** on 2026-08-31 (id 33350101588), and an unparseable lockfile would have failed that run too. **Discovery was never lost.** All three red runs (33105196543, 33184569966, 33254585583) are named `npm_and_yarn in /. for esbuild` — the SECURITY update for GHSA-67mh-4wv8-2f99, a different job — and they failed because there was no update to make: `drizzle-kit@0.31.10` is the LATEST release, every `0.31.x` depends on the DEPRECATED `@esbuild-kit/esm-loader`, and that chain pins `esbuild@0.18.20`. Fixed in `7754628` by the scoped override `@esbuild-kit/core-utils>esbuild: ^0.25.0` — scoped because a bare `esbuild` override would have DOWNGRADED vite 8 from 0.28.2. `pnpm audit` went 1 moderate → 0, with the before-run as its positive control. **NOT PROVEN: that the job turns green.** The cause is removed, but that is an assertion about a future run — see obligation 36 | **CLOSED 2026-09-01** |
+| ~~35~~ | ~~**`Dependabot Updates` has been RED since 2026-08-29 — the proactive half of SEC-10 is not running.**~~ **DISCHARGED 2026-09-01, and THE RECORDED HYPOTHESIS WAS WRONG.** Reading the run log first — as the obligation instructed — refuted it in one step: the scheduled `npm_and_yarn in /. - Update #1` run **SUCCEEDED** on 2026-08-31 (id 33350101588), and an unparseable lockfile would have failed that run too. **Discovery was never lost.** All three red runs (33105196543, 33184569966, 33254585583) are named `npm_and_yarn in /. for esbuild` — the SECURITY update for GHSA-67mh-4wv8-2f99, a different job — and they failed because there was no update to make: `drizzle-kit@0.31.10` is the LATEST release, every `0.31.x` depends on the DEPRECATED `@esbuild-kit/esm-loader`, and that chain pins `esbuild@0.18.20`. Fixed in `7754628` by the scoped override `@esbuild-kit/core-utils>esbuild: ^0.25.0` — scoped because a bare `esbuild` override would have DOWNGRADED vite 8 from 0.28.2. `pnpm audit` went 1 moderate → 0, with the before-run as its positive control. **NOT PROVEN: that the job turns green.** The cause is removed, but that is an assertion about a future run — see obligation 36. **`7754628` was LOCAL-ONLY until 2026-09-02**, so for the whole period this row described the fix as made, it was invisible to GitHub and to Dependabot | **CLOSED 2026-09-01** |
 | 37 | **Enable GitHub secret-scanning PUSH PROTECTION — it is free, and it is off.** T0.9 recorded gitleaks as DETECT-not-PREVENT and accepted that gap because push protection "needs paid Secret Protection on private repositories". **The repository is PUBLIC** (verified unauthenticated 2026-09-01), and secret scanning with push protection is free on public repositories. So the accepted limitation is not a limitation, it is an unset toggle. gitleaks scans history AFTER a push; push protection blocks the push. **They are complementary — do not remove gitleaks.** Requires a settings change by the repository owner: Settings → Code security → Secret protection. **Also worth a deliberate test once on:** push a fake PAT-shaped value to a throwaway branch and confirm the push is REJECTED, since "enabled" and "enforcing" are not the same claim | **next session — needs the owner** |
-| 36 | **Confirm `Dependabot Updates` is actually GREEN.** Obligation 35 removed the CAUSE of the failing esbuild security update, verified locally — but no Dependabot run has executed since `7754628` landed, so the job turning green is inference, not evidence. **This is the same shape as the obligation it replaces:** the healthy signal for this control is silence, so a still-broken checker and a fixed one produce identical observable output. Check for a green `npm_and_yarn` run dated after 2026-09-01 at `/actions/runs`; if the esbuild security run reappears red, the diagnosis was incomplete and the override is not the whole fix | **next session — firm** |
+| 36 | **Confirm `Dependabot Updates` is actually GREEN.** Obligation 35 removed the CAUSE of the failing esbuild security update, verified locally — and **`7754628` was never pushed until 2026-09-02** — it sat on local `main` only, so Dependabot could not have seen it, let alone run against it. This row previously read "no Dependabot run has executed since `7754628` landed", which quietly assumed the commit had reached GitHub at all. It had not. The job turning green was therefore an inference resting on a second, unexamined inference. **This is the same shape as the obligation it replaces:** the healthy signal for this control is silence, so a still-broken checker and a fixed one produce identical observable output. Check for a green `npm_and_yarn` run dated **after the 2026-09-02 push** at `/actions/runs` — dating it from the commit rather than the push would match runs that never contained the fix; if the esbuild security run reappears red, the diagnosis was incomplete and the override is not the whole fix | **next session — firm** |
 | 31 | **`db:restore` atomicity is OBSERVED, not GUARANTEED.** Five deliberate failures on 2026-08-30 all exited non-zero and left the database intact — but that is because `pg_restore` reads the archive table of contents before applying anything, so a 5 KB dump fails before the first `DROP`. **On a multi-gigabyte Phase 1 dump, corruption late in the data stream could fail after earlier statements have committed**, leaving the half-populated database the drill was designed to rule out. `--exit-on-error` makes it stop; it does not make it undo. **Fix: add `--single-transaction`, then re-run the deliberate failures against a dump large enough that the failure lands mid-restore** — the evidence must come from a dump where the old behaviour would actually have differed | **T1.3 — with the first large table** |
 | 32 | **ADR-003’s forward-compatibility amendment does not deliver a usable rollback, and this is now MEASURED.** `packages/db/src/status.ts` computes `inSync` as `pending.length === 0 && unknown.length === 0`, where `unknown` means the database is AHEAD of the code. Proven 2026-08-31 with the most forward-compatible change that exists — an additive nullable column: old code against the newer schema returns **503 `not_ready`**, `expected 503 to be 200`. Since the healthcheck is a DEPLOY GATE, a rolled-back deployment would never go live, so rollback-without-restore is unavailable for any change containing a migration. **Two coherent resolutions, and the choice is real:** (a) the readiness check is right, forward compatibility cannot deliver rollback, and every migration-bearing rollback is a restore — say so in ADR-003 rather than implying otherwise; (b) `unknown` should NOT block readiness, because being ahead is tolerable when migrations are additive, in which case `pending` alone gates and the amendment becomes real. **Do not decide this by editing the code first** | **T6.1 — firm; revisit ADR-003 in the same breath** |
 | ~~33~~ | ~~**ADR-003 is enforced by CONVENTION, not by a check.**~~ **DISCHARGED 2026-09-01 in `dd03445`**, same pass as obligation 23. `wiring-assertions.test.ts` asserts no file under `apps/` imports `runMigrations`, matching the IMPORT rather than the call so a comment mentioning the name is not a false positive. Proven by mutation — planting the import in `apps/worker/src/boot.ts` fails the test and NAMES the file — then reverted. **Being an ABSENCE check it carries its own positive controls:** the same detector must find single-line, multi-line and mixed-specifier imports in synthetic source, must not fire on a comment or a string, and the file walk asserts a non-empty list anchored to a file known to exist. An empty file list answers "nothing found" to every question |
