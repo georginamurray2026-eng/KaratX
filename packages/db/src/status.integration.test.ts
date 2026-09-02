@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+
 import { Client } from 'pg'
 import { beforeAll, describe, expect, inject, it } from 'vitest'
 
@@ -79,7 +81,18 @@ describe('migrated database', () => {
 
   it('names the applied migration by tag rather than by hash', async () => {
     const status = await checkDatabase(databaseUrl)
-    expect(status.migrations?.latestApplied).toBe('0001_damp_roland_deschain')
+    // Read from the journal rather than hard-coded. The POINT of this test is
+    // that latestApplied is a TAG and not a hash; pinning the literal tag made
+    // it fail on every new migration for a reason unrelated to what it checks.
+    // The shape assertion is what keeps it honest.
+    const journal = JSON.parse(
+      readFileSync(new URL('../migrations/meta/_journal.json', import.meta.url), 'utf8'),
+    ) as { entries: { tag: string }[] }
+    const latestTag = journal.entries.at(-1)?.tag
+
+    expect(latestTag).toMatch(/^\d{4}_[a-z0-9_]+$/)
+    expect(status.migrations?.latestApplied).toBe(latestTag)
+    expect(status.migrations?.latestApplied).not.toMatch(/^[0-9a-f]{64}$/)
   })
 
   it('reports nothing pending and nothing unknown', async () => {

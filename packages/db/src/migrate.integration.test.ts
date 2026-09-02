@@ -58,7 +58,7 @@ beforeAll(async () => {
  * a table nobody intended. Loosening them to "contains" would remove the only
  * check on unintended schema changes.
  */
-const MIGRATION_COUNT = 2
+const MIGRATION_COUNT = 3
 
 describe('migrations against an empty database', () => {
   it('starts from a genuinely empty schema', async () => {
@@ -93,6 +93,7 @@ describe('migrations against an empty database', () => {
     // bookkeeping table lives in a separate schema, so public should hold
     // exactly these two.
     expect(tables).toEqual([
+      'candles',
       'config',
       'instruments',
       'market_holidays',
@@ -161,6 +162,7 @@ describe('migrations against an empty database', () => {
       ),
     )
     expect(constraints.rows.map((r) => r.table_name)).toEqual([
+      'candles',
       'config',
       'instruments',
       'market_holidays',
@@ -175,7 +177,14 @@ describe('migrations against an empty database', () => {
         `select indexname from pg_indexes where schemaname = 'public' order by indexname`,
       ),
     )
-    expect(indexes.rows.map((r) => r.indexname)).toContain('system_events_occurred_at_idx')
+    const names = indexes.rows.map((r) => r.indexname)
+    expect(names).toContain('system_events_occurred_at_idx')
+
+    // The partial index is asserted by NAME here and by PREDICATE in
+    // candles.integration.test.ts. A name alone is not enough: an index without
+    // the WHERE clause is a completely different constraint and would look
+    // identical in this listing.
+    expect(names).toContain('candles_one_forming_idx')
   })
 
   it('is a no-op when run a second time', async () => {
@@ -190,6 +199,7 @@ describe('migrations against an empty database', () => {
 
     const tables = await withPool(testDatabaseUrl, listTables)
     expect(tables).toEqual([
+      'candles',
       'config',
       'instruments',
       'market_holidays',
