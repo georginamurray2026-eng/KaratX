@@ -329,7 +329,80 @@ say so.**
 neither hypothesis is supported and I will stop and report that, without
 assembling a third explanation in the same breath.
 
-| Status | **OPEN — prediction recorded, calls not yet made** |
+| Status | **ANSWERED 2026-09-04 — see the result below** |
+|---|---|
+
+### OQ-12 RESULT — 2026-09-04. Prediction HELD. And it is not a clean win.
+
+Two requests, 17:12:04Z and ~17:15:44Z, same window. Capture:
+`var/captures/oq12-forming-2026-09-04T17-12-04-048Z/`.
+
+**LIVENESS CONTROL PASSED** — newest bar 12 minutes old against a 30-minute
+tolerance, Friday 13:12 New York. The result therefore means something; with the
+market closed it would not have.
+
+**ASSERTION A — older bars byte-identical: HOLDS.** Five bars, twenty price
+strings, unchanged across both calls.
+
+**ASSERTION B — the newest bar changed, in the forming shape:**
+
+| `2026-09-04 17:00:00` | request 1 | request 2 | |
+|---|---|---|---|
+| open | 4436.88876 | 4436.88876 | unchanged ✓ |
+| high | 4436.88876 | 4436.88876 | non-decreasing ✓ |
+| low | 4430.07132 | 4430.07132 | non-increasing ✓ |
+| close | 4432.29625 | **4433.57989** | free ✓ |
+
+**`/time_series` RETURNS THE FORMING BAR.** The fixture's bar 5 is explained:
+it was captured mid-formation. **Obligation 46 discharges, and ADR-008's first
+reversal condition is CLEARED** — not narrowed, cleared. Twelve Data did not
+restate anything.
+
+### THIS IS NOT A CLEAN WIN — obligation 47
+
+The same fact that explains bar 5 exposes a **live defect in T1.4 as written**,
+and it was predicted before the call rather than discovered afterwards:
+
+`toCandleInput` sets `isFinal: true` for **every** bar. A backfill running to
+the present therefore stores the **forming** bar as **final** — partial values
+recorded as settled history. The function's own comment already states the
+condition it violates: *"ALWAYS FINAL … this is why `applied` and `rejected`
+must never appear in a backfill's counts — if they do, this line is wrong."*
+
+**My sub-prediction was that the defect is self-detecting rather than silent,
+and that is right but understated.** Reasoning from the code — **not yet
+demonstrated by a test, which is the honest status**:
+
+1. The forming bar is stored final and becomes the frontier.
+2. The next run resumes at that bar, re-requests it, and receives the completed
+   values.
+3. The upsert sees a stored **final** bar re-delivered with different values →
+   `conflict`.
+4. `CONFLICT_THRESHOLD = 1` stops the run loudly.
+
+**So the threshold-of-one decision earns itself here** — with a tolerant
+threshold the corrupt bar would be absorbed and the wrong values would stay in
+`candles` permanently and silently.
+
+**But "self-detecting" undersells the consequence: it is a self-inflicted
+deadlock.** The conflict is on the frontier bar, which is the first bar of every
+subsequent run's first page. Every future backfill hits the same conflict and
+refuses. The backfill would be permanently blocked until someone deleted the
+row — and the fastest reading of that at 3am is "the provider is restating
+history", which is exactly the wrong conclusion.
+
+**THE FIX IS NOT APPLIED HERE.** It is recorded as obligation 47 and must land
+before step 8.
+
+### One observation, recorded and NOT interpreted
+
+Request 2 ran at ~17:15:44Z and returned **no `17:15` bar** — the newest was
+still `17:00`. So a new bar was not yet available more than 45 seconds after its
+boundary. That is an observation about publication lag, it was not a question
+this test was shaped to answer, and it is written down rather than concluded
+from. It matters for T1.7's live feed, not for T1.4.
+
+| Status | **ANSWERED 2026-09-04 — prediction HELD; obligation 46 discharged, obligation 47 raised** |
 |---|---|
 
 ---

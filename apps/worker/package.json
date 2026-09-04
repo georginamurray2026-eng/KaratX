@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "first-contact": "tsx src/bin/first-contact.ts",
-    "timezone-test": "tsx src/bin/timezone-test.ts"
+    "timezone-test": "tsx src/bin/timezone-test.ts",
+    "forming-bar-test": "tsx src/bin/forming-bar-test.ts"
   },
   "dependencies": {
     "@karatx/config": "workspace:*",
