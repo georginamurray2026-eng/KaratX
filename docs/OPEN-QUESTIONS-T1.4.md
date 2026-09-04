@@ -114,6 +114,62 @@ is live. **Not run — this is step 7 and step 7 was one request.**
 
 ---
 
+## OQ-11 — the fixture/live discrepancy. PREDICTION WRITTEN BEFORE THE CALL.
+
+**Written 2026-09-04, before the request. Do not edit after.**
+
+**The question.** The committed fixture and the live API disagree by ~38 points
+(~0.8%) about the bar stamped `2026-08-27 03:00:00`. Either the fixture was
+recorded without `timezone=UTC` — making its `03:00` Australia/Sydney and
+therefore `2026-08-26 17:00 UTC`, a different bar — or Twelve Data restated
+finalised history.
+
+**The test, shaped so no inference is available.** Request
+`start_date=2026-08-26 17:00:00`, `end_date=2026-08-26 17:30:00`,
+`timezone=UTC`. If the fixture is UTC+10, its three bars at 03:00 / 03:15 /
+03:30 are these three bars, and all four prices on all three must match
+byte-for-byte.
+
+- **Prices MATCH** → hypothesis 1. The fixture was captured without
+  `timezone=UTC`; its timestamps are Australia/Sydney; the provider is fine.
+- **Prices DIFFER** → hypothesis 1 is dead.
+
+**PREDICTION: they will MATCH. Hypothesis 1.**
+
+**Confidence: medium-high.** The reasoning, so it can be judged rather than
+taken:
+
+1. **The UTC+10 default was a T1.1 DISCOVERY, not a starting assumption.**
+   ADR-008's process lessons say so directly: *"`symbol_search` returns
+   `exchange_timezone: "Australia/Sydney"` … Both T1.1 anomalies were explained
+   by that one call. The UTC+10 default was never undocumented; we had not
+   looked it up."* A parameter nobody knew to send is a parameter that was not
+   sent, and the fixture was recorded the same day.
+2. **"Pass `timezone=UTC` explicitly on every request" is recorded as an ADAPTER
+   REQUIREMENT PRODUCED BY T1.1, for T1.4 to implement** — not as a description
+   of what the exploration already did. A requirement written for the future
+   implies the past did not meet it.
+3. **A 0.8% move in ten hours of gold is unremarkable; a 0.8% restatement of
+   finalised history by a data vendor is not.** This is the weakest of the three
+   and is deliberately listed last: it is a prior about which world we are in,
+   not evidence about this bar. Price plausibility alone cannot discriminate,
+   because both candidate values sit inside the range gold traded that week.
+
+**What I am NOT predicting.** If the prices differ, hypothesis 1 is dead and
+that is all that follows. There is no third explanation prepared here, and
+reaching for one in the same breath as the result is how a refuted hypothesis
+gets quietly replaced instead of recorded.
+
+**If hypothesis 1 confirms, the consequence is not "mystery solved."** The
+fixture is committed and used in tests, and its timestamps would be
+Australia/Sydney while every consumer reads them as UTC. What that has actually
+affected is a separate question, answered below rather than assumed either way.
+
+| Status | **OPEN — prediction recorded, call not yet made** |
+|---|---|
+
+---
+
 ## What answers these, and in what order
 
 **Step 7 of T1.4: one request.** A narrow window at `15min`, which is enough for
