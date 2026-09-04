@@ -55,6 +55,22 @@ const CAPTURED_HEADERS = [
   'api-credits-left',
 ] as const
 
+/**
+ * `Retry-After` as milliseconds, when it is present and is a delay in seconds.
+ *
+ * The HTTP-date form is deliberately NOT handled: interpreting it needs the
+ * local clock to agree with the server's, and a clock skew would turn a
+ * three-second wait into an hour or into no wait at all. When the header is a
+ * date, this returns nothing and the ordinary backoff applies - a slightly
+ * wrong wait beats a confidently wrong one.
+ */
+function parseRetryAfter(header: string | null): { retryAfterMs?: number } {
+  if (header === null) return {}
+  const seconds = Number(header.trim())
+  if (!Number.isFinite(seconds) || seconds < 0) return {}
+  return { retryAfterMs: Math.round(seconds * 1000) }
+}
+
 function collectHeaders(response: HttpResponse): Record<string, string> {
   const out: Record<string, string> = {}
   for (const name of CAPTURED_HEADERS) {
@@ -139,7 +155,17 @@ export class TwelveDataClient {
         // otherwise fill the log. The full body is already on disk.
         throw new ProviderError(
           `Twelve Data returned HTTP ${String(response.status)} for ${endpoint}: ${body.slice(0, 400)}`,
-          { context: { status: response.status, endpoint, page } },
+          {
+            context: {
+              status: response.status,
+              endpoint,
+              page,
+              // Surfaced so `withRetry` can honour it without knowing anything
+              // about HTTP. Absent unless the provider actually sent it, which
+              // is UNVERIFIED for Twelve Data - OQ-2.
+              ...parseRetryAfter(response.headers.get('retry-after')),
+            },
+          },
         )
       }
 

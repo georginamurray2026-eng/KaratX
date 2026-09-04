@@ -36,4 +36,23 @@ export {
   type KaratxErrorOptions,
 } from './errors'
 
+export {
+  DEFAULT_RETRY_POLICY,
+  describeStopReason,
+  nextRetry,
+  type RetryDecision,
+  type RetryInput,
+  type RetryPolicy,
+  type RetryStopReason,
+} from './retry'
+
+export {
+  initialBucket,
+  takeToken,
+  TWELVEDATA_FREE_TIER_PACE,
+  type TokenBucketPolicy,
+  type TokenBucketState,
+  type TokenTakeResult,
+} from './rate-limit'
+
 export const CORE_PACKAGE_NAME = '@karatx/core' as const

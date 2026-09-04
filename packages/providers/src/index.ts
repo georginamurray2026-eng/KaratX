@@ -18,6 +18,8 @@ export {
   type CaptureSink,
   type CaptureWindow,
 } from './marketdata/capture'
+export { createPacer, type Pacer, type PacerOptions } from './marketdata/pacer'
+export { withRetry, type WithRetryOptions } from './marketdata/retry'
 export {
   TwelveDataClient,
   type FetchLike,
