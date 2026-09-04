@@ -8,6 +8,14 @@ export interface Config {
   readonly logLevel: LogLevel
   /** Contains a password. Wrapped so it cannot be printed by accident. */
   readonly databaseUrl: Secret<string>
+  /**
+   * Twelve Data API key, absent unless configured.
+   *
+   * `undefined` is an ORDINARY state, not a failure: CI has no key and does
+   * not need one. The job that requires it checks at start - see the note on
+   * TWELVEDATA_API_KEY in schema.ts.
+   */
+  readonly twelveDataApiKey: Secret<string> | undefined
 }
 
 /** What a process's environment looks like before validation. */
@@ -65,5 +73,10 @@ function toConfig(raw: RawEnv): Config {
     nodeEnv: raw.NODE_ENV,
     logLevel: raw.LOG_LEVEL,
     databaseUrl: new Secret(raw.DATABASE_URL),
+    // Wrapped only when present. A `Secret<undefined>` would be worse than
+    // useless: `.reveal()` would hand back undefined and every absence check
+    // would have to reach through the wrapper to find out.
+    twelveDataApiKey:
+      raw.TWELVEDATA_API_KEY === undefined ? undefined : new Secret(raw.TWELVEDATA_API_KEY),
   }
 }

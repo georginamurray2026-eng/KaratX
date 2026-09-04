@@ -1,0 +1,56 @@
+{
+  "_README": "Provenance for every fixture in this directory. RECORDED = a real response from the live API. DERIVED = mechanically transformed from a recorded one. SYNTHETIC = written by hand, never seen from the API. A synthetic fixture can prove a detector works; it cannot prove the API behaves that way. bodySha256 makes a silent edit visible - pnpm fixtures:check recomputes and compares.",
+  "entries": {
+    "twelvedata-xauusd-15min.json": {
+      "provenance": "RECORDED",
+      "capturedAt": "2026-08-27",
+      "endpoint": "/time_series",
+      "note": "A real Twelve Data response, T1.1. Order as received: DESCENDING. Every one of its 20 price values is unchanged by a Number() round-trip, so it CANNOT detect a lost-precision bug - use twelvedata-decimal-guard.json for that.",
+      "bodySha256": "fda00bc08bcb671b6f67c680c933ed44371dc9ba607b66ce6a9296f902f1835b",
+      "bytes": 1025
+    },
+    "twelvedata-xauusd-15min-ascending.json": {
+      "provenance": "DERIVED",
+      "derivedFrom": "twelvedata-xauusd-15min.json",
+      "endpoint": "/time_series",
+      "note": "The recorded response with values reversed into ascending order. Mechanical reversal, nothing else changed. Exists because the adapter requests order=ASC and asserts it, and the recorded response predates that parameter.",
+      "bodySha256": "ad7ce362891b4665a31be757cc0a0609a889b5d95584921f02312e8ef49420f1",
+      "bytes": 1025
+    },
+    "twelvedata-xauusd-15min-shuffled.json": {
+      "provenance": "SYNTHETIC",
+      "endpoint": "/time_series",
+      "note": "POSITIVE CONTROL for assertAscending. Bars 1 and 2 of the ascending fixture are swapped. The ordering detector MUST reject this; if it passes, the detector is inert and every ordering test built on it proves nothing.",
+      "bodySha256": "de49cf0478ffbca9521ec5437ef0608cd3145273435cf3f5f565719e11426ea7",
+      "bytes": 1025
+    },
+    "twelvedata-decimal-guard.json": {
+      "provenance": "SYNTHETIC",
+      "endpoint": "/time_series",
+      "note": "POSITIVE CONTROL for ADR-008 decimal preservation. Every price and volume is a value that Number() round-tripping visibly changes (trailing zeros, and precision beyond float64). Verified mechanically when generated. This is the only fixture whose byte-equality assertion can actually fail.",
+      "bodySha256": "3420a82a6c26fb9dfc335001f95904430d087779d572d1041ec394ff5d0a7ff4",
+      "bytes": 556
+    },
+    "twelvedata-error-429.json": {
+      "provenance": "SYNTHETIC - UNVERIFIED SHAPE",
+      "endpoint": "/time_series",
+      "note": "NO TWELVE DATA ERROR RESPONSE HAS EVER BEEN OBSERVED BY THIS PROJECT. T1.1 recorded only successful calls. This body is written from vendor documentation, which this project treats as a starting point and not evidence. REPLACE WITH A RECORDED RESPONSE at T1.4 step 7. Tracked as OQ-3.",
+      "bodySha256": "02800d5804bbddb1312f4bf4a97aab1a8ca694c06e5096a3daee13c27d867827",
+      "bytes": 111
+    },
+    "massive-xauusd-15min.json": {
+      "provenance": "RECORDED",
+      "capturedAt": "2026-08-27",
+      "note": "T1.1 provider evaluation. Not used by the Twelve Data adapter.",
+      "bodySha256": "47279036aed5f2884efec2b720b50b9d36d62531f14832d8883696f5f2150dab",
+      "bytes": 4038
+    },
+    "eodhd-xauusd-daily.json": {
+      "provenance": "RECORDED",
+      "capturedAt": "2026-08-27",
+      "note": "T1.1 provider evaluation. Not used by the Twelve Data adapter.",
+      "bodySha256": "b62c53dbc0aad1a3b450967572a2d7ed0217caf7a54cc57f9ed4d17a866bec95",
+      "bytes": 4495
+    }
+  }
+}

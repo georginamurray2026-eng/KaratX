@@ -165,3 +165,85 @@ describe('obligation 23 - the worker entry point wires in crash logging', () => 
     expect(callsInstallCrashLogging(`installCrashLogging(logger)\n`)).toBe(true)
   })
 })
+
+/**
+ * Does this source reach for a GLOBAL fetch, rather than using an injected one?
+ *
+ * Comments and string literals are stripped first, so the prose in this very
+ * file - which necessarily writes the forbidden forms out - is not a violation
+ * of the rule it describes.
+ *
+ * The negative lookbehind is what distinguishes `fetch(...)` from the legitimate
+ * `this.#fetch(...)` and `options.fetch(...)`. Those are the injected
+ * dependency being called, which is the whole point of the rule.
+ */
+function reachesForGlobalFetch(source: string): boolean {
+  const withoutLineComments = source.replace(/^[^\S\n]*\/\/.*$/gm, '')
+  const withoutComments = withoutLineComments.replace(/\/\*[\s\S]*?\*\//g, '')
+  const withoutStrings = withoutComments
+    .replace(/'(?:[^'\\]|\\.)*'/g, "''")
+    .replace(/"(?:[^"\\]|\\.)*"/g, '""')
+    .replace(/`(?:[^`\\]|\\.)*`/g, '``')
+
+  const bareCall = /(?<![.\w#$])fetch\s*\(/.test(withoutStrings)
+  const globalAccess = /\b(?:globalThis|global|window|self)\s*\.\s*fetch\b/.test(withoutStrings)
+
+  return bareCall || globalAccess
+}
+
+describe('T1.4 - the market-data adapter takes fetch as a parameter, never a global', () => {
+  const marketdataDir = join(repoRoot, 'packages', 'providers', 'src', 'marketdata')
+  const marketdataFiles = collectTypeScriptFiles(marketdataDir)
+
+  it('scans a non-empty set of files under packages/providers/src/marketdata', () => {
+    expect(
+      marketdataFiles.length,
+      `The scan found NO TypeScript files under packages/providers/src/marketdata, so the absence result below proves nothing. ${TESTS_TEXT_NOT_BEHAVIOUR}`,
+    ).toBeGreaterThan(0)
+
+    // Anchored to files that must exist, so a walk pointed at the wrong
+    // directory is caught rather than reported as clean.
+    const relatives = marketdataFiles.map((file) => relative(repoRoot, file).split(sep).join('/'))
+    expect(relatives).toContain('packages/providers/src/marketdata/twelvedata/client.ts')
+    expect(relatives).toContain('packages/providers/src/marketdata/capture.ts')
+  })
+
+  it('no file under marketdata/ reaches for a global fetch', () => {
+    const offenders = marketdataFiles
+      .filter((file) => reachesForGlobalFetch(readFileSync(file, 'utf8')))
+      .map((file) => relative(repoRoot, file).split(sep).join('/'))
+
+    expect(
+      offenders,
+      `These files reach for a global fetch: ${offenders.join(', ')}. ADR-008 made "can this provider's responses be recorded and replayed?" a scored selection criterion, and injection is what makes replay possible - every test in this package serves a recorded response with no network and no global mocking. A module that calls the global directly cannot be replayed, so the fixture strategy quietly stops covering it while the tests stay green. Take fetch as a parameter (see FetchLike in client.ts). ${TESTS_TEXT_NOT_BEHAVIOUR} It checks source text; it does not observe a network call.`,
+    ).toEqual([])
+  })
+
+  it('POSITIVE CONTROL: the detector finds a global fetch when one exists', () => {
+    expect(reachesForGlobalFetch(`const r = await fetch(url)\n`)).toBe(true)
+    expect(reachesForGlobalFetch(`const r = await globalThis.fetch(url)\n`)).toBe(true)
+    expect(reachesForGlobalFetch(`const r = await global.fetch(url)\n`)).toBe(true)
+    expect(reachesForGlobalFetch(`await  fetch  (url)\n`)).toBe(true)
+  })
+
+  it('POSITIVE CONTROL: the detector does not fire on the injected form', () => {
+    // If these were flagged, the rule would forbid the pattern it exists to
+    // require, and the guard would be deleted rather than fixed.
+    expect(reachesForGlobalFetch(`const r = await this.#fetch(url, init)\n`)).toBe(false)
+    expect(reachesForGlobalFetch(`const r = await options.fetch(url, init)\n`)).toBe(false)
+    expect(reachesForGlobalFetch(`const { fetch } = stubFetch(body)\n`)).toBe(false)
+    expect(
+      reachesForGlobalFetch(`export type FetchLike = (url: string) => Promise<Response>\n`),
+    ).toBe(false)
+  })
+
+  it('POSITIVE CONTROL: prose and strings are not violations', () => {
+    // This file, and the doc comments in client.ts, both write the forbidden
+    // form out in full while explaining it.
+    expect(reachesForGlobalFetch(`// never call fetch(url) directly\n`)).toBe(false)
+    expect(reachesForGlobalFetch(`/* a module that calls fetch(url) cannot be replayed */\n`)).toBe(
+      false,
+    )
+    expect(reachesForGlobalFetch(`const message = 'do not use fetch(url)'\n`)).toBe(false)
+  })
+})

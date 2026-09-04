@@ -164,12 +164,25 @@ importers:
 
   packages/providers:
     dependencies:
+      '@karatx/config':
+        specifier: workspace:*
+        version: link:../config
+      '@karatx/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@karatx/core':
         specifier: workspace:*
         version: link:../core
       pino:
         specifier: ^10.3.1
         version: 10.3.1
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@karatx/test-support':
+        specifier: workspace:*
+        version: link:../test-support
 
   packages/test-support:
     dependencies:

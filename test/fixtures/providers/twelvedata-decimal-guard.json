@@ -1,0 +1,27 @@
+{
+  "meta": {
+    "symbol": "XAU/USD",
+    "interval": "15min",
+    "currency_base": "Gold Spot",
+    "currency_quote": "US Dollar",
+    "type": "Precious Metal"
+  },
+  "values": [
+    {
+      "datetime": "2026-08-27 03:00:00",
+      "open": "4600.10",
+      "high": "4600.50",
+      "low": "4600.00",
+      "close": "4600.2500",
+      "volume": "1000.0"
+    },
+    {
+      "datetime": "2026-08-27 03:15:00",
+      "open": "4600.123456789012345",
+      "high": "4600.900000",
+      "low": "4600.100",
+      "close": "4600.20"
+    }
+  ],
+  "status": "ok"
+}

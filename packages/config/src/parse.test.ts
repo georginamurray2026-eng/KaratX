@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { ConfigValidationError } from './errors'
 import { parseConfig, type EnvSource } from './parse'
+import { SECRET_VARS } from './schema'
 import { Secret } from './secret'
 
 // Password-shaped test values. None of these are real credentials; they exist
@@ -205,5 +206,56 @@ describe('parseConfig - the message a developer actually reads', () => {
         'See .env.example for the full list of variables and their meaning.',
       ].join('\n'),
     )
+  })
+})
+
+describe('parseConfig - TWELVEDATA_API_KEY (optional in config, required by the job)', () => {
+  const API_KEY = 'td-key-should-never-be-printed-0123456789'
+
+  it('is undefined when absent, and that is not an error', () => {
+    // The load-bearing case. CI has no key, and every unit and integration
+    // test runs against recorded fixtures. If this ever throws, CI goes red
+    // everywhere to protect a single job that CI never runs.
+    const config = parseConfig(validEnv)
+    expect(config.twelveDataApiKey).toBeUndefined()
+  })
+
+  it('wraps a present key in a Secret rather than returning a bare string', () => {
+    const config = parseConfig({ ...validEnv, TWELVEDATA_API_KEY: API_KEY })
+
+    expect(config.twelveDataApiKey).toBeInstanceOf(Secret)
+    expect(config.twelveDataApiKey?.reveal()).toBe(API_KEY)
+    expect(String(config.twelveDataApiKey)).toBe('[REDACTED]')
+    expect(JSON.stringify({ key: config.twelveDataApiKey })).toBe('{"key":"[REDACTED]"}')
+  })
+
+  it('rejects an empty key rather than passing it through to a 401', () => {
+    // An empty value is a misconfiguration. Accepting it moves the failure to
+    // first contact and makes it read as a provider problem.
+    const error = captureError({ ...validEnv, TWELVEDATA_API_KEY: '' })
+
+    expect(error.problems).toEqual([
+      {
+        variable: 'TWELVEDATA_API_KEY',
+        kind: 'invalid',
+        expected: 'a non-empty Twelve Data API key, or absent',
+      },
+    ])
+  })
+
+  it('never echoes the key into the error message', () => {
+    // Same guarantee DATABASE_URL has, asserted separately because a second
+    // secret variable is exactly the kind of thing added without the
+    // redaction that made the first one safe.
+    const error = captureError({ ...validEnv, TWELVEDATA_API_KEY: '', NODE_ENV: 'banana' })
+
+    expect(error.message).not.toContain(API_KEY)
+    expect(error.message).toContain('TWELVEDATA_API_KEY')
+  })
+
+  it('is registered in SECRET_VARS', () => {
+    // SECRET_VARS drives redaction elsewhere. A secret variable that is not in
+    // it is protected by nothing but the fact that nobody has logged it yet.
+    expect(SECRET_VARS.has('TWELVEDATA_API_KEY')).toBe(true)
   })
 })

@@ -14,7 +14,13 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@karatx/config": "workspace:*",
+    "@karatx/contracts": "workspace:*",
     "@karatx/core": "workspace:*",
-    "pino": "^10.3.1"
+    "pino": "^10.3.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@karatx/test-support": "workspace:*"
   }
 }

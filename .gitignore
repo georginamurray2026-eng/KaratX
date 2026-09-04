@@ -63,3 +63,11 @@ apps/worker/integration-report.json
 # Database dumps (T0.10 L3). From Phase 6 these contain journal entries and
 # trade notes - the most personal artefact the project holds. Never committed.
 backups/
+
+# Raw provider payloads captured by the market-data adapter (T1.4).
+#
+# Written before parsing so a bar rejected downstream is still recoverable —
+# see packages/providers/src/marketdata/capture.ts. A full 6.6-year backfill
+# writes tens of megabytes here, and it is raw market data rather than source,
+# so it is kept locally and never committed.
+var/captures/
