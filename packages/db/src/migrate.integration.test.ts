@@ -58,7 +58,7 @@ beforeAll(async () => {
  * a table nobody intended. Loosening them to "contains" would remove the only
  * check on unintended schema changes.
  */
-const MIGRATION_COUNT = 3
+const MIGRATION_COUNT = 4
 
 describe('migrations against an empty database', () => {
   it('starts from a genuinely empty schema', async () => {
@@ -96,6 +96,7 @@ describe('migrations against an empty database', () => {
       'candles',
       'config',
       'instruments',
+      'job_runs',
       'market_holidays',
       'market_hours',
       'provider_instruments',
@@ -165,6 +166,7 @@ describe('migrations against an empty database', () => {
       'candles',
       'config',
       'instruments',
+      'job_runs',
       'market_holidays',
       'market_hours',
       'provider_instruments',
@@ -185,6 +187,12 @@ describe('migrations against an empty database', () => {
     // the WHERE clause is a completely different constraint and would look
     // identical in this listing.
     expect(names).toContain('candles_one_forming_idx')
+
+    // Same reasoning for job_runs: the name alone would look identical for an
+    // index missing the WHERE clause, which would forbid a job from EVER
+    // running twice rather than forbidding two at once. The predicate is
+    // asserted in job-runs.integration.test.ts.
+    expect(names).toContain('job_runs_one_running_idx')
   })
 
   it('is a no-op when run a second time', async () => {
@@ -202,6 +210,7 @@ describe('migrations against an empty database', () => {
       'candles',
       'config',
       'instruments',
+      'job_runs',
       'market_holidays',
       'market_hours',
       'provider_instruments',
