@@ -5,9 +5,11 @@
       "provenance": "RECORDED",
       "capturedAt": "2026-08-27",
       "endpoint": "/time_series",
-      "note": "A real Twelve Data response, T1.1. Order as received: DESCENDING. Every one of its 20 price values is unchanged by a Number() round-trip, so it CANNOT detect a lost-precision bug - use twelvedata-decimal-guard.json for that.",
+      "note": "A real Twelve Data response, T1.1. Order as received: DESCENDING. **ITS TIMESTAMPS ARE NOT UTC.** Proven 2026-09-04 (OQ-11): sixteen price strings match the live API byte-for-byte at a TEN-HOUR offset, so this file was captured WITHOUT timezone=UTC and its datetimes are the account default, Australia/Sydney. Read \"2026-08-27 03:00:00\" here as \"2026-08-26 17:00:00Z\". Every one of its 20 price values is unchanged by a Number() round-trip, so it CANNOT detect a lost-precision bug - use twelvedata-decimal-guard.json for that. NO TEST DEPENDS ON ITS ABSOLUTE INSTANT (parse.test.ts and client.test.ts read price text and relative ordering only), so it is RELABELLED rather than re-recorded. **Its newest bar (03:30 local = 17:30Z) differs from the live API in low and close - UNEXPLAINED, obligation 46.**",
       "bodySha256": "fda00bc08bcb671b6f67c680c933ed44371dc9ba607b66ce6a9296f902f1835b",
-      "bytes": 1025
+      "bytes": 1025,
+      "timezone": "Australia/Sydney (UTC+10) — NOT UTC",
+      "requestParameters": "NOT RECORDED at capture time. See obligation 45."
     },
     "twelvedata-xauusd-15min-ascending.json": {
       "provenance": "DERIVED",

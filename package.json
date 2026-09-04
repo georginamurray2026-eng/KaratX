@@ -28,7 +28,8 @@
     "rollback:check": "node scripts/rollback-preflight.mjs",
     "typecheck:iac": "tsc --noEmit -p tsconfig.iac.json",
     "typecheck:tooling": "tsc --noEmit -p tsconfig.tooling.json",
-    "first-contact": "pnpm --filter @karatx/worker first-contact"
+    "first-contact": "pnpm --filter @karatx/worker first-contact",
+    "timezone-test": "pnpm --filter @karatx/worker timezone-test"
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "^4.7.2",

@@ -165,7 +165,99 @@ fixture is committed and used in tests, and its timestamps would be
 Australia/Sydney while every consumer reads them as UTC. What that has actually
 affected is a separate question, answered below rather than assumed either way.
 
-| Status | **OPEN — prediction recorded, call not yet made** |
+| Status | **ANSWERED 2026-09-04 — see the result below** |
+|---|---|
+
+### OQ-11 RESULT — 2026-09-04. The prediction did not hold, and MY TEST WAS BADLY DESIGNED.
+
+Requested `2026-08-26 16:30:00 .. 17:30:00`, `timezone=UTC`. Five bars returned.
+Capture: `var/captures/oq11-timezone-2026-09-04T17-00-39-441Z/`.
+
+| Fixture bar | Mapped to | Result |
+|---|---|---|
+| 02:30:00 | 2026-08-26 16:30:00 | **MATCH** — all four prices byte-for-byte |
+| 02:45:00 | 2026-08-26 16:45:00 | **MATCH** |
+| 03:00:00 | 2026-08-26 17:00:00 | **MATCH** — the bar the whole discrepancy was about |
+| 03:15:00 | 2026-08-26 17:15:00 | **MATCH** |
+| 03:30:00 | 2026-08-26 17:30:00 | **DIFFERS**, in `low` and `close` only |
+
+**Predicted: all match. Observed: 4 of 5. THE PREDICTION DID NOT HOLD as stated.**
+
+**And the reason it did not hold is a flaw in the test, not a surprise in the
+data.** I wrote the check as "every bar matches or the hypothesis is dead",
+which silently welded together two different claims:
+
+1. the fixture's timestamps are UTC+10, and
+2. every bar in that window is unchanged since capture.
+
+Those are separable, and the LAST bar of a captured window is precisely the bar
+least likely to satisfy (2). A binary that cannot fail for only one reason is
+not the binary it claims to be — the same shape as the SQL `CASE` incident in
+LESSONS, where the case chosen to demonstrate a rule was the one case that could
+not.
+
+### What IS settled
+
+**The timezone mapping is confirmed, and this is not inference.** Sixteen
+independent price strings — four bars × four fields, float32 rendered to nine
+significant figures — match **byte-for-byte** at a ten-hour offset. That is not
+a coincidence available to any competing explanation.
+
+**So the fixture's timestamps are Australia/Sydney, not UTC**, and the ~38-point
+gap that started this is fully accounted for: `2026-08-27 03:00:00` in the
+fixture and `2026-08-27 03:00:00` from the live API are different instants, ten
+hours apart.
+
+**And history is NOT being restated across those four bars.** They are unchanged
+over nine days.
+
+### What is NOT settled — OQ-12, raised, NOT explained
+
+**Bar 5 differs, and I am not calling it.** Field by field:
+
+| | fixture | live | |
+|---|---|---|---|
+| open | 4596.85627 | 4596.85627 | identical |
+| high | 4602.35641 | 4602.35641 | identical |
+| low | 4596.85575 | 4596.01066 | **−0.84509** |
+| close | 4597.73864 | 4596.31582 | **−1.42282** |
+
+It is the NEWEST bar in the fixture, `open` and `high` are untouched, and the
+`low` moved DOWN — the only direction a running minimum can move. Every field is
+consistent with the fixture having captured that bar while it was still forming.
+
+**That is a hypothesis with a testable signature, and it is not a finding.** It
+is written here as OQ-12 rather than asserted, because "consistent with" is what
+this project's own lessons warn about: the retracted "weekday series changed
+venue" claim was also consistent with its evidence and was also wrong.
+
+**ADR-008's first reversal condition is therefore NOT cleared.** It is narrowed
+to a single bar with a specific shape, and narrowing is not clearing.
+
+**OQ-12, and the test that would settle it:** does `/time_series` return the
+currently-forming bar? Fetch a window ending at the present moment, wait past a
+bar boundary, fetch again. If only the newest bar's `low`/`close` move while
+older bars stay byte-identical, forming bars are returned and bar 5 is explained.
+If nothing moves, they are not, and a changed final bar is a restatement — which
+is the reversal condition, live.
+
+**Two requests, not one, so it has not been run.**
+
+### What this means for the committed fixture
+
+It is used by `parse.test.ts` and `client.test.ts`. Both read it for **price
+text and relative ordering** — byte-for-byte preservation, descending order,
+null volume. **Neither depends on the absolute instant being UTC**, so no test is
+wrong today and nothing needs re-recording.
+
+**What IS wrong is the label.** `manifest.json` calls it a recorded response and
+says nothing about its timezone, so the next person to read a timestamp out of
+it as UTC will be ten hours out with no warning. That is obligation 45 exactly —
+a recorded response without its request parameters — now with a demonstrated
+cost rather than a hypothetical one. The fixture needs **relabelling, not
+re-recording**.
+
+| Status | **PARTIAL 2026-09-04 — timezone CONFIRMED; bar 5 unresolved, see OQ-12** |
 |---|---|
 
 ---
