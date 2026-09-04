@@ -262,6 +262,78 @@ re-recording**.
 
 ---
 
+## OQ-12 — does `/time_series` return the FORMING bar? PREDICTION BEFORE THE CALLS.
+
+**Written 2026-09-04 17:10 UTC, before either request. Do not edit after.**
+
+**The question.** Obligation 46: the fixture's newest bar changed between
+2026-08-27 and 2026-09-04, in `low` and `close` only. Either `/time_series`
+returns the in-progress bar (so the fixture caught it mid-formation and nothing
+is wrong), or Twelve Data restated a finalised bar (ADR-008's first reversal
+condition, live).
+
+**The test.** Request a window ending now; wait past a 15-minute boundary;
+request the SAME window again.
+
+**TWO ASSERTIONS, KEPT APART — this is what OQ-11 got wrong.** That test welded
+"the timezone maps" onto "every bar is unchanged" and could not fail for one
+reason alone. These are separate claims with separate meanings:
+
+- **A — older bars** (everything except request 1's newest): must be
+  byte-identical across both calls.
+- **B — the newest bar of request 1**: does it change, and in the FORMING
+  SHAPE — `open` unchanged, `high` non-decreasing, `low` non-increasing, `close`
+  free?
+
+**A LIVENESS CONTROL, because the ambiguity is available again.** If the market
+is closed, the newest bar is a completed Friday bar that will not change, and
+that looks *identical* to "forming bars are not returned" while proving nothing.
+So request 1's newest bar must be **recent** — within roughly one bar of now. If
+it is not, **the result is INCONCLUSIVE and must be reported as inconclusive**,
+not as "unchanged". At the time of writing it is Friday 13:09 New York and gold
+trades until 17:00 NY, so the control is expected to pass; it is asserted rather
+than assumed.
+
+**PREDICTION: forming bars ARE returned. A holds, B changes in the forming shape.**
+
+**Confidence: medium-high.** Reasoning, so it can be judged:
+
+1. **Bar 5's signature is already forming-shaped**, and specifically the `low`
+   moved in the *only* direction a running minimum can move. That is the
+   observation that raised the question, so it is evidence for the hypothesis
+   but not independent of it.
+2. **Twelve Data's response carries NO finality flag at all.** ADR-005 mapped
+   OANDA's `complete` flag onto our `is_final`; ADR-008 replaced the provider and
+   nothing replaced the flag. A feed that returns only closed bars has no need of
+   one; a feed that returns the partial bar does — and this one has none either
+   way, which is a hazard regardless of the answer.
+3. Returning the in-progress bar is the common default for intraday market-data
+   APIs.
+
+**THE CONSEQUENCE, PREDICTED NOW SO IT IS NOT RETROFITTED.** If this holds it is
+**not a clean win**. It explains bar 5 *and* exposes a live defect in T1.4 as
+written: `toCandleInput` sets `isFinal: true` for **every** bar, so a backfill
+running to the present stores the forming bar as final. Its own comment says
+this — *"ALWAYS FINAL … if `applied` or `rejected` appear in a backfill's counts,
+this line is wrong"* — and that would be exactly the case.
+
+**A sub-prediction, as a check on my own design:** the defect should be
+SELF-DETECTING rather than silent. The stored forming bar becomes the frontier;
+the next run re-requests it, receives the completed values, and the upsert
+returns `conflict` — and `CONFLICT_THRESHOLD = 1` stops the run loudly. If that
+is right, the threshold-of-one decision earns itself here. **If instead this
+would corrupt history quietly, my design is worse than I thought and I should
+say so.**
+
+**What I am NOT predicting.** If assertion A fails — older bars differ — then
+neither hypothesis is supported and I will stop and report that, without
+assembling a third explanation in the same breath.
+
+| Status | **OPEN — prediction recorded, calls not yet made** |
+|---|---|
+
+---
+
 ## What answers these, and in what order
 
 **Step 7 of T1.4: one request.** A narrow window at `15min`, which is enough for
