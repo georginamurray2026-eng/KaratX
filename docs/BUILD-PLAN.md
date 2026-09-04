@@ -331,6 +331,14 @@ has not been performed, do it first.
 **Tests:** integration with a recorded provider fixture — full run, interrupted-and-resumed run, duplicate run
 **Risks:** backfill can be the largest single line item on your bill. Estimate the request count and cost *before* running it in full.
 
+**ESTIMATE DONE 2026-09-04, AND IT SAYS THIS RISK DOES NOT APPLY TO THIS PROVIDER.** The note above was written before ADR-008 chose Twelve Data. On the measured figures — 5,000 bars per request, 35,071 bars/year in the 24/7 era, 24,342 in the weekday-only era — the **full 6.6-year backfill is 35–47 requests, 4.4–5.9 minutes, and $0 on the free tier.** That is **4.4–5.9% of one day's 800 credits**, so nothing breaches a daily cap and there is no multi-day run to design around. **The binding constraint is the 8-credits/minute rate limit, and it binds on wall-clock, not on cost** — which makes resumability a requirement about surviving a 429 inside a ~5-minute job, not a multi-day campaign. **Do not size the retry and checkpoint design for a cost problem this provider does not have.**
+
+**SIZING DECIDED 2026-09-04:**
+
+- **The 15M backfill takes the FULL 6.6 years**, from 2020-01-24, not obligation 41's ~20-day parity minimum. Once 1D leaves the 15M spine the full run costs only ~9 requests more than the minimum, and two windows to reason about later is the worse trade at that price.
+- **The 1H and 1D parity inputs are FETCHED, not derived** — 1 request each against 27–36 to aggregate 1D from five years of 15M. Obligation 41 specifies bar counts, and 1299 daily bars is ~5 years. **This is ADR-008's regression-assertion provision used for a second purpose; it does NOT reverse the 15M spine or T1.6 aggregation.**
+- **The 800/day and 8/min limits are VENDOR DOCUMENTATION and have never been tested.** Nothing plausible at 2x breaches the cap, but the first real run is also the first measurement of them — record what actually happened.
+
 ---
 
 ### T1.5 — Validation and quarantine

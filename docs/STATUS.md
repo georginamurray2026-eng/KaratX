@@ -58,14 +58,32 @@ enough".
 
 ### T1.4 — WHAT IT NEEDS BEFORE IT STARTS
 
-1. **A COST AND REQUEST-COUNT ESTIMATE, PUT TO THE USER FIRST.** BUILD-PLAN:
-   "backfill can be the largest single line item on your bill. Estimate the
-   request count and cost *before* running it in full." Nothing should fetch
-   until that estimate has been seen.
+1. ~~**A COST AND REQUEST-COUNT ESTIMATE, PUT TO THE USER FIRST.**~~ **DONE
+   2026-09-04, presented and accepted.** Full 6.6 years is **35–47 requests,
+   4.4–5.9 minutes, $0** — **4.4–5.9% of one day's 800 free credits.** No run
+   comes near a daily cap; the 8/min rate limit binds on wall-clock only.
+   **BUILD-PLAN's "largest single line item on your bill" risk does not apply to
+   this provider** and the retry/checkpoint design should not be sized for a
+   cost problem that does not exist. **The 800/day and 8/min limits are vendor
+   documentation and have never been tested — the first real run is also their
+   first measurement, so record what actually happened.**
 2. **Obligation 41 — the backfill window is set by the PARITY TEST, not only by
    Phase 9.** Reproducing EMA200 needs ~1000 bars BEFORE the first golden bar:
    15m from ~2026-08-13, 1H from ~mid-June 2026, 1D from ~2021. Twelve Data's
-   depth starts 2020-01-24, so all three are covered.
+   depth starts 2020-01-24, so all three are covered. **SIZED 2026-09-04 and one
+   assumption inverted: 1H and 1D parity inputs are FETCHED, not derived** — 1
+   request each, against 27–36 to aggregate 1D out of five years of 15M, because
+   obligation 41 specifies BAR COUNTS and 1299 daily bars is ~5 years. **The 15M
+   backfill takes the FULL 6.6 years**, since the minimum then saves only ~9
+   requests. **FETCHING 1D IS NOT ADR-008 BEING ABANDONED** — the 15M spine and
+   T1.6 aggregation stand; the ADR already provides for fetching the provider's
+   own aggregate as a regression assertion rather than as a source, and this is
+   that provision used for a second purpose.
+2a. **1D PARITY IS BLOCKED ON T1.5's CALENDAR AND NO BACKFILL SIZE UNBLOCKS
+   IT.** The 1D fixture window sits entirely inside Twelve Data's
+   weekend-synthesis era, so its daily series carries Saturday and Sunday "days"
+   the OANDA fixture does not. Recorded in INDICATOR-SPEC.md where a parity run
+   will be read, not only here.
 3. **Obligation 31's EVIDENCE half lands here.** `--single-transaction` is
    already on `db:restore`; what is missing is a dump large enough that a
    failure lands MID-restore. That volume does not exist until this task has
