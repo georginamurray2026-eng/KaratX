@@ -154,15 +154,28 @@ describe('T1.4 backfill - against a real database and a fake provider', () => {
 
     const result = await run(provider.fetch)
 
-    // 250 inserted AND 3 noop. Each page resumes AT the frontier rather than
-    // after it, so pages 2 and 3 re-offer their first bar, and a final request
-    // returns only the overlap bar and ends the run. The overlap is deliberate:
-    // it costs one bar per page and exercises the idempotent upsert on real
-    // data every time a page boundary is crossed.
-    expect(result.counts).toEqual({ ...emptyCounts(), inserted: 250, noop: 3 })
+    // 250 inserted, 2 applied, 4 noop — and the applied count is the point.
+    //
+    // Every page's LAST bar is stored FORMING, because nothing in that response
+    // proves it closed (obligation 47). The next page contains a successor, so
+    // that bar is rewritten as final: outcome `applied`. Two page boundaries,
+    // two `applied`.
+    //
+    // The noops are the overlap. Each page resumes AT the frontier — which is
+    // now the last CLOSED bar, not the last bar — so the resumed page re-offers
+    // it, and a final request returns only overlap and ends the run.
+    //
+    // `applied` APPEARING HERE IS CORRECT, and the comment in backfill.ts that
+    // said it must never appear was written before OQ-12 measured that
+    // /time_series returns the forming bar.
+    expect(result.counts).toEqual({ ...emptyCounts(), inserted: 250, applied: 2, noop: 4 })
     expect(result.stoppedBecause).toBe('complete')
+    // The frontier is bar 248, NOT bar 249. Bar 249 is the newest and is stored
+    // FORMING, and latestFinalOpenTime filters on is_final - so a forming bar can
+    // never be the resume point. Confirmed here rather than assumed, because it
+    // is what widened the overlap from one bar to two.
     expect(result.through?.toISOString()).toBe(
-      new Date(SERIES_START + 249 * 15 * 60_000).toISOString(),
+      new Date(SERIES_START + 248 * 15 * 60_000).toISOString(),
     )
 
     const { rows } = await pool.query<{ count: string }>('SELECT count(*) FROM candles')
@@ -176,9 +189,15 @@ describe('T1.4 backfill - against a real database and a fake provider', () => {
     const second = await run(provider.fetch)
 
     // THE PRODUCTION SHAPE OF "imports nothing the second time": the run resumes
-    // from the frontier, asks once, gets back only the overlap bar, and stops.
-    // It does NOT re-offer all 250 - that is the re-verification pass below.
-    expect(second.counts).toEqual({ ...emptyCounts(), noop: 1 })
+    // from the frontier, asks once, gets back the overlap, and stops. It does
+    // NOT re-offer all 250 — that is the re-verification pass below.
+    //
+    // TWO noops, not one, and this is the overlap change obligation 47 caused:
+    // the frontier is the last CLOSED bar, so a resumed run re-offers BOTH that
+    // bar and the FORMING bar after it. The forming bar is re-stored as forming
+    // (unchanged, so `noop`) because this page still contains no successor to
+    // prove it closed.
+    expect(second.counts).toEqual({ ...emptyCounts(), noop: 2 })
     expect(second.requestsMade).toBe(1)
 
     const { rows } = await pool.query<{ count: string }>('SELECT count(*) FROM candles')
@@ -196,8 +215,12 @@ describe('T1.4 backfill - against a real database and a fake provider', () => {
 
     // The WHOLE histogram, not merely 'nothing was written' - a run that
     // fetched nothing also writes nothing and would satisfy the weaker claim.
-    expect(verify.counts).toEqual({ ...emptyCounts(), noop: 253 })
-    expect(verify.barsSeen).toBe(253)
+    // 254, one more than before obligation 47: the two-bar overlap at each
+    // resume rather than one. Nothing is written — every bar is already stored
+    // with these values, and the newest is already stored FORMING, so re-offering
+    // it as forming is also a noop.
+    expect(verify.counts).toEqual({ ...emptyCounts(), noop: 254 })
+    expect(verify.barsSeen).toBe(254)
 
     const { rows } = await pool.query<{ count: string }>('SELECT count(*) FROM candles')
     expect(rows[0]?.count).toBe('250')
@@ -250,9 +273,12 @@ describe('T1.4 backfill - against a real database and a fake provider', () => {
 
     // The overlap bar is re-offered and returns `noop` - which is the
     // idempotency claim being proved on the resume path rather than asserted.
-    // 3 noops: the overlap bar at each of the two page boundaries, plus the
-    // final request that returns only the overlap and ends the run.
-    expect(resumed.counts.noop).toBe(3)
+    // 4 noops and 1 applied. The interrupted run left its last bar FORMING,
+    // so the resumed run re-offers the last closed bar (noop) AND that forming
+    // bar — which now has a successor, so it is finalised: `applied`.
+    expect(resumed.counts.noop).toBe(4)
+    // Two page boundaries in the resumed run, so two forming bars get finalised.
+    expect(resumed.counts.applied).toBe(2)
     expect(resumed.counts.inserted).toBe(150)
     expect(resumed.stoppedBecause).toBe('complete')
 
@@ -426,7 +452,7 @@ describe('T1.4 backfill - a conflict stops the run at the first one', () => {
     })
 
     expect(again.counts.conflict).toBe(0)
-    expect(again.counts.noop).toBe(51)
+    expect(again.counts.noop).toBe(52)
   })
 })
 

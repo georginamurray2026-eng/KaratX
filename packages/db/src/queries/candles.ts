@@ -395,3 +395,36 @@ export async function latestFinalOpenTime(
 
   return rows[0]?.max ?? null
 }
+
+/**
+ * Is this exact bar already stored as FINAL?
+ *
+ * THE SECOND HALF OF THE FINALITY RULE. A backfill derives finality from the
+ * data - "a later bar exists in this response, so this one closed" - which
+ * leaves the LAST bar of a page unknown and therefore treated as forming.
+ *
+ * But that discards something we already know. If a previous run saw a
+ * successor to that bar, it settled it, and offering it as forming again would
+ * be a DOWNGRADE: the upsert answers `rejected`, writes nothing, and the run
+ * stops. That is exactly what happened on the re-verification pass before this
+ * query existed, and the `rejected` guard is what found it.
+ *
+ * So the full rule is: FINAL IF A LATER BAR EXISTS IN THIS RESPONSE, OR IF WE
+ * ALREADY SETTLED IT. This answers the second half.
+ *
+ * One indexed point lookup on `candles_pk` per page - about 36 over a full
+ * backfill, which is nothing against 174,000 rows.
+ */
+export async function isStoredFinal(
+  client: Pool | PoolClient,
+  series: SeriesKey,
+  openTime: Date,
+): Promise<boolean> {
+  const { rows } = await client.query<{ is_final: boolean }>(
+    `SELECT is_final FROM candles
+      WHERE instrument_id = $1 AND provider_id = $2 AND timeframe = $3 AND open_time = $4`,
+    [series.instrumentId, series.providerId, series.timeframe, openTime],
+  )
+
+  return rows[0]?.is_final ?? false
+}

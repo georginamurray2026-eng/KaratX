@@ -13,6 +13,7 @@ export * from './schema/index'
 export {
   describeFormingConflict,
   finaliseAndOpen,
+  isStoredFinal,
   latestFinalOpenTime,
   upsertCandle,
   type CandleInput,
