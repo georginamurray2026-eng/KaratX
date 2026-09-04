@@ -11,6 +11,15 @@
 
 export * from './schema/index'
 export {
+  describeFormingConflict,
+  finaliseAndOpen,
+  latestFinalOpenTime,
+  upsertCandle,
+  type CandleInput,
+  type CandleUpsertResult,
+  type SeriesKey,
+} from './queries/candles'
+export {
   checkDatabase,
   compareMigrations,
   shippedMigrations,

@@ -348,3 +348,50 @@ export function describeFormingConflict(error: unknown): unknown {
     { cause: error },
   )
 }
+
+export interface SeriesKey {
+  readonly instrumentId: number
+  readonly providerId: number
+  readonly timeframe: string
+}
+
+/**
+ * The resume frontier: the newest FINAL bar stored for a series.
+ *
+ * THIS IS THE BACKFILL'S CHECKPOINT, AND IT IS DELIBERATELY NOT STORED
+ * ANYWHERE. A separate checkpoint column or file would open a window between
+ * committing a bar and recording that we had committed it - and no ordering
+ * closes that window, because a process can die inside it either way. Deriving
+ * the frontier from the data makes the write and the checkpoint THE SAME FACT,
+ * so they cannot disagree.
+ *
+ * `job_runs` therefore records observability only. Its counters may be wrong
+ * after a crash; this query cannot be.
+ *
+ * FINAL BARS ONLY. A forming bar is not history and must never become the point
+ * a resumed backfill continues from - it would be re-requested as final and the
+ * frontier would advance over a bar that was still moving.
+ *
+ * REQUIRES ASCENDING, CONTIGUOUS FILL to be meaningful. The backfill walks
+ * forward from the oldest bar and asserts every page is ascending, so `max` is
+ * the frontier rather than merely the largest of a scattered set. A backwards
+ * or gap-filling importer would need a different query, and reusing this one
+ * would silently skip everything before the gap.
+ *
+ * Answered by a backwards scan of `candles_pk` - the three-column equality
+ * prefix followed by a range on the trailing column, which is exactly the
+ * ordering ADR-013 chose the key for.
+ */
+export async function latestFinalOpenTime(
+  client: Pool | PoolClient,
+  series: SeriesKey,
+): Promise<Date | null> {
+  const { rows } = await client.query<{ max: Date | null }>(
+    `SELECT max(open_time) AS max
+       FROM candles
+      WHERE instrument_id = $1 AND provider_id = $2 AND timeframe = $3 AND is_final`,
+    [series.instrumentId, series.providerId, series.timeframe],
+  )
+
+  return rows[0]?.max ?? null
+}

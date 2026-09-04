@@ -62,6 +62,55 @@ necessary and insufficient. Obligation 12 is narrowed to "parity not yet
 asserted", with a discharge condition stated as a NUMBER rather than "close
 enough".
 
+### ⏸ T1.4 IS AT ITS STOP POINT — steps 1-6 DONE, NOTHING HAS TOUCHED THE NETWORK
+
+**2026-09-04.** Six of ten steps are complete and green. **No API call has been
+made. No key has been used. Every test replays a recorded, derived or labelled
+synthetic fixture.**
+
+| Step | State |
+|---|---|
+| 1. `TWELVEDATA_API_KEY` in config | DONE — optional in config, required by the job, checked AT START |
+| 2. Provider adapter + fixtures | DONE — ADR-008's three requirements enforced, each with a test that fails if the chokepoint is removed |
+| 3. Retry | DONE — **obligation 5's T1.4 half discharged** |
+| 4. Pacer | DONE — 7/min against a documented 8 |
+| 5. `job_runs` + migration 0003 | DONE — APPLIED, verified against the catalog, every constraint made to fail |
+| 6. Backfill job vs fake provider | DONE — full, interrupted-and-resumed, duplicate, re-verification, conflict |
+| **7. FIRST REAL API CALL** | **NOT STARTED — needs approval** |
+| 8-10. Parity fetches, full backfill, obligation 31 evidence | NOT STARTED |
+
+**Before step 7, read [OPEN-QUESTIONS-T1.4.md](./OPEN-QUESTIONS-T1.4.md).** Ten
+things about Twelve Data are unmeasured, and each is recorded there WITH A
+PREDICTION AND A CONFIDENCE, written before the call. Once the first request
+lands it answers several at once and the code looks correct either way — so the
+predictions were written down first, deliberately, and must not be edited
+afterwards. The wrong ones are the valuable half.
+
+**Three things the build found that review had not.**
+
+1. **The recorded fixture cannot detect a lost-precision bug.** Measured, not
+   suspected: all 20 of its price values are unchanged by a `Number()`
+   round-trip, so a coercing parser passes a byte-equality test built on it.
+   `twelvedata-decimal-guard.json` exists because of this, and a test now pins
+   that property of the recorded fixture so nobody rebuilds the same false
+   confidence.
+2. **A false pass in the `job_runs` constraint tests.** `status='wedged'` with a
+   NULL `finished_at` is rejected — by `job_runs_finished_at_check`, not by
+   `job_runs_status_check`, which was never exercised and would have looked
+   identical if deleted. Same shape as the SQL `CASE` ordering incident.
+3. **Obligation 44 — a resumed backfill cannot see restated history behind its
+   frontier.** Found because a conflict test failed: the resumed run never
+   re-fetched the altered bar. The design is correct and the guarantee is weaker
+   than it reads. ADR-008's first reversal condition is detected by T1.9, not by
+   this job.
+
+**Also corrected during the build:** the obligation 33 guard fired on the first
+version of the backfill integration test, which imported `runMigrations` under
+`apps/`. It uses the harness's already-migrated database instead. The guard did
+exactly what it was built for.
+
+---
+
 ### T1.4 — WHAT IT NEEDS BEFORE IT STARTS
 
 1. ~~**A COST AND REQUEST-COUNT ESTIMATE, PUT TO THE USER FIRST.**~~ **DONE
