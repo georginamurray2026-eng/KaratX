@@ -26,6 +26,8 @@ Stored as an IANA zone, **never as a fixed UTC offset.** This is 21:00 UTC durin
 
 **Retain as a regression guard in T1.6:** when aggregating 1D from 15M candles, assert our aggregate matches the provider's own daily candle. This is cheap and catches the case where the provider silently changes its alignment default at some future point. Audit finding C2 is closed, but the assertion stays.
 
+> **SUPERSEDED IN ITS COMPARATOR BY ADR-008 (2026-08-27); NOTICED AND CORRECTED HERE 2026-09-04.** The guard above was written 2026-08-25, before the provider was chosen. **It cannot compare against "the provider's own daily candle"** — ADR-008 records that a 24/7 series emits Saturday and Sunday "days", so Twelve Data's daily candles are not the same object as ours. **The guard compares against the CALENDAR instead.** The intent — catch a silent alignment change — is unchanged and still worth having; only the comparator moves. This paragraph had been contradicting the ADR for eight days.
+
 ### Second, independent confirmation — found in market data, 2026-08-27
 
 **The boundary is now corroborated by two unrelated sources.** The first was the

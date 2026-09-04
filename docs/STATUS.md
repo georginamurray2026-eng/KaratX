@@ -1652,12 +1652,26 @@ more useful for reconciliation than a second data vendor would be.
 | 1min earliest | 2020-04-06 | `earliest_timestamp` |
 | 1day earliest | 1979-12-26 | the "since 1980" claim applies to DAILY only |
 | Bar density | 35,071 bars/year at 15min | counted from a full 5,000-bar page |
-| Full 6.6yr backfill | 47 requests, ~6 min | 5,000 bars/request, 8 credits/min |
+| Full 6.6yr backfill | **DERIVED, NEVER RUN** — 47 requests, ~6 min | **ARITHMETIC, NOT A MEASUREMENT** — 6.6 × 35,071 ÷ 5,000 = 46.3 → 47, and 47 ÷ 8 = 5.9 min. **35–36 is the better derivation**, see the correction below |
 | Instrument | Gold Spot, `type: "Precious Metal"` | spot, not CFD or futures — C1 satisfied on evidence |
 | Default timezone | **Australia/Sydney (UTC+10)** | documented on the exchange page; ABSENT from the `time_series` body |
 | Numeric format | **float32**, ~9 significant figures | `4643.35156` is exactly float32 `4643.3515625` |
 | Weekend bars | 0 in 2020–2024, 49 on 2025-06-14, 96 from 2026 | one call per year |
 | Gold-specific? | **No** — EUR/USD and GBP/USD identical | the control test that refuted the source-swap hypothesis |
+
+**CORRECTED 2026-09-04 — "47 requests, ~6 min" SAT IN THE FACT COLUMN WHILE ITS
+OWN HOW-ESTABLISHED COLUMN SHOWED A DERIVATION.** No 6.6-year backfill has ever
+been executed. Both numbers are arithmetic over the two rows above it, and the
+row was read as a measurement in ADR-008 and twice more in this file.
+
+**A second derivation gives 35–36 requests, and it is the better one.** 47
+applies the 24/7 density of 35,071 bars/year across all 6.6 years, but weekend
+bars were **measured at zero for 2020–2024** — the row two above says so. Using
+the weekday density of 24,342/year until the mid-2025 transition and 35,071
+after gives ~174,000–179,000 bars, so 35–36 requests and 4.4–4.5 minutes.
+**Both are inferences and 47 is the conservative one.** At 5.9% and 4.5% of one
+day's 800 credits the difference decides nothing — which is exactly why the
+provenance is worth fixing rather than the number.
 
 **Two conclusions were revised by later evidence, and the revisions matter more
 than the originals.** "Variable decimals mean trailing-zero stripping" was wrong —
@@ -1782,8 +1796,9 @@ Assemble the ADR from these rather than from memory.
 **Confirmed about Twelve Data:** Thailand access works (authenticated call);
 XAU/USD is spot gold, not a CFD or futures proxy (`currency_base: "Gold Spot"`,
 `type: "Precious Metal"`) — C1 satisfied on evidence; 15min depth 2020-01-24,
-verified by fetching bars at that date; native 15min; 6.6-year backfill in 47
-requests; free tier permitted full evaluation before payment.
+verified by fetching bars at that date; native 15min; a 6.6-year backfill
+**DERIVED at 47 requests and never run** — corrected 2026-09-04, see the
+measured table above; free tier permitted full evaluation before payment.
 
 **Adapter decisions:** send the key as `Authorization: apikey <key>`, never a
 query parameter — a key in a URL reaches proxy logs, referrer headers and echoed
@@ -1827,7 +1842,9 @@ history that would avoid a filter dependency. That reason evaporated:
   recent data, so it buys no consistency.
 - What $29.99 actually buys is depth beyond 2020 **at 1-minute only** — roughly
   1.9M rows for five years — for a system that aggregates to 15M immediately.
-- Twelve Data supplies **6.6 years of native 15M in 47 requests and ~6 minutes.**
+- Twelve Data supplies **6.6 years of native 15M in 47 requests and ~6 minutes**
+  — **derived, not run; 35–36 requests on the better derivation.** Corrected
+  2026-09-04. The comparison against EODHD's depth is unaffected.
 
 **TRIGGER TO REVISIT: Phase 9 demonstrating that 6.6 years of 15M is too short a
 backtest window.** If the backtest needs more regime coverage than 2020–2026
