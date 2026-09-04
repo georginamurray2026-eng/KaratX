@@ -338,6 +338,7 @@ has not been performed, do it first.
 - **The 15M backfill takes the FULL 6.6 years**, from 2020-01-24, not obligation 41's ~20-day parity minimum. Once 1D leaves the 15M spine the full run costs only ~9 requests more than the minimum, and two windows to reason about later is the worse trade at that price.
 - **The 1H and 1D parity inputs are FETCHED, not derived** — 1 request each against 27–36 to aggregate 1D from five years of 15M. Obligation 41 specifies bar counts, and 1299 daily bars is ~5 years. **This is ADR-008's regression-assertion provision used for a second purpose; it does NOT reverse the 15M spine or T1.6 aggregation.**
 - **The 800/day and 8/min limits are VENDOR DOCUMENTATION and have never been tested.** Nothing plausible at 2x breaches the cap, but the first real run is also the first measurement of them — record what actually happened.
+- **Obligation 43 (venue mismatch) was raised out of this estimate** and is not solved by any backfill size.
 
 ---
 

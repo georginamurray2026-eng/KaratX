@@ -9,18 +9,24 @@ handover document.
 
 **Obligation counts live in [OBLIGATIONS.md](./OBLIGATIONS.md) and are
 deliberately not restated here** — see the note where the summary table used to
-be. As of 2026-09-02: nothing overdue, nothing awaiting a person.
+be. As of 2026-09-04: nothing overdue, nothing awaiting a person. **Obligation
+43 was raised 2026-09-04** out of the T1.4 estimate and takes the open count
+from 20 to 21.
 
 ---
 
-## ▶ START HERE — session handoff, 2026-09-02
+## ▶ START HERE — session handoff, 2026-09-04
 
 **PHASE 0 IS CLOSED AT LOCAL SCOPE.** Five deployment criteria were DEFERRED to
 T6.1 and never run — see the closure below. Do not read "Phase 0 closed" as
 "Phase 0 complete".
 
-**T1.2 COMPLETE. T1.3 COMPLETE. T1.4 IS NEXT AND HAS PRECONDITIONS.**
-Working tree clean, `main` pushed and green.
+**T1.2 COMPLETE. T1.3 COMPLETE. T1.4 IS NEXT — ITS BLOCKING PRECONDITION IS NOW
+MET AND ITS SIZING IS DECIDED.** Working tree clean, `main` pushed and green.
+
+**The 2026-09-04 session did analysis and documentation only — no code, no API
+calls, nothing fetched.** It produced the T1.4 cost estimate, corrected the
+provenance of a figure ADR-008 consumes, and raised obligation 43.
 
 ### T1.3 — COMPLETE, and what "complete" covers
 
@@ -84,6 +90,12 @@ enough".
    weekend-synthesis era, so its daily series carries Saturday and Sunday "days"
    the OANDA fixture does not. Recorded in INDICATOR-SPEC.md where a parity run
    will be read, not only here.
+2b. **OBLIGATION 43 — THE FIXTURES AND THE FEED ARE DIFFERENT VENUES**
+   (`OANDA:XAUUSD` vs Twelve Data), never compared, and it **blocks obligation
+   12** rather than T1.4. EMA200 rests 100% on backfilled feed bars at the first
+   golden bar and ~5% by the 299th, so early-bar parity tests the FEED. It does
+   **not** block a 15m parity run: a failure far larger than 11% of bar range is
+   not venue divergence.
 3. **Obligation 31's EVIDENCE half lands here.** `--single-transaction` is
    already on `db:restore`; what is missing is a dump large enough that a
    failure lands MID-restore. That volume does not exist until this task has
