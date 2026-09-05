@@ -20,6 +20,44 @@ import { instruments } from './instruments'
  * rather than a boolean - with no rules covering a date the answer is UNKNOWN,
  * never CLOSED, and UNKNOWN never suppresses the staleness alarm. The empty
  * table becomes loud instead of silent.
+ *
+ * ---------------------------------------------------------------------------
+ * READ THIS BEFORE BUILDING OR READING A DETECTOR (2026-09-05, migration 0004)
+ * ---------------------------------------------------------------------------
+ *
+ * THESE RULES ARE STRICTER THAN THE FEED HAS EVER BEEN. They are absolutes, and
+ * the feed they police only ever followed them as a strong tendency.
+ *
+ * Measured over 166,344 stored bars: against roughly 208 daily-break
+ * opportunities a year, CLEAN breaks number 167-200 across 2020-2024. **816
+ * bars sit inside the 17:00-18:00 New York break window BEFORE 2026-04-05** -
+ * during the era the provider honoured the break at all. So the break was
+ * absent on something like a FIFTH OF WEEKDAYS in its good years.
+ *
+ * A flagged bar therefore does NOT mean the feed broke. It means our feed
+ * disagrees with a calendar built from a DIFFERENT feed (Massive supplied the
+ * original boundaries; ADR-008 records the two venues differing by an hour), in
+ * a period when our feed was itself inconsistent by a fifth.
+ *
+ * SEVERITY, DECIDED BEFORE THE DETECTORS EXIST rather than after, because
+ * deciding afterwards means deciding against a number already on the screen and
+ * the pull is toward whatever makes it acceptable:
+ *
+ *   `unexpected_bar` against this calendar is INFORMATIONAL. Counted,
+ *   queryable, NOT alerting.
+ *
+ * These bars are not errors. Ranking them beside `high_below_low` - a
+ * structural impossibility - would equate a known venue difference with a
+ * corrupt row, and a false-positive rate is exactly how someone learns to
+ * ignore an alert channel. BUILD-PLAN names that risk for T1.5 directly.
+ *
+ * WHAT IS ALERTING IS A CHANGE IN THE RATE, and that is a different detector
+ * which cannot be built yet. Roughly 10,800 of 166,344 bars - 9,645 in the
+ * weekly-closure window and 1,168 in the daily break - is the expected baseline
+ * for calendar-versus-feed disagreement. 6.5% is Tuesday; a sudden move to 40%
+ * is a finding. THE FIRST DETECTOR RUN IS WHAT MEASURES THAT BASELINE, so
+ * record the number it produces - the rate detector has nothing to compare
+ * against until it exists.
  */
 export const marketHours = pgTable(
   'market_hours',

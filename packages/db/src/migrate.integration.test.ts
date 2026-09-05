@@ -59,7 +59,7 @@ beforeAll(async () => {
  * a table nobody intended. Loosening them to "contains" would remove the only
  * check on unintended schema changes.
  */
-const MIGRATION_COUNT = 4
+const MIGRATION_COUNT = 5
 
 describe('migrations against an empty database', () => {
   it('starts from a genuinely empty schema', async () => {

@@ -82,19 +82,29 @@ describe('trading calendar seed', () => {
       'SELECT DISTINCT timezone, local_start FROM market_hours',
     )
 
-    expect(rows).toHaveLength(1)
-    expect(rows[0]?.timezone).toBe('America/New_York')
-    expect(rows[0]?.local_start).toBe('17:00:00')
+    // TWO distinct local_start values since migration 0004, not one: the daily
+    // break and the weekly CLOSE still start at 17:00, while the weekly OPEN
+    // moved to 18:00. What this test is actually about is the ZONE - that a
+    // wall-clock time is stored against an IANA name rather than an offset - so
+    // it asserts that for every row rather than assuming a single start time.
+    expect(rows.map((r) => r.timezone)).toEqual(['America/New_York', 'America/New_York'])
+    expect(rows.map((r) => r.local_start).sort()).toEqual(['17:00:00', '18:00:00'])
   })
 
-  it('the daily break is 45 minutes, as MEASURED - not the 60 of futures convention', async () => {
+  it('the daily break is 60 minutes, as MEASURED AGAINST THE FEED WE INGEST', async () => {
     const { rows } = await pool.query<{ minutes: string }>(
       `SELECT DISTINCT EXTRACT(EPOCH FROM (local_end - local_start)) / 60 AS minutes
        FROM market_hours WHERE rule_type = 'daily_break'`,
     )
 
+    // 45 until migration 0004, and the change is not a correction of a mistake.
+    // T1.2 measured 45 correctly against MASSIVE; ADR-008 then made Twelve Data
+    // the ingestion feed, and this calendar exists to say how many bars should
+    // have arrived FROM THAT FEED. Measured across 166,344 stored bars: 1,026
+    // clean gaps of 1h15m after a bar opening 16:45 New York, so the break runs
+    // 17:00-18:00. See the migration comment.
     expect(rows).toHaveLength(1)
-    expect(Number(rows[0]?.minutes)).toBe(45)
+    expect(Number(rows[0]?.minutes)).toBe(60)
   })
 
   it('seeds the instrument and both providers, with their own symbols', async () => {

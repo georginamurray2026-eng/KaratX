@@ -1384,6 +1384,20 @@ question is not "does this look done" but "what would I have to find to call
 this unfinished". Grep for the consumers of a flag. Check whether a test named
 after a resource actually touches one.
 
+**COUNT, 2026-09-05: THREE APPROVED PLANS WERE CORRECTED BY THE ARTEFACT IN ONE
+DAY, and none by re-reading the argument that approved them.** Writing the
+obligation 48 test double revealed it ignored `end_date`. Re-anchoring the
+doubles for obligation 50 revealed that five paging tests had never been able to
+fail. Writing migration 0004's SQL revealed that encoding the provider's eras
+into the calendar would defeat the calendar's stated purpose - a plan agreed by
+both parties in writing, twice.
+
+**The rate is the finding.** Each of the three was reviewed, argued and
+approved before it was written, and in each case the ARTEFACT said something
+the ARGUMENT could not. Re-reading a plan interrogates the same model that
+produced it; building the thing interrogates the world. When the two disagree,
+the artefact is not a detail - it is the only one of the pair that was tested.
+
 **The sharpest instance:** a shutdown hook NAMED `database-pool` that pushes a
 string to an array, with 33 passing tests, none of which touch a real
 connection. It reads as coverage of connection handling. It is coverage of
