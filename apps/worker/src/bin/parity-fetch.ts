@@ -150,9 +150,18 @@ async function main(): Promise<void> {
   const pacer = createPacer()
   let totalRequests = 0
 
-  process.stdout.write('\nT1.4 STEP 8 - PARITY FETCHES. Three requests.\n')
+  // Optional leg filter: `pnpm parity-fetch 15m,1H`. A re-run should cost only
+  // the legs that need re-running, not all three.
+  const only = process.argv
+    .slice(2)
+    .flatMap((a) => a.split(','))
+    .filter(Boolean)
+  const legs = only.length === 0 ? LEGS : LEGS.filter((l) => only.includes(l.label))
+  if (legs.length === 0) throw new Error(`no legs match: ${only.join(', ')}`)
 
-  for (const leg of LEGS) {
+  process.stdout.write(`\nT1.4 PARITY FETCHES: ${legs.map((l) => l.label).join(', ')}\n`)
+
+  for (const leg of legs) {
     process.stdout.write(`\n${'='.repeat(70)}\n${leg.label}\n${'='.repeat(70)}\n`)
     process.stdout.write(`\n  EXPECTED, before the request:\n    ${leg.expectation}\n\n`)
     line('window', `${leg.from} .. ${leg.to}`)

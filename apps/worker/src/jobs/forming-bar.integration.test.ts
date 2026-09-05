@@ -67,10 +67,23 @@ function mutableProvider(initial: Bar[]): { fetch: FetchLike; setBars: (b: Bar[]
   const fetch: FetchLike = async (url) => {
     const params = new URL(url).searchParams
     const start = params.get('start_date')
+    // `end_date` IS HONOURED, AND ITS ABSENCE HERE HID A REAL DEFECT.
+    //
+    // This double ignored `end_date` until 2026-09-05. `runBackfill` sends it
+    // whenever `to` is set, so a bounded run's response really does stop at the
+    // boundary - but the double handed back bars past it, which the real
+    // provider never would. The bounded test therefore passed while step 8
+    // failed against the live API, and obligation 48 is the result.
+    //
+    // A TEST DOUBLE THAT IGNORES A PARAMETER THE CODE SENDS CANNOT TEST THE
+    // BEHAVIOUR THAT PARAMETER CAUSES. It does not merely fail to cover it - it
+    // actively reports the opposite.
+    const end = params.get('end_date')
     const size = Number(params.get('outputsize') ?? 5000)
 
     let selected = bars
     if (start !== null) selected = selected.filter((b) => b.datetime >= start)
+    if (end !== null) selected = selected.filter((b) => b.datetime <= end)
     selected = selected.slice(0, size)
 
     const body = JSON.stringify({
@@ -296,6 +309,58 @@ describe('obligation 47 - a bar trimmed by `to` still proves its predecessor clo
     )
   })
 
+  it('DISCARDS the bar past `to` rather than storing it', async () => {
+    // The extra bar is fetched to PROVE CLOSURE and then thrown away. Storing
+    // it would quietly widen every bounded run by one bar, which is the sort of
+    // off-by-one that shows up months later as a window nobody can reconcile.
+    const provider = mutableProvider(Array.from({ length: 20 }, (_, i) => bar(i)))
+
+    await runBackfill({
+      pool,
+      client: new TwelveDataClient({ fetch: provider.fetch, apiKey: API_KEY }),
+      pacer: createPacer({ now: () => 0, sleep: async () => undefined }),
+      series,
+      from: new Date(SERIES_START),
+      to: new Date(SERIES_START + 9 * INTERVAL_MS),
+      pageSize: 100,
+      withRetry: immediate,
+    })
+
+    const { rows } = await pool.query<{ count: string; last: Date }>(
+      'SELECT count(*)::text AS count, max(open_time) AS last FROM candles',
+    )
+
+    // EXACTLY the window: 10 bars, not 11.
+    expect(rows[0]?.count, 'the bar past `to` must not be stored').toBe('10')
+    expect(rows[0]?.last.toISOString()).toBe(new Date(SERIES_START + 9 * INTERVAL_MS).toISOString())
+  })
+
+  it('when `to` reaches the PRESENT there is no bar past it, so the last bar stays FORMING', async () => {
+    // The distinction the code has to make, and it makes it from the RESPONSE:
+    //   a bar came back past `to` and was trimmed  -> a successor exists -> FINAL
+    //   nothing came back past `to`                -> no successor       -> FORMING
+    // Here the provider has nothing after bar 19, so asking past it returns
+    // nothing and bar 19 is genuinely still forming.
+    const provider = mutableProvider(Array.from({ length: 20 }, (_, i) => bar(i)))
+
+    await runBackfill({
+      pool,
+      client: new TwelveDataClient({ fetch: provider.fetch, apiKey: API_KEY }),
+      pacer: createPacer({ now: () => 0, sleep: async () => undefined }),
+      series,
+      from: new Date(SERIES_START),
+      to: new Date(SERIES_START + 19 * INTERVAL_MS),
+      pageSize: 100,
+      withRetry: immediate,
+    })
+
+    const { rows } = await pool.query<{ is_final: boolean }>(
+      'SELECT is_final FROM candles ORDER BY open_time',
+    )
+    expect(rows).toHaveLength(20)
+    expect(rows.slice(0, 19).every((r) => r.is_final)).toBe(true)
+    expect(rows[19]?.is_final, 'nothing proves bar 19 closed, so it stays forming').toBe(false)
+  })
   it('CONTROL: without `to`, the last bar is still forming', async () => {
     // Pairs with the test above. Without it, "everything is final" could be
     // true because the forming rule stopped working rather than because the

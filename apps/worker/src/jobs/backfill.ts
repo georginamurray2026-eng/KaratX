@@ -141,6 +141,48 @@ export function toProviderDatetime(date: Date): string {
 }
 
 /**
+ * The provider's interval strings, in milliseconds.
+ *
+ * Needed for exactly one thing: asking for ONE BAR PAST the window, so the
+ * response proves the last bar we keep has closed. See the `end_date` note in
+ * `runBackfill`.
+ *
+ * Keyed on the PROVIDER's vocabulary (`1day`), not ours (`1D`), because it is
+ * used to build a request. An unknown interval THROWS rather than defaulting:
+ * a silent default would send the wrong `end_date` and quietly store the last
+ * bar of every bounded run as forming again, which is obligation 48 returning
+ * by another route.
+ */
+const PROVIDER_INTERVAL_MS: Readonly<Record<string, number>> = {
+  '1min': 60_000,
+  '5min': 5 * 60_000,
+  '15min': 15 * 60_000,
+  '30min': 30 * 60_000,
+  '45min': 45 * 60_000,
+  '1h': 60 * 60_000,
+  '2h': 2 * 60 * 60_000,
+  '4h': 4 * 60 * 60_000,
+  '1day': 24 * 60 * 60_000,
+  '1week': 7 * 24 * 60 * 60_000,
+}
+
+export function providerIntervalMs(interval: string): number {
+  const ms = PROVIDER_INTERVAL_MS[interval]
+  if (ms === undefined) {
+    throw new ConfigError(
+      `Unknown provider interval ${JSON.stringify(interval)}.\n\n` +
+        `A bounded backfill asks for one bar past its window so the response proves ` +
+        `the last kept bar closed, and that needs the interval's length. Add it to ` +
+        `PROVIDER_INTERVAL_MS rather than letting a default through: the wrong ` +
+        `end_date silently stores the last bar of every bounded run as forming, ` +
+        `which is what obligation 48 was.\n\n` +
+        `Known: ${Object.keys(PROVIDER_INTERVAL_MS).join(', ')}`,
+    )
+  }
+  return ms
+}
+
+/**
  * WHICH BAR IS FORMING, decided from the DATA and not from a clock.
  *
  * OQ-12 measured that `/time_series` returns the currently-forming bar, and the
@@ -228,7 +270,30 @@ export async function runBackfill(options: BackfillOptions): Promise<BackfillRes
           symbol: series.providerSymbol,
           interval: series.providerInterval,
           startDate: toProviderDatetime(start),
-          ...(options.to === undefined ? {} : { endDate: toProviderDatetime(options.to) }),
+          // ONE INTERVAL PAST `to`, NOT `to` ITSELF — obligation 48.
+          //
+          // Asking for exactly `to` makes the response stop at the boundary, so
+          // NOTHING IN IT PROVES THE LAST BAR CLOSED and the finality rule
+          // correctly stores that bar forming. For a bounded parity window that
+          // bar is the LAST GOLDEN BAR, left marked unsettled — and the frontier
+          // never reaches `to`, costing a second request as well.
+          //
+          // Asking for one bar more fetches a successor, which proves closure,
+          // and the successor is then DISCARDED by the `to` filter below. That
+          // is what makes `trimmedByTo` reachable at all.
+          //
+          // AND WHEN `to` REACHES THE PRESENT there is no such bar: the request
+          // returns nothing past `to`, the trim removes nothing, and the last
+          // bar stays FORMING — correctly, because it is. The code distinguishes
+          // the two cases from the RESPONSE rather than from a clock: a bar came
+          // back and was trimmed, or nothing came back.
+          ...(options.to === undefined
+            ? {}
+            : {
+                endDate: toProviderDatetime(
+                  new Date(options.to.getTime() + providerIntervalMs(series.providerInterval)),
+                ),
+              }),
           outputsize: pageSize,
           order: 'ASC',
         }),
