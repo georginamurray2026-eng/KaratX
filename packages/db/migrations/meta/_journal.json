@@ -36,6 +36,13 @@
       "when": 1788614475696,
       "tag": "0004_calendar_measured_against_twelve_data",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788626396233,
+      "tag": "0005_data_quality_events",
+      "breakpoints": true
     }
   ]
 }

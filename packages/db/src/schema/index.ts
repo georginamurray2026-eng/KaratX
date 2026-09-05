@@ -25,3 +25,8 @@ export {
   type NewMarketHoursRule,
 } from './market-hours'
 export { jobRuns, type JobRun, type NewJobRun } from './job-runs'
+export {
+  dataQualityEvents,
+  type DataQualityEvent,
+  type NewDataQualityEvent,
+} from './data-quality-events'

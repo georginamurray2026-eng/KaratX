@@ -59,7 +59,7 @@ beforeAll(async () => {
  * a table nobody intended. Loosening them to "contains" would remove the only
  * check on unintended schema changes.
  */
-const MIGRATION_COUNT = 5
+const MIGRATION_COUNT = 6
 
 describe('migrations against an empty database', () => {
   it('starts from a genuinely empty schema', async () => {
@@ -110,6 +110,7 @@ describe('migrations against an empty database', () => {
     expect(tables).toEqual([
       'candles',
       'config',
+      'data_quality_events',
       'instruments',
       'job_runs',
       'market_holidays',
@@ -180,6 +181,7 @@ describe('migrations against an empty database', () => {
     expect(constraints.rows.map((r) => r.table_name)).toEqual([
       'candles',
       'config',
+      'data_quality_events',
       'instruments',
       'job_runs',
       'market_holidays',
@@ -208,6 +210,16 @@ describe('migrations against an empty database', () => {
     // running twice rather than forbidding two at once. The predicate is
     // asserted in job-runs.integration.test.ts.
     expect(names).toContain('job_runs_one_running_idx')
+
+    // And the same reasoning again, with the widest gap between the name and
+    // the guarantee: a BLANKET unique index that ignored provider_id or
+    // timeframe would appear here under this exact name, and would silently
+    // collapse two providers' findings about one bar into a single row.
+    //
+    // The six columns are asserted by MUTATION in
+    // data-quality-events.integration.test.ts, where a provider-blind index is
+    // shown to be caught by exactly one of the six controls.
+    expect(names).toContain('data_quality_events_condition_idx')
   })
 
   it('is a no-op when run a second time', async () => {
@@ -225,6 +237,7 @@ describe('migrations against an empty database', () => {
     expect(tables).toEqual([
       'candles',
       'config',
+      'data_quality_events',
       'instruments',
       'job_runs',
       'market_holidays',
