@@ -12,7 +12,8 @@
     "first-contact": "tsx src/bin/first-contact.ts",
     "timezone-test": "tsx src/bin/timezone-test.ts",
     "forming-bar-test": "tsx src/bin/forming-bar-test.ts",
-    "parity-fetch": "tsx src/bin/parity-fetch.ts"
+    "parity-fetch": "tsx src/bin/parity-fetch.ts",
+    "backfill": "tsx src/bin/backfill-run.ts"
   },
   "dependencies": {
     "@karatx/config": "workspace:*",

@@ -32,7 +32,7 @@ and the wrong ones are the valuable half.
 | **OQ-3** | What does an **error body** actually look like? | `{"code":429,"message":"...","status":"error"}` | Low — written from documentation. The synthetic fixture is labelled as such in `test/fixtures/providers/manifest.json` | **OPEN** |
 | **OQ-4** | Are there **credit-accounting headers** (`api-credits-used`, `x-ratelimit-remaining`)? | Probably not | Low. The client captures them if present, which is how this gets answered | **ANSWERED 2026-09-04 — PREDICTION WRONG** |
 | **OQ-5** | At `1day`, is `datetime` **`2025-07-06`** or **`2025-07-06 00:00:00`**? | Date-only | Medium. No `1day` time_series response has ever been captured. The parser accepts both, deliberately | **ANSWERED 2026-09-05 — held (date-only)** |
-| **OQ-6** | Does a page **always fill to `outputsize`** when more bars exist? | Yes | Medium. The backfill deliberately does NOT rely on this — it terminates on "the frontier did not advance", at a cost of one extra request per run | **OPEN** |
+| **OQ-6** | Does a page **always fill to `outputsize`** when more bars exist? | Yes | Medium. The backfill deliberately does NOT rely on this — it terminates on "the frontier did not advance", at a cost of one extra request per run | **ANSWERED 2026-09-05 — held (a page returned exactly 5,000)** |
 | **OQ-7** | Are **`start_date` / `end_date` inclusive**? | Inclusive both ends | Medium. If `start_date` turns out to be exclusive the overlap bar disappears, the run still works, and the resume path silently stops re-proving idempotency — a quiet degradation worth checking for directly | **ANSWERED 2026-09-04 — held** |
 | **OQ-8** | Is **`order=ASC` honoured**? | Yes | Medium. The recorded 2026-08-27 response is DESCENDING, but it was fetched without the parameter. `assertAscending` fails loudly if not — this is the one question whose wrong answer cannot pass silently | **ANSWERED 2026-09-04 — held** |
 | **OQ-9** | Is **`outputsize` capped at 5000 at every interval**? | Yes | Medium. Measured at `15min` only ([STATUS.md:1654](./STATUS.md#L1654)). If `1day` caps lower, the parity fetch needs more than one request | **STILL OPEN 2026-09-05 — the 1D window returned 1,449 bars, far below the cap, so nothing tested it** |
@@ -568,7 +568,120 @@ and the capture keeps them.
 
 **And I expect no 429 at all**, because the database is slower than the pace.
 
-| Status | **OPEN — predictions recorded, run not yet started** |
+| Status | **ANSWERED 2026-09-05 — see the result below** |
+|---|---|
+
+### STEP 9 RESULT — 2026-09-05. THE RUN ABORTED AT ONE REQUEST. Two findings.
+
+`pnpm backfill`. Failed after 24 seconds and one request, on a conflict.
+**Most predictions cannot be evaluated because the run never got past page 1** —
+recorded as unevaluable rather than as misses.
+
+| | predicted | actual | |
+|---|---|---|---|
+| Requests | 36 | **1** | run aborted |
+| Wall clock | ~10 min | **24 s** | run aborted |
+| Credits | 36 | **1** | run aborted |
+| `applied` | ~35 | — | unevaluable |
+| `noop` | ~2,020 | — | unevaluable |
+| Total 15min bars | ~174,200 | **4,740** | run aborted |
+| Weekend bars | ~12,000 | — | unevaluable |
+| **`conflict`** | **0** | **1** | **PREDICTION WRONG** |
+
+**OQ-6 — ANSWERED, prediction HELD.** Page 1 returned **exactly 5,000 bars**, so
+a page does fill to `outputsize`. Every previous window held fewer bars than the
+cap, so this is the first request that could answer it.
+
+**OQ-9 — as predicted, NOT answered.** The 15min cap is re-confirmed at scale;
+the live doubt is `1day` and this run made no `1day` request. **Stays OPEN.**
+
+**OQ-1 — NOT tested.** One request cannot exercise a per-minute limit. No 429.
+
+---
+
+### FINDING 1 — `outputsize` anchors to the NEWEST bars, not to `start_date`
+
+```
+sent:     start_date=2020-01-24 13:00:00   outputsize=5000   order=ASC
+returned: 5000 bars, first 2026-07-15 06:30, last 2026-09-05 08:15
+```
+
+**The response is the most recent 5,000 bars in the range, not the oldest
+5,000.** 5,000 × 15 min back from now lands exactly on 2026-07-15.
+
+**FORWARD PAGING FROM AN OLD `start_date` IS THEREFORE IMPOSSIBLE AS DESIGNED.**
+`runBackfill` advances by moving `start_date` forward and expecting the next
+slice; with this anchoring it gets the same recent window every time. The
+frontier would jump straight to the present on page 1 and the run would report
+`complete` having fetched none of the history.
+
+**This did not silently succeed only because the conflict stopped it first.**
+That is luck, not design: had the overlap been clean, the run would have
+terminated normally and reported success while storing 5,000 recent bars
+instead of 174,000 historical ones. **A run that reports success while doing
+almost nothing is the worst failure shape this project has.**
+
+**Never observed before because every prior window held fewer bars than the
+cap** — the window was always the limit, so the anchoring never showed.
+
+---
+
+### FINDING 2 — Twelve Data RESTATES FINALISED BARS, and it is not confined to weekends
+
+The conflict was at `2026-08-15 21:15:00`, a Saturday. **The obvious reading is
+that synthetic weekend bars are unstable — and the measurement refutes it.**
+
+Comparing yesterday's parity capture against today's backfill capture,
+**provider text against provider text**, with our storage not involved:
+
+| | |
+|---|---|
+| Overlapping bars compared | **1,983** |
+| Byte-identical | **1,979** (99.8%) |
+| **Differing** | **4** |
+| — of which weekend | **1** |
+| — of which **WEEKDAY** | **3** |
+
+```
+2026-08-15 21:15 [WEEKEND]  high  4379.85286 -> 4375.79166
+2026-08-26 13:00 [weekday]  low   4605.22464 -> 4608.92659
+2026-09-01 06:30 [weekday]  high  4438.39980 -> 4437.27763
+2026-09-01 06:45 [weekday]  high  4438.80563 -> 4435.41653
+```
+
+**Every change NARROWS the bar**: `high` fell three times, `low` rose once.
+Both are running extremes that cannot move that way while a bar is forming, so
+this is not a forming-bar effect — these are settled bars being revised, within
+about thirty minutes.
+
+**I AM NOT CALLING THIS ADR-008's FIRST REVERSAL CONDITION.** That condition
+names the weekday series *changing the way weekends changed in 2025* — a venue
+shift, detected by sustained normalised divergence well outside 9–11% of bar
+range. This is 0.2% of bars revised by a few dollars, consistent with a vendor
+trimming outlier ticks. Different in kind and in scale. Calling it the reversal
+condition would be reaching for the largest available explanation.
+
+**But it defeats `CONFLICT_THRESHOLD = 1` completely.** Any run that re-offers
+previously-fetched bars will meet one of these and stop. At 0.2%, a 174,000-bar
+backfill crossing its own overlap has effectively no chance of completing.
+
+**The threshold-of-one reasoning was: "on a first backfill a conflict is
+unreachable, so on a re-run it means the provider restated history — not a bar
+to skip."** The premise was right and the implied conclusion was wrong:
+restatement is real, routine, and small. The number was set from a guess and
+now there is evidence to set it from instead — **which is exactly the condition
+the original note gave for raising it.**
+
+---
+
+### A defect in my own run script
+
+`job_runs` recorded `requests_made 0, bars_inserted 0` for a run that made one
+request and stored 2,758 bars. The failure path in `backfill-run.ts` passes
+zeroed counts to `closeRun`. **A failed run's observability is exactly when the
+counters matter**, and mine discards them.
+
+| Status | **ANSWERED 2026-09-05 — run aborted; OQ-6 held, OQ-9 still open, two obligations raised** |
 |---|---|
 
 ---

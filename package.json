@@ -31,7 +31,8 @@
     "first-contact": "pnpm --filter @karatx/worker first-contact",
     "timezone-test": "pnpm --filter @karatx/worker timezone-test",
     "forming-bar-test": "pnpm --filter @karatx/worker forming-bar-test",
-    "parity-fetch": "pnpm --filter @karatx/worker parity-fetch"
+    "parity-fetch": "pnpm --filter @karatx/worker parity-fetch",
+    "backfill": "pnpm --filter @karatx/worker backfill"
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "^4.7.2",
