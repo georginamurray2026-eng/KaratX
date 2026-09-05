@@ -196,3 +196,48 @@ Recorded as a claim before it is tested. Second run, no new data:
 All four asserted, not just the count. **A stable count while `confirmed_at`
 drifts would mean rows are being rewritten rather than incremented**, which
 looks identical if only the count is checked.
+
+---
+
+## OQ-15. Detector 3's cost — EXPLAINed at real volume before acceptance
+
+**I refused to predict this one**, on the grounds that the 16.9 ms gap-scan
+figure came from an INDEX-ONLY scan of `open_time` and detector 3 needs OHLC,
+which forces heap access. That refusal was correct — the plan is different — but
+the direction was not the one implied.
+
+**Measured, 2026-09-06, one month = 2,876 rows at 166,344 total:**
+
+| Plan | Execution Time | Sort? |
+|---|---|---|
+| Planner's choice: Bitmap Heap Scan + Sort, **cold** | **70.0 ms** | yes, 275 kB quicksort |
+| Planner's choice, **warm** | **6.4 – 6.8 ms** | yes |
+| Forced Index Scan (`enable_bitmapscan=off`), warm | **3.25 ms** | **no** |
+| Full series, no date bound, 166,344 rows | **3,007 ms** | no — Index Scan |
+
+**A SORT APPEARED, and the recorded claim needs qualifying.** The cost lesson
+states "no Seq Scan and no Sort anywhere", and that ADR-013's column order lets
+a B-tree range-scan `open_time`. **That holds for INDEX-ONLY scans. It does not
+hold once heap columns are needed** — the planner switches to a bitmap scan,
+which returns rows in physical order, and then has to sort them.
+
+**THE PLANNER'S CHOICE IS 2x SLOWER THAN THE ONE IT REJECTS**, and it is being
+accepted anyway. 6.4 ms against 3.25 ms is a real difference and a trivial one:
+80 chunks is **~510 ms warm** either way at this scale. `enable_bitmapscan=off`
+is a session-global hammer that would affect every other query in the
+connection, and buying 250 ms with it is not a trade worth making. **Recorded so
+that whoever hits this at 500,000 rows knows the alternative was measured and
+declined, rather than never considered.**
+
+**Full-series is 3,007 ms — 4.4x the gap scan's 686 ms.** Chunking is not an
+optimisation here, it is the design.
+
+### The prediction this invalidates, stated before the run
+
+Detectors 1+2 were predicted at **1.4–2.0 s of summed database execution time**
+across 80 chunks, derived from the recorded 16.9 ms. Warm, the same query runs
+in **5.6–8.3 ms**, so the real figure should land near **450–660 ms**.
+
+**That prediction will be roughly 3x pessimistic, and it is wrong for the
+familiar reason: it was built on a cold measurement without knowing it was
+cold.** Recorded here before the run rather than explained afterwards.

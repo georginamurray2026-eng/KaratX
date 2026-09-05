@@ -1660,12 +1660,14 @@ unstated cannot be reproduced, only re-run and hoped at.
 
 ### A rate measured under one set of conditions, applied to another
 
-**FIVE INSTANCES ACROSS THREE DIFFERENT QUANTITIES**, which is what makes this a
+**SIX INSTANCES ACROSS FOUR DIFFERENT QUANTITIES**, which is what makes this a
 shape rather than a recurring arithmetic slip. Three concern BAR DENSITY and
 are below. The fourth concerns WRITE THROUGHPUT. **The fifth is an ILL-FORMED
 PREDICTION about migration timing, and it happened INSIDE this practice on the
 same day the fourth was written up** - see the separate entry at the end of this
-file, which is where the change to the practice is recorded.
+file, which is where the change to the practice is recorded. **The sixth is
+QUERY CACHE STATE**, recorded with the query-cost practice above — a quantity
+nobody had thought had a denominator at all.
 
 **The general form: a rate is only valid under the conditions it was measured
 in, and those conditions are usually not written down beside the number.** Both
@@ -1753,6 +1755,41 @@ rather than argued.
 today, and the detectors run BOUNDED by date range precisely so this is not the
 hot path — bounded, the same work is 17 ms. Re-measure when the row count has
 moved materially, and record it beside the timing.
+
+### CACHE STATE IS A DENOMINATOR TOO, and the table above does not name it
+
+**Added 2026-09-06, while EXPLAINing detector 3.** The figures in the table
+above — 16.9 ms, 686 ms, 0.255 ms — **do not say whether the buffers were
+warm**, and that turns out to be worth up to 10x.
+
+**Measured directly, same statement, same month, back to back:**
+
+| run | Execution Time |
+|---|---|
+| first (cold buffers) | **70.0 ms** |
+| second (warm) | **6.8 ms** |
+| third (warm) | **6.4 ms** |
+
+**And the recorded gap-scan figure does not survive contact with a warm cache.**
+Re-run on the same query shape over a month holding **2,876 rows** — MORE than
+the 1,818 the table records — it completes in **5.6–8.3 ms** against the
+recorded **16.9 ms**. More rows, less than half the time. The two numbers were
+taken under different cache states, and nothing beside either one says so.
+
+**This is the denominator pattern in a sixth guise, and on a quantity nobody
+thought had a denominator.** Bar density had one. Write throughput had one. The
+migration prediction had one. A query timing has one too: *warm or cold*, and it
+dominates everything else at this row count.
+
+**The rule gains a clause: record the CACHE STATE beside the timing, and
+prefer the warm figure for planning** — a detector run touches each chunk once,
+but the process is long-lived and the buffers stay hot after the first chunk.
+Quote the cold number only when the thing being planned genuinely runs once.
+
+**What this does NOT mean.** It does not mean the recorded figures were wrong.
+16.9 ms was a real measurement of a real execution. It means the number was
+carried into planning without the condition that produced it — which is the same
+error every time, and the reason the practice keeps needing another clause.
 
 ### A prediction is only measurable if the quantity it names is the quantity that will be measured
 

@@ -62,4 +62,6 @@ export {
   type RevisionSide,
 } from './revision'
 
+export { expectsBarAt, type BarExpectation, type Holiday, type SessionRule } from './calendar'
+
 export const CORE_PACKAGE_NAME = '@karatx/core' as const
