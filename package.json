@@ -30,7 +30,8 @@
     "typecheck:tooling": "tsc --noEmit -p tsconfig.tooling.json",
     "first-contact": "pnpm --filter @karatx/worker first-contact",
     "timezone-test": "pnpm --filter @karatx/worker timezone-test",
-    "forming-bar-test": "pnpm --filter @karatx/worker forming-bar-test"
+    "forming-bar-test": "pnpm --filter @karatx/worker forming-bar-test",
+    "parity-fetch": "pnpm --filter @karatx/worker parity-fetch"
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "^4.7.2",

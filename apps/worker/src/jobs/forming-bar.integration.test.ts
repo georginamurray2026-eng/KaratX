@@ -233,3 +233,89 @@ describe('obligation 47 - a bar that was forming when first fetched', () => {
     expect(third.counts.rejected).toBe(0)
   })
 })
+
+describe('obligation 47 - a bar trimmed by `to` still proves its predecessor closed', () => {
+  let pool: Pool
+  let series: BackfillSeries
+
+  beforeAll(async () => {
+    pool = new Pool({ connectionString: inject('migratedUrl') })
+    const { rows } = await pool.query<{ instrument_id: number; provider_id: number }>(
+      `SELECT pi.instrument_id, pi.provider_id FROM provider_instruments pi
+         JOIN providers p ON p.id = pi.provider_id WHERE p.key = 'twelve_data'`,
+    )
+    series = {
+      instrumentId: rows[0]?.instrument_id ?? 0,
+      providerId: rows[0]?.provider_id ?? 0,
+      timeframe: '15min',
+      providerSymbol: 'XAU/USD',
+      providerInterval: '15min',
+    }
+  })
+  afterAll(async () => {
+    await pool.end()
+  })
+  afterEach(async () => {
+    await pool.query('DELETE FROM candles')
+  })
+
+  const immediate = <T>(fn: () => Promise<T>): Promise<T> => fn()
+
+  it('stores every bar FINAL when the response ran past `to`', async () => {
+    // The provider sent 20 bars; `to` keeps 10. Bar 9 has a successor in the
+    // RESPONSE even though we declined to store it, so bar 9 is closed and
+    // storing it forming would discard evidence we were handed.
+    const provider = mutableProvider(Array.from({ length: 20 }, (_, i) => bar(i)))
+
+    const result = await runBackfill({
+      pool,
+      client: new TwelveDataClient({ fetch: provider.fetch, apiKey: API_KEY }),
+      pacer: createPacer({ now: () => 0, sleep: async () => undefined }),
+      series,
+      from: new Date(SERIES_START),
+      to: new Date(SERIES_START + 9 * INTERVAL_MS),
+      pageSize: 100,
+      withRetry: immediate,
+    })
+
+    const { rows } = await pool.query<{ is_final: boolean }>(
+      'SELECT is_final FROM candles ORDER BY open_time',
+    )
+    expect(rows).toHaveLength(10)
+    expect(
+      rows.every((r) => r.is_final),
+      'every bar within `to` is closed',
+    ).toBe(true)
+
+    // And it therefore costs ONE request, not two: the frontier reached `to`,
+    // so there is no extra overlap page. That is what makes a bounded parity
+    // fetch a single request.
+    expect(result.requestsMade).toBe(1)
+    expect(result.through?.toISOString()).toBe(
+      new Date(SERIES_START + 9 * INTERVAL_MS).toISOString(),
+    )
+  })
+
+  it('CONTROL: without `to`, the last bar is still forming', async () => {
+    // Pairs with the test above. Without it, "everything is final" could be
+    // true because the forming rule stopped working rather than because the
+    // trim proved closure.
+    const provider = mutableProvider(Array.from({ length: 20 }, (_, i) => bar(i)))
+
+    await runBackfill({
+      pool,
+      client: new TwelveDataClient({ fetch: provider.fetch, apiKey: API_KEY }),
+      pacer: createPacer({ now: () => 0, sleep: async () => undefined }),
+      series,
+      from: new Date(SERIES_START),
+      pageSize: 100,
+      withRetry: immediate,
+    })
+
+    const { rows } = await pool.query<{ is_final: boolean }>(
+      'SELECT is_final FROM candles ORDER BY open_time',
+    )
+    expect(rows).toHaveLength(20)
+    expect(rows[19]?.is_final).toBe(false)
+  })
+})

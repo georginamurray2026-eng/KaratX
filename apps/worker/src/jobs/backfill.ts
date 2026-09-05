@@ -357,7 +357,20 @@ export async function runBackfill(options: BackfillOptions): Promise<BackfillRes
     const lastAlreadySettled =
       lastBar === undefined ? false : await isStoredFinal(pool, series, lastBar.openTime)
 
-    const useFormingTail = usable.length >= 2 && !lastAlreadySettled
+    // THE THIRD CLAUSE: a successor we CHOSE NOT TO STORE still proves closure.
+    //
+    // `usable` is `parsed.bars` trimmed to `to`. When that trim removed
+    // anything, the provider DID send a later bar - we simply declined to store
+    // it - and a bar with a successor is closed no matter what we do with the
+    // successor. Judging finality against `usable` rather than the RESPONSE
+    // would discard evidence we were handed.
+    //
+    // It also makes a bounded fetch cost one request instead of two: every bar
+    // is final, so the frontier reaches `to` and the run ends without the extra
+    // overlap page. That is a consequence, not the reason.
+    const trimmedByTo = usable.length < parsed.bars.length
+
+    const useFormingTail = usable.length >= 2 && !lastAlreadySettled && !trimmedByTo
     const head = useFormingTail ? usable.slice(0, -2) : usable
     const tail = useFormingTail ? usable.slice(-2) : []
 

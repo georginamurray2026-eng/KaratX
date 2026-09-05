@@ -31,11 +31,11 @@ and the wrong ones are the valuable half.
 | **OQ-2** | Does a 429 carry a **`Retry-After` header**? | No | Low — genuinely a guess. Many JSON APIs omit it | **OPEN** |
 | **OQ-3** | What does an **error body** actually look like? | `{"code":429,"message":"...","status":"error"}` | Low — written from documentation. The synthetic fixture is labelled as such in `test/fixtures/providers/manifest.json` | **OPEN** |
 | **OQ-4** | Are there **credit-accounting headers** (`api-credits-used`, `x-ratelimit-remaining`)? | Probably not | Low. The client captures them if present, which is how this gets answered | **ANSWERED 2026-09-04 — PREDICTION WRONG** |
-| **OQ-5** | At `1day`, is `datetime` **`2025-07-06`** or **`2025-07-06 00:00:00`**? | Date-only | Medium. No `1day` time_series response has ever been captured. The parser accepts both, deliberately | **OPEN** |
+| **OQ-5** | At `1day`, is `datetime` **`2025-07-06`** or **`2025-07-06 00:00:00`**? | Date-only | Medium. No `1day` time_series response has ever been captured. The parser accepts both, deliberately | **ANSWERED 2026-09-05 — held (date-only)** |
 | **OQ-6** | Does a page **always fill to `outputsize`** when more bars exist? | Yes | Medium. The backfill deliberately does NOT rely on this — it terminates on "the frontier did not advance", at a cost of one extra request per run | **OPEN** |
 | **OQ-7** | Are **`start_date` / `end_date` inclusive**? | Inclusive both ends | Medium. If `start_date` turns out to be exclusive the overlap bar disappears, the run still works, and the resume path silently stops re-proving idempotency — a quiet degradation worth checking for directly | **ANSWERED 2026-09-04 — held** |
 | **OQ-8** | Is **`order=ASC` honoured**? | Yes | Medium. The recorded 2026-08-27 response is DESCENDING, but it was fetched without the parameter. `assertAscending` fails loudly if not — this is the one question whose wrong answer cannot pass silently | **ANSWERED 2026-09-04 — held** |
-| **OQ-9** | Is **`outputsize` capped at 5000 at every interval**? | Yes | Medium. Measured at `15min` only ([STATUS.md:1654](./STATUS.md#L1654)). If `1day` caps lower, the parity fetch needs more than one request | **OPEN** |
+| **OQ-9** | Is **`outputsize` capped at 5000 at every interval**? | Yes | Medium. Measured at `15min` only ([STATUS.md:1654](./STATUS.md#L1654)). If `1day` caps lower, the parity fetch needs more than one request | **STILL OPEN 2026-09-05 — the 1D window returned 1,449 bars, far below the cap, so nothing tested it** |
 | **OQ-10** | Does a **5,000-bar page cost 1 credit**, or does cost scale with size? | 1 credit per request regardless of size | Medium. If it scales, the full backfill is ~175–235 credits instead of 35–47 — still inside 800/day, so no decision changes either way | **PARTIAL 2026-09-04** |
 
 ---
@@ -404,6 +404,98 @@ from. It matters for T1.7's live feed, not for T1.4.
 
 | Status | **ANSWERED 2026-09-04 — prediction HELD; obligation 46 discharged, obligation 47 raised** |
 |---|---|
+
+---
+
+## STEP 8 — the parity fetches, 2026-09-05. SIX requests, not three.
+
+Expectations were printed before each request and checked after.
+
+| | expected | observed | |
+|---|---|---|---|
+| 15m bars | ~1,980 | **1,982** | ✓ |
+| 15m window | 2026-08-13 → 2026-09-02 15:15 | exactly that | ✓ |
+| 15m warm-up before first golden | ≥1,000 | **1,479** | ✓ |
+| 1H bars | ~1,910 | **1,911** | ✓ |
+| 1H warm-up | ≥1,000 | **1,455** | ✓ |
+| 1D bars | ~1,430 | **1,449** | ✓ |
+| 1D warm-up | ≥1,000 | **1,043** | ✓ |
+| `applied` | 0 on every leg | **0 on every leg** | ✓ |
+| requests | 1 per leg | **2 per leg** | ✗ |
+
+**Weekend bars stored, counted and NOT filtered** — the calendar is T1.5 and does
+not exist yet, so these are expected: **15m 576, 1H 528, 1D 151.** A number for
+T1.5 to work against.
+
+### Why it took six requests, and it is my error not the job's
+
+`runBackfill` sends `end_date` whenever `to` is set. The step-8 script's own
+comment asserted it does not — **I asserted a behaviour of code I wrote without
+reading it.** With `end_date` sent, the response stops exactly at `to`, so
+nothing in it proves the last bar closed, so that bar is stored FORMING and the
+frontier never reaches `to` — costing a second request.
+
+The job behaved correctly and conservatively throughout. The prediction was
+wrong.
+
+### Consequence, and it matters for parity — obligation 48
+
+**The last golden bar of the 15m and 1H legs is stored FORMING:**
+`15min 2026-09-02 15:15:00` and `1h 2026-09-02 14:00:00`. Both are the LAST BAR
+OF THE FIXTURE RANGE, both closed days ago, and both sit in the database marked
+unsettled. Parity must not compare against a bar the system considers still
+moving.
+
+### OQ-5 — HELD
+
+Predicted **DATE-ONLY**. Observed `"2021-09-02"`, `"2021-09-03"`, `"2021-09-06"`.
+Date-only.
+
+### OQ-9 — NOT ANSWERED, stays OPEN
+
+The 1D window returned 1,449 bars, far below 5,000, so nothing tested the cap.
+Not closed on inference from the 15m calls.
+
+### OQ-10 — stronger, still not closed
+
+A **1,982-bar page cost exactly 1 credit** (`api-credits-used` 0→1), as did a
+1,450-bar page. That is far better evidence than the 3-bar request, and it is
+still not the 5,000-bar page the question asks about. **Partial.**
+
+**Credits: 6 used for 6 requests, one per request regardless of page size.** The
+step-8 estimate was 3 credits; the shortfall is entirely the extra request per
+leg described above.
+
+### THE FINDING THAT CHANGES A DECISION — obligation 49
+
+**The fetched 1D series shares NO TIMESTAMP with the golden fixture. Not one.**
+
+| | |
+|---|---|
+| Fetched 1D bars at `21:00Z` (the fixture's alignment) | **0** |
+| Fetched 1D bars at `00:00Z` | **1,449** |
+| Fixture 1D bars | all at `21:00Z` |
+
+Twelve Data's `1day` `datetime` is date-only, so its daily bars are **UTC-day
+bars**. The fixture's daily bars open **21:00Z = 17:00 America/New_York**, the
+trading-day boundary confirmed three independent times (C2). These are not the
+same object, and no filtering reconciles them — a UTC day and a 17:00-NY day
+cover different sixteen-hour overlaps of different sessions.
+
+**So "1D fetched, not derived" does not achieve what it was chosen for.** The
+cost arithmetic behind that decision was right — 1 request against 27–36 — but
+the cheap thing turns out not to be the thing needed. **A 1D series comparable
+to the fixture can only be built by aggregating 15M bars on a 17:00-NY boundary,
+which is T1.6 on top of T1.5's calendar.**
+
+**And that restores the cost.** Obligation 41 needs 1,000 daily bars of warm-up
+before 2025-07-06, so aggregation needs 15M history from ~2021 — the ~135,000
+bars and 27–36 requests the fetch was chosen to avoid.
+
+**What the fetched 1D series IS still good for:** exactly what ADR-008 already
+provides for — a regression comparator for T1.6's aggregation, on the days where
+a UTC day and a trading day happen to align. It is kept, not discarded, and it
+is not obligation 41's 1D leg.
 
 ---
 
