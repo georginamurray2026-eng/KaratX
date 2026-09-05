@@ -495,3 +495,102 @@ landed.** Not clock skew - the hosts measured 92 ms apart - but two clocks:
 `last_seen_at` carrying the worker's run-start value from ten seconds earlier.
 Fixed by writing both from one value. Recorded in LESSONS.md and as a permanent
 control beside the six mutation controls.
+
+---
+
+## OQ-17. Detector 3 — `implausible_gap`, predicted before the run
+
+**The threshold is 8 x ATR(14), fixed in D3 before any distribution was seen,
+and it does not move.** That is the whole point of having fixed it early. If the
+count is surprising, the response is diagnosis (below), not a new multiplier.
+
+### (a) Cost — the first prediction made under the amended practice
+
+Boundary, cache state and row count all named, because a measurement scores a
+prediction only if both name the same boundary.
+
+**PREDICTION, made before the run:**
+
+> **60-120 ms of CLIENT-OBSERVED time per month chunk, WARM buffers, at
+> 166,344 rows** — and **6-12 s client-observed across all 81 chunks.**
+
+Derived from measured server-side figures plus the ratio the baseline exposed.
+`EXPLAIN (ANALYZE)` on the final query, 2,876 rows in the chunk:
+
+| | Execution Time | plan |
+|---|---|---|
+| cold | **75.8 ms** | Bitmap Heap Scan + **Sort** (253 kB quicksort) |
+| warm | **6.3 ms** | same |
+| warm | **4.9 ms** | same |
+
+**THE SORT IS EXPECTED AND ACCEPTED.** This query needs `high`, `low` and
+`close`, so it cannot be index-only; the planner takes a bitmap scan, which
+returns physical order, and must then sort. The recorded "no Sort anywhere"
+holds only for index-only scans.
+
+**Why the client-observed prediction is ~10x the server-side figure**, rather
+than equal to it: detectors 1+2 measured **846 ms client-observed** across 81
+chunks against **5.6-8.3 ms server-side** per chunk — roughly 10 ms of
+round-trip and driver parsing per chunk on top of execution. This query returns
+four columns instead of one, so parsing costs more. That ratio is the
+prediction's weakest part and is stated as such.
+
+### (b) The 14-bar warmup — reported as its own number, never a silent skip
+
+**A DESIGN DECISION THAT HAD TO BE MADE EXPLICIT: the ATR window resets at
+WEEKLY closures but NOT at daily breaks.** A 49-hour weekend gap means the
+preceding fourteen bars describe a different session; a 1-hour break does not,
+and resetting there would discard volatility information for nothing.
+
+**Two separate numbers, and they are not the same thing:**
+
+| | predicted | what it is |
+|---|---|---|
+| **Unscannable — no ATR yet** | **~4,830** | 345 weekly opens x 14 bars |
+| **Excluded — boundary crossing** | **~1,725** | 345 weekly + 1,380 daily-break crossings, where the "gap" IS the closure |
+
+**The first is larger than the expected finding count by a factor of about
+fifty, which is exactly why it is reported rather than folded into a skip.** A
+detector that quietly declines to examine 4,830 bars and reports "60 findings"
+is claiming a clean scan it never performed.
+
+Scannable is therefore roughly **166,344 - 10,813 closed-window - 4,830 warmup
+- 1,380 break crossings = ~149,300 bars**.
+
+### (c) The count — narrowed from 50-250
+
+**PREDICTION: 60, range 30-120.**
+
+The old range was set before the threshold's severity was thought through.
+8 x ATR(14) on a CLOSE-TO-CLOSE move is very loud: true range runs roughly
+2-3x mean absolute close-to-close move, so 8 x ATR is on the order of 20x a
+typical move. Under a Gaussian that never happens; under real fat tails it
+happens on genuine shocks — NFP, CPI, FOMC, and unscheduled geopolitical
+events. A handful per year over 6.6 years lands near 60.
+
+**The mechanism that could break this, stated in advance: ATR COMPRESSION.**
+ATR(14) at 15min spans only 3.5 hours. After a flat overnight stretch the
+denominator shrinks and an ordinary move can clear 8x. If the count overshoots,
+this is the first thing to check — and it is checkable, see (d).
+
+### (d) What each outcome would MEAN — decided before seeing which one happens
+
+**The discriminator is WHERE THE FLAGGED BARS SIT, not how many there are.**
+
+| outcome | diagnosis | how to tell |
+|---|---|---|
+| **30-120** | threshold behaving as intended | flags land on known event dates — Mar 2020, Mar 2022, the 2025-26 run-up |
+| **0-5** | **the DETECTOR is broken, not the threshold** | re-run at 4x ATR. If a COVID-crash bar still does not flag, the exclusion logic is eating real events |
+| **300-1,000** | **the ATR WINDOW is wrong, not the multiplier** | flagged bars cluster at LOW ATR. 14 bars is 3.5 hours; a longer window or a session-aware one is the fix |
+| **>3,000** | **not a threshold question at all** | flags cluster at session opens => boundary exclusion failed. Spread evenly => gold genuinely is that jumpy at 15min and the premise was wrong |
+
+**So the pre-commitment is: a high count does NOT license raising the
+multiplier.** It licenses asking whether the denominator was computed over the
+right window, which is a different question with a different answer. Lowering
+the multiplier to make a number look reasonable is the move this whole
+early-decision discipline exists to prevent.
+
+**And this detector's number carries information the other two cannot.** It is
+the first finding independent of the calendar — no `self_consistent` field, no
+`basis`, nothing derived from boundaries that were themselves measured against
+this feed.
