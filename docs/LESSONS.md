@@ -1603,3 +1603,43 @@ answering a question the system no longer asks.**
 got 51" and files it as "our estimates run ~40% low" will distrust good
 estimates and will not look for the design change that actually caused it. The
 categories are different and only one of them says anything about estimating.
+
+### "It passes locally" and "it passes in CI" were not claims about the same input
+
+CI #52 failed on the secret scan. Run locally, the same scanner found **three**
+findings; CI could only ever have seen **two**.
+
+The third was `CI_PROOF_TOKEN` in `packages/core/src/ci-proof-secret.ts`, planted
+by T0.9's deliberate-red exercise. Its commit `b3556a3a` **is not an ancestor of
+`main`** — it survives as a dangling object in this clone and in no other. A
+fresh CI checkout has never contained it.
+
+**So the local scanner and the gating scanner were reading DIFFERENT HISTORIES,
+and nothing said so.** Both commands are `gitleaks git`. Both report "N commits
+scanned". Neither prints which N.
+
+**The direction was harmless HERE and that is luck, not a property.** The local
+history was a superset, so local was the stricter check — a local pass would have
+implied a CI pass. **Reverse the containment and the failure inverts into the
+dangerous kind:** a repository where CI's clone contains something the developer's
+does not — a branch merged by someone else, a commit fetched from a fork, a
+squash that left the original reachable on the remote — gives a green local scan
+over a history that CI will reject, or worse, a green local scan over a history
+that CI accepts while a real credential sits in a commit the developer never
+pulled.
+
+**Same family as the gitleaks version check falling through to Docker**: two
+paths that look like one command, differing in an input nobody names, with the
+difference visible only when the answers disagree. It took a failing build to
+notice, and the first hypothesis was that the scanner had changed behaviour.
+
+**What to do about it.** When a local run and a gating run of the SAME TOOL
+disagree, suspect the INPUT before the tool. For history-scanning tools the input
+is the commit graph, and `git merge-base --is-ancestor <commit> main` answers in
+one line whether a finding is even reachable from what CI builds. That single
+check turned "the scanner has started failing" into "my commit is on main and the
+other one never was" in under a minute.
+
+**And the reporting is the real gap:** a scanner that says "129 commits scanned"
+without saying *which* is not reporting its input. A gate whose input is
+unstated cannot be reproduced, only re-run and hoped at.

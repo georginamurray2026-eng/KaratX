@@ -9,13 +9,83 @@ handover document.
 
 **Obligation counts live in [OBLIGATIONS.md](./OBLIGATIONS.md) and are
 deliberately not restated here** — see the note where the summary table used to
-be. As of 2026-09-04: nothing overdue, nothing awaiting a person. **Obligation
+be. As of 2026-09-05: nothing overdue, nothing awaiting a person. **Obligation
 43 was raised 2026-09-04** out of the T1.4 estimate and takes the open count
 from 20 to 21.
 
 ---
 
-## ▶ START HERE — session handoff, 2026-09-04
+## ▶ START HERE — T1.4 IS COMPLETE, 2026-09-05
+
+**All ten steps done. `candles` holds 169,704 rows: 166,344 at 15min spanning
+2020-01-24 13:00Z to 2026-09-05 09:30Z, plus 1,911 at 1h and 1,449 at 1D.**
+Working tree clean, `main` pushed.
+
+**READ [OPEN-QUESTIONS-T1.4.md](./OPEN-QUESTIONS-T1.4.md) BEFORE PLANNING T1.5.**
+Every prediction in it was committed before its run and none has been edited.
+The wrong ones are the useful half, and three of them are wrong.
+
+### What T1.4 delivered, against BUILD-PLAN's criteria
+
+| Criterion | State |
+|---|---|
+| Resumes from the last successfully stored bar | **DONE** — the frontier is `max(open_time) WHERE is_final`, so the write and the checkpoint are ONE FACT and cannot drift |
+| Respects rate limits with backoff | **PARTIAL, AND SAY SO.** The pacer works. **The backoff has never executed** — see below |
+| `job_runs` records start, end, bars, errors | **DONE** — migration 0003, every constraint made to fail |
+| Running it twice imports nothing | **DONE** — proved on the full run, which crossed its own overlap |
+| Obligation 31's evidence | **DISCHARGED** at 4.6 MB |
+
+### The three findings that outlast the task
+
+**1. The provider revises finalised bars, AND THE REVISIONS REVERT (obligation
+54).** Four bars changed within thirty minutes, every one narrowing; two later
+went back to their original values. **Dropped ticks do not come back, so the
+tick-dropping explanation is dead and NOTHING REPLACES IT.** No mechanism is
+established. "Narrowing" is a description of what was seen, is demonstrably not
+a description of a process, and is used only to decide whether to stop a run.
+
+**2. §7's never-repair rule is now demonstrated as a MEASUREMENT.** Had the
+mid-run narrowing been accepted as a correction, **we would today disagree with
+the provider on two bars while believing we agreed.** The stored values —
+refused, kept, never repaired — are the ones the provider now serves.
+
+**3. `outputsize` anchors on the NEWEST bars (obligation 50, discharged).** A
+backfill that pages by advancing `start_date` fetches the same recent window
+forever and reports `complete` having stored none of the history. It did not
+silently succeed only because a conflict stopped it first. **Pages are windows
+now.**
+
+### What T1.4 did NOT establish, stated so nobody assumes it did
+
+- **Obligation 5's bounded backoff has never run in anger.** 51 requests, zero
+  429s, pacer idle 3 s of 1,588 — database writes (~30 s/page) dwarf the 8.57 s
+  interval, so **the rate limit cannot bind on this path at all**. This run says
+  nothing about the rate limit except that this workload cannot reach it. A real
+  test must be BUILT, not waited for.
+- **1D parity cannot be done against the fetched daily series** (obligation 49).
+  0 of 1,449 fetched daily bars sit at the fixture's 21:00Z boundary; all 1,449
+  are UTC-day bars. It needs T1.6 aggregation on T1.5's calendar.
+- **Venue divergence is unmeasured** (obligation 43), so obligation 12's
+  tolerance still cannot be a number.
+- **A provider gap wider than one window would truncate a run silently**
+  (obligation 53). Not a live risk for this provider; a real one for T1.7.
+- **The failed-restore message is untested at scale** (obligation 38, re-scoped
+  rather than closed).
+
+### Hazards a cold session needs
+
+**11,058 weekend bars are stored at 15min, and that is EXPECTED.** The calendar
+is T1.5 and does not exist yet, so nothing filters them. **Do not read them as
+corruption.** And `isoDOW 6,7` is NOT "the weekend" for this instrument — it
+sweeps up the genuine Sunday-evening open. Saturday-only, which is ADR-008's
+measure, is **zero before 2025**, 1,917 in 2025, 3,351 in 2026.
+
+**One bar is FORMING and should be** — the newest. `latestFinalOpenTime` filters
+on `is_final`, so a forming bar is never a resume point.
+
+---
+
+## Session handoff, 2026-09-04 — superseded by the T1.4 completion above
 
 **PHASE 0 IS CLOSED AT LOCAL SCOPE.** Five deployment criteria were DEFERRED to
 T6.1 and never run — see the closure below. Do not read "Phase 0 closed" as
