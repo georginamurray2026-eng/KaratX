@@ -23,7 +23,8 @@ import { closeRun, openRun, StaleRunError } from './job-run'
  * skipping the three ADR-008 requirements the adapter exists to enforce.
  */
 
-const API_KEY = new Secret('td-test-key-0123456789')
+// Low-entropy on purpose - see the note in client.test.ts.
+const API_KEY = new Secret('xxxxxxxx-not-a-real-key-xxxxxxxx')
 
 /** Bars in Twelve Data's shape, generated so a run can span several pages. */
 function makeBars(count: number, startMs: number): { datetime: string; [k: string]: string }[] {

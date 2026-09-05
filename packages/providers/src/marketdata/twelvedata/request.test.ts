@@ -19,7 +19,11 @@ import {
  */
 
 // Long enough to be unmistakable in a URL, and shaped like a real key.
-const API_KEY = 'td-0123456789abcdef0123456789abcdef'
+// LOW-ENTROPY ON PURPOSE. gitleaks scans full history and flagged the
+// previous high-entropy placeholder as a generic-api-key, failing CI #52. A
+// test fixture that LOOKS like a credential trains the scanner to be ignored,
+// which is the habit that lets a real one through.
+const API_KEY = 'xxxxxxxx-not-a-real-key-xxxxxxxx'
 const apiKey = new Secret(API_KEY)
 
 /** A query for every endpoint, so the loops below cover all of them. */

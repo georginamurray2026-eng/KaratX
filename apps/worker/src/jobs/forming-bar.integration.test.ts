@@ -38,7 +38,8 @@ import {
  * threw.
  */
 
-const API_KEY = new Secret('td-test-key-0123456789')
+// Low-entropy on purpose - see the note in client.test.ts.
+const API_KEY = new Secret('xxxxxxxx-not-a-real-key-xxxxxxxx')
 const SERIES_START = Date.parse('2026-01-01T00:00:00Z')
 const INTERVAL_MS = 15 * 60_000
 

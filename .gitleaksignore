@@ -1,0 +1,36 @@
+# Findings gitleaks must not fail on, BY EXACT FINGERPRINT.
+#
+# A fingerprint is `commit:file:rule:line`. It matches ONE finding in ONE commit
+# and nothing else — a real credential committed later has a different
+# fingerprint and still fails the build. This file cannot be used to disable a
+# rule, only to acknowledge a specific finding that has been looked at.
+#
+# ADDING TO THIS FILE IS A SECURITY DECISION AND SHOULD BE ARGUED IN THE COMMIT
+# THAT DOES IT. The habit this guards against is not a leak — it is a scanner
+# that cries wolf until someone stops reading it.
+#
+# ---------------------------------------------------------------------------
+# 2026-09-05 — two TEST FIXTURES, not credentials. CI #52 failed on these.
+#
+# `aaa0179` introduced the Twelve Data adapter with a fake API key in two test
+# files. The value was `td-` followed by repeated hex, invented for the tests;
+# gitleaks scored it 4.14 entropy and matched `generic-api-key`.
+#
+# VERIFIED BEFORE IGNORING, not assumed:
+#   - The REAL TWELVEDATA_API_KEY has never been committed. `git log --all -S`
+#     over the whole repository returns nothing. `.env` is git-ignored.
+#   - The flagged value is a literal invented for tests, and the tests assert
+#     against it by name, so what it is does not matter.
+#
+# THE SOURCE IS FIXED SO THIS CANNOT RECUR: all four test fixtures now use a
+# low-entropy placeholder (2.51 against a ~3.5 threshold), and a targeted scan
+# of those files reports no leaks. These two entries cover only the HISTORICAL
+# occurrence in an already-pushed commit.
+#
+# WHY NOT REWRITE HISTORY INSTEAD: removing the value from `aaa0179` means a
+# force-push over pushed `main`. That is a far larger and less reversible action
+# than acknowledging two fingerprints for a value proven to be fake. If the
+# preference is a clean history, these entries come out and the rewrite happens
+# deliberately — the decision is recorded here rather than buried.
+aaa0179729b6b6443018e5b9543c3bd5edf950d4:packages/providers/src/marketdata/twelvedata/client.test.ts:generic-api-key:10
+aaa0179729b6b6443018e5b9543c3bd5edf950d4:packages/providers/src/marketdata/twelvedata/request.test.ts:generic-api-key:22
