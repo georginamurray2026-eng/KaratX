@@ -499,6 +499,80 @@ is not obligation 41's 1D leg.
 
 ---
 
+## STEP 9 — the full 6.6-year 15M backfill. PREDICTIONS BEFORE THE RUN.
+
+**Written 2026-09-05, before the run starts. Do not edit after.**
+
+**Mode.** `from = 2020-01-24 13:00` (the measured earliest 15min bar),
+`resumeFrom: 'from'`, no `to` — so the run walks from 2020 to the present. The
+frontier is currently 2026-09-02 15:15 (the parity window), which is AHEAD of
+where the history starts, so an ordinary resumed run would fetch nothing
+historical. This is the one case where starting at `from` is the ordinary thing
+rather than a re-verification.
+
+### The numbers
+
+| | prediction | reasoning |
+|---|---|---|
+| **Requests** | **36** (range 34–40) | ~174,200 bars ÷ 5,000 = 35 data pages, + 1 terminating page that advances nothing |
+| **Wall clock** | **~10 min** (range 6–20) | The pacer is 7/min = 8.57 s between requests, but ~5,000 upserts per page at the ~3 ms/bar seen in step 8 is ~15 s of database work per page. **I expect the DATABASE to be the binding constraint, not the rate limit** — which would mean the pacer never waits |
+| **Credits** | **36**, one per request | 8 already used today, so ~44 of 800 |
+| **`applied`** | **~35** — one per page boundary | Each page's last bar is stored forming and finalised by the next page. **It should track the request count.** Far above that means bars are being re-formed |
+| **`noop`** | **~2,020** | The 1,982 existing parity bars re-offered, plus ~35 page-boundary overlaps |
+| **`inserted`** | **~172,200** | |
+| **Total stored, 15min** | **~174,200** | 5.39 yr × 24,342 (weekday-only era) + 1.23 yr × 35,071 (24/7 era) |
+| **Weekend bars** | **~12,000** (range 10,000–13,000) | 0 before the mid-2025 synthesis boundary; ~448 days after × 2/7 × 96 |
+| **`conflict`** | **0** | |
+
+### What I expect at the overlap — watch item 2
+
+The 15min table already holds **1,982 final bars from 2026-08-13 to 2026-09-02
+15:15**, fetched yesterday. When the run reaches that range it re-offers them.
+
+**Every one should be `noop`** — identical values, nothing written. A `conflict`
+there would mean Twelve Data restated a finalised bar between yesterday and
+today, which is ADR-008's first reversal condition, and `CONFLICT_THRESHOLD = 1`
+stops the run at the first one. **On a fresh range a conflict is unreachable;
+here it is reachable, and that is exactly why the overlap is worth watching.**
+
+Beyond 2026-09-02 15:15 the run continues to the present: ~2.7 days × 96 ≈ **260
+new bars**, inserted.
+
+### OQ-6 — does a page fill to `outputsize`?
+
+**PREDICTION: YES.** With ~174,000 bars available and `outputsize=5000`, an
+early page should return exactly 5,000. This is the first request that can
+answer it: every previous window held fewer bars than the cap, so the window was
+always the limit rather than the page.
+
+### OQ-9 — is `outputsize` capped at 5,000 at every interval?
+
+**PREDICTION: this run RE-CONFIRMS 15min AND DOES NOT ANSWER THE OPEN HALF.**
+
+Stating it now so the result is not over-read afterwards. OQ-9 asks about *every
+interval*, and its live doubt is `1day` — 5,000 was already measured at `15min`
+in T1.1. **This is a 15min run.** A 5,000-bar page here is a re-confirmation at
+scale of something already known, not the answer to the question.
+
+**OQ-9 stays OPEN unless a `1day` request returns 5,000 bars, and this run makes
+none.** Recorded in advance precisely because "we saw a 5,000-bar page" will
+look like the answer once it happens.
+
+### OQ-1 — watch item 3
+
+The pacer runs at 7/min against a documented 8, and the daily 800 has never been
+tested. **A 429 would mean the per-minute figure is wrong or the daily half is
+lower than documented.** If one arrives the headers get reported, not retried
+through silently — `api-credits-used` / `api-credits-left` are on every response
+and the capture keeps them.
+
+**And I expect no 429 at all**, because the database is slower than the pace.
+
+| Status | **OPEN — predictions recorded, run not yet started** |
+|---|---|
+
+---
+
 ## What answers these, and in what order
 
 **Step 7 of T1.4: one request.** A narrow window at `15min`, which is enough for
