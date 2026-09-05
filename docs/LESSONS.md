@@ -1660,14 +1660,17 @@ unstated cannot be reproduced, only re-run and hoped at.
 
 ### A rate measured under one set of conditions, applied to another
 
-**SIX INSTANCES ACROSS FOUR DIFFERENT QUANTITIES**, which is what makes this a
+**SEVEN INSTANCES ACROSS FIVE DIFFERENT QUANTITIES**, which is what makes this a
 shape rather than a recurring arithmetic slip. Three concern BAR DENSITY and
 are below. The fourth concerns WRITE THROUGHPUT. **The fifth is an ILL-FORMED
 PREDICTION about migration timing, and it happened INSIDE this practice on the
 same day the fourth was written up** - see the separate entry at the end of this
 file, which is where the change to the practice is recorded. **The sixth is
 QUERY CACHE STATE**, recorded with the query-cost practice above — a quantity
-nobody had thought had a denominator at all.
+nobody had thought had a denominator at all. **The seventh is QUERY BOUNDARY** -
+server-side against client-observed - and it is recorded at the end of this file
+as a RULE rather than a seventh anecdote, because four distinct boundaries have
+now been confused in one week.
 
 **The general form: a rate is only valid under the conditions it was measured
 in, and those conditions are usually not written down beside the number.** Both
@@ -1906,3 +1909,61 @@ not a second method.
 **And check the checkable term first.** The Sunday-evening figure was an
 assumption about a feed whose entire history is in the database. Sitting behind
 a sum that already looked right is the only reason it survived.
+
+### Two timestamps that must be ordered cannot come from two clocks, however close
+
+**2026-09-06, the first T1.5 baseline run.** `data_quality_events_seen_order_check`
+(`last_seen_at >= confirmed_at`) rejected the first batch. **Zero rows landed**,
+so the failure was total and immediate rather than partial and quiet.
+
+**The cause was not clock skew.** The two hosts were measured **92 ms** apart,
+and no amount of synchronisation would have helped. The cause was **ten seconds
+of elapsed run time**: `confirmed_at` defaulted to `now()` — the DATABASE clock,
+evaluated per statement, at write time — while `last_seen_at` carried the
+worker's run-start value, captured before ten seconds of scanning. Every row
+arrived with the second timestamp behind the first.
+
+**THE NATURAL IMPLEMENTATION IS WHAT PRODUCED IT.** A column default for one
+timestamp and a passed-in value for the other is what anyone would write first,
+and it reads correctly. The defect is only visible once the gap between the two
+reads exceeds nothing, which in a batch job it always does.
+
+**The rule: one value, written to both columns.** Not two clocks synchronised,
+not one clock read twice — one value. Here `confirmed_at` is written explicitly
+from the same variable as `last_seen_at`, and on conflict it is absent from the
+SET list so only `last_seen_at` moves.
+
+**And the constraint is what found it, on the first run, before any data landed.**
+It is recorded beside the six mutation controls in
+`data-quality-events.integration.test.ts` as evidence that this table's
+constraints do work rather than decorate. A defect neither party predicted,
+caught by a CHECK that cost one line (§9).
+
+### A measurement answers a prediction only if both name the same BOUNDARY
+
+**SEVENTH INSTANCE, and it stops being an anecdote here.** Four distinct
+boundaries have been confused inside one week, on the same project:
+
+| boundary | what it includes |
+|---|---|
+| **DDL-only** | the statements, nothing around them |
+| **server-side** | what `EXPLAIN ANALYZE` reports: execution in the backend |
+| **client-observed** | plus round-trip, result serialisation, driver row parsing |
+| **total wall-clock** | plus process start, connect, and all non-database work |
+
+**THE SHARPEST PART: the original prediction was CLOSER than the correction.**
+Detectors 1+2 were predicted at **1.4–2.0 s** from a cold server-side figure.
+That was then "corrected" to **450–660 ms** using a warm server-side figure. The
+run measured **846 ms client-observed** — inside the original range, outside the
+correction. **Correcting a number using a figure from a different boundary made
+it worse**, and the correction felt like rigour at the time.
+
+**The rule: a prediction must name its boundary, or no measurement can score
+it.** "846 ms" is not an answer to "how fast is it" until it says *whose clock
+and which segment*. `EXPLAIN ANALYZE` never measures what a job experiences, and
+a job's timer never measures what the planner sees. Both are correct; they are
+answers to different questions.
+
+**Combined with the cache-state clause, the full form is:** state the boundary,
+the cache state, and the row count — in the PREDICTION, not beside the
+measurement.

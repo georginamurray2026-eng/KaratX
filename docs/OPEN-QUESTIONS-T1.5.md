@@ -412,3 +412,86 @@ around the clock, and case 2 above is reasoned rather than measured.
 **Development happens in Bangkok, UTC+7, which has no DST.** Nothing about this
 class of bug will ever appear locally, in any manual check, at any time of year.
 It is only ever visible in the data or in a test that names the dates.
+
+---
+
+## OQ-13c / OQ-14 / OQ-15 — RESULTS, run 2026-09-06
+
+**THE BASELINE.** Every future rate comparison is measured against this, so the
+denominator is stated with it:
+
+| | |
+|---|---|
+| Bars scanned | **166,344** |
+| Range | 2020-01-01T00:00Z .. 2026-09-06T00:00Z |
+| Timeframe | `15min` |
+| Calendar | rules 1-6, migration `0004_calendar_measured_against_twelve_data` |
+| Calendar instants open | 158,768 |
+| Instants the calendar could not answer | 2,228 (before 2020-01-24) |
+
+**The range deliberately starts before the calendar does.** Trimming it to
+2020-01-24 would make the 2,228 vanish, and that option was considered only
+after the run produced them. Fitting the range to the answer is the trap the
+early-decision discipline exists to avoid.
+
+### Counts, actual against predicted
+
+| Event type | Predicted | Actual | |
+|---|---|---|---|
+| `unexpected_bar` | 10,813 | **10,813** | exact |
+| - weekly_closure | 9,645 | **9,645** | exact |
+| - daily_break | 1,168 | **1,168** | exact |
+| `missing_bar` | 3,225 | **3,237** | see below |
+| `unknown` (stored) | - | 0 | |
+| structural three | not run | **not run**, reason emitted | D4 |
+
+**The split is exact on both components**, which is the stronger result - a
+matching total with a wrong classification would have looked like a pass.
+
+**`missing_bar` is reported as A NUMBER WITHOUT AN ACCOUNT, not as a prediction
+that held.** OQ-13b falsified its composition before the run. The +12 is fully
+explained by the 345.1-week rounding in the top-down derivation - predicted
+expected-open 158,756 against an actual 158,768, the same 12 - but what the
+3,237 is MADE OF remains unknown.
+
+### Cost, and the correction that was worse than the original
+
+| | Predicted | Actual |
+|---|---|---|
+| Read, 81 chunks | 1.4-2.0 s (original, cold server-side) | **846 ms run 1, 733 ms run 2** |
+| Read, "corrected" | 450-660 ms (warm server-side) | - |
+| Write, 14,050 rows | single-digit seconds | **4.3 s / 5.2 s** |
+| Wall clock | unpredicted | **14.2 s** |
+
+**THE ORIGINAL PREDICTION WAS CLOSER THAN THE CORRECTION**, and the reason is a
+BOUNDARY confusion: `EXPLAIN ANALYZE` reports server-side execution, while the
+job measures client-observed time including round-trip and driver row parsing.
+Recorded as a rule in LESSONS.md rather than a seventh anecdote.
+
+**AND THE COST WAS NOT WHERE ANYONE LOOKED.** Of 14.2 s, reads are 0.8 s and
+writes 4.3 s; **~9 s is `expectsBarAt`**, ~411,000 calls at a measured 28.97 us.
+The first estimate in this project to be wrong about WHICH COMPONENT dominates
+rather than by how much. Obligation 57.
+
+### OQ-14 — idempotency, all four asserted
+
+| Quantity | After run 1 | After run 2 | |
+|---|---|---|---|
+| `count(*)` | 14,050 | **14,050** | identical |
+| `sum(occurrences)` | 14,050 | **28,100** | doubled |
+| `min(confirmed_at)` | 18:32:30.126 | **18:32:30.126** | unchanged |
+| `max(last_seen_at)` | 18:32:30.126 | **18:33:06.686** | advanced |
+
+Run 2 reported **0 inserted, 14,050 incremented**, distinguished by `xmax = 0` -
+`rowCount` reports both cases identically. Also checked: every row at
+`occurrences = 2`, one distinct `confirmed_at`, and **3 distinct payload hashes
+across 14,050 rows**, which is the canonicalisation behaving.
+
+### The defect the first run found
+
+`data_quality_events_seen_order_check` rejected the first batch. **Zero rows
+landed.** Not clock skew - the hosts measured 92 ms apart - but two clocks:
+`confirmed_at` defaulting to the database's `now()` at write time against
+`last_seen_at` carrying the worker's run-start value from ten seconds earlier.
+Fixed by writing both from one value. Recorded in LESSONS.md and as a permanent
+control beside the six mutation controls.

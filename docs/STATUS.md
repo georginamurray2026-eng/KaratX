@@ -15,6 +15,48 @@ from 20 to 21.
 
 ---
 
+## ▶ START HERE — T1.5: THE BASELINE EXISTS, 2026-09-06
+
+**THE BASELINE NUMBER. 166,344 bars scanned, 15min, 2020-01-01 to 2026-09-06,
+calendar rules 1-6 at migration 0004.** Every future rate comparison is measured
+against this, so quote it with its denominator or not at all.
+
+| event | count |
+|---|---|
+| `unexpected_bar` | **10,813** (weekly_closure 9,645, daily_break 1,168) |
+| `missing_bar` | **3,237** |
+| unknown (stored / expected) | 0 / 2,228 |
+
+**14,050 rows in `data_quality_events`, all severity `info`, every one carrying
+`payload.basis` and `payload.self_consistent`.** The caveat is IN THE ROW: these
+detectors compare the feed to a calendar partly derived from that feed, so
+agreement is SELF-CONSISTENCY, NOT CORRECTNESS. Do not quote a count without it.
+
+**`unexpected_bar` hit its prediction exactly on BOTH components.**
+`missing_bar` came in at 3,237 against 3,225 predicted, but OQ-13b falsified
+that prediction's composition BEFORE the run — so it is **a number without an
+account**: the total is trustworthy, what it is made of is not yet known.
+
+**Proven idempotent by running it twice**: count identical, occurrences doubled,
+`confirmed_at` unchanged, `last_seen_at` advanced. All four asserted, because a
+stable count while `confirmed_at` drifted would mean rows are being rewritten
+rather than incremented.
+
+**The range starts before the calendar does, deliberately.** 2,228 instants
+before 2020-01-24 are reported as unknown and counted as neither finding.
+Trimming the range would erase them, and that option only appeared after the run
+produced them.
+
+**Still not run, and NOT zeroed:** `negative_price`, `high_below_low`,
+`close_outside_range` — rejected at insert by the `candles` CHECKs, so a scan
+cannot observe them. Revisions are out of the baseline, see D5.
+
+**Next: detector 3, `implausible_gap` at 8 x ATR(14).** The threshold is fixed
+in OPEN-QUESTIONS-T1.5.md and must not be revised after seeing the
+distribution. Then `stale_feed`.
+
+---
+
 ## ▶ START HERE — T1.5 HAS BEGUN. THE TABLE EXISTS, THE DETECTORS DO NOT.
 
 **Migration 0005 applied 2026-09-06: `data_quality_events`.** Ledger at 6.
