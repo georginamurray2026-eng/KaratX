@@ -49,7 +49,11 @@ export default tseslint.config(
   {
     files: ['scripts/**/*.mjs'],
     languageOptions: {
-      globals: { console: 'readonly', process: 'readonly' },
+      // `fetch` added 2026-09-06 for `ci-status.mjs`, the first maintenance
+      // script to make a network call. Scoped here rather than globally: no
+      // package under `packages/` or `apps/` should reach the network through
+      // a bare global, and `packages/core` may not reach it at all.
+      globals: { console: 'readonly', fetch: 'readonly', process: 'readonly' },
     },
   },
 

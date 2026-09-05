@@ -1967,3 +1967,34 @@ answers to different questions.
 **Combined with the cache-state clause, the full form is:** state the boundary,
 the cache state, and the row count — in the PREDICTION, not beside the
 measurement.
+
+### The API is authoritative; REACHING it is not. Check the sha before believing the conclusion
+
+**Three wrong readings out of the GitHub API layer in two days, and not one was
+the API being wrong:**
+
+| | what happened | the actual failure |
+|---|---|---|
+| CI #52 | a summariser reported green on a run that failed gitleaks | **relay** — the summary was not the source |
+| T1.4 | repeated 403s | **transport** read as data: "not answered" became "no runs" |
+| 2026-09-06 | a poll returned run 61 for sha `2afd150` | **selection** — the newest run in the repo, an unrelated Dependabot PR |
+
+**The third was one step from being reported as a green CI result for a commit
+it had nothing to do with.** It was caught only because the sha did not look
+familiar, which is not a control.
+
+**Two properties make this class hard to notice.** A rate-limited GitHub reply
+is a **JSON object with no `workflow_runs` key**, not an error status — so
+`body.workflow_runs[0]` yields `undefined` and the natural code reports "no
+runs found". And "the newest run" is a perfectly reasonable query that returns
+someone else's branch the moment anything else is pushed.
+
+**THE CONTROL IS CHEAP AND IT BELONGS IN THE SCRIPT, NOT IN THE READER'S HEAD:**
+filter runs to the target sha before reading any conclusion, and distinguish
+NOT ANSWERED from NO RUNS. `scripts/ci-status.mjs` does both, refuses rather
+than guesses, and was verified in three states — a green sha, a sha with no
+runs, and a real sha belonging to someone else.
+
+**The general form beyond GitHub: when a fact comes from a network call, the
+failure modes of the CALL are more likely than the failure modes of the fact.**
+An answer about the wrong subject looks exactly like an answer.
