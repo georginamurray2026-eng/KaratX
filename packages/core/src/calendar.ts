@@ -47,6 +47,15 @@
  * core; the pinning tests beside this file are the in-package half, and they
  * fail loudly if a historical conversion ever moves.
  *
+ * COST: ~29 MICROSECONDS PER CALL - measured, 28.97 us over 200,000 warmed
+ * calls, about 34,500 calls/second. The expense is
+ * `Intl.DateTimeFormat.formatToParts`, which is what makes this correct across
+ * historical DST. Irrelevant in a batch job - the T1.5 baseline spent ~9 s here
+ * across ~411,000 calls and nobody cared - but this function is on every path
+ * that asks whether a bar should exist, so a latency-sensitive per-bar caller
+ * needs to know before it writes the loop. **Obligation 57**, which also
+ * records the fix that keeps it pure: resolve per DAY rather than per bar.
+ *
  * NOTHING HERE READS A CLOCK. The instant is a parameter (F.3 invariant 1).
  */
 
