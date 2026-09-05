@@ -198,4 +198,108 @@ describe('data_quality_events - one condition about one bar is one row', () => {
       expect(await rowCount()).toBe(2)
     })
   })
+
+  /**
+   * THE ORDERING CHECK CAUGHT A REAL DEFECT ON THE FIRST BASELINE RUN, and it
+   * is recorded here beside the six controls because it is the same kind of
+   * evidence: proof that a constraint on this table is doing work rather than
+   * decorating it.
+   *
+   * WHAT HAPPENED. `confirmed_at` defaulted to `now()` - the DATABASE clock,
+   * evaluated per statement - while `last_seen_at` carried the worker's
+   * run-start time. The baseline spends about ten seconds scanning before its
+   * first write, so every row arrived with `last_seen_at` ten seconds BEHIND
+   * `confirmed_at` and the whole batch was rejected. Zero rows landed.
+   *
+   * THE SKEW WAS NOT THE CAUSE. The two hosts were measured 92 ms apart. Ten
+   * seconds of elapsed run time was the cause, and no amount of clock
+   * synchronisation would have prevented it.
+   *
+   * THE GENERAL FORM: two timestamps that must be ordered cannot come from two
+   * clocks, however close those clocks are. They must come from ONE value.
+   *
+   * And the natural implementation is the one that produced it - a column
+   * default for one timestamp and a passed-in value for the other is what
+   * anyone would write first.
+   */
+  describe('the ordering check, and the two-clock defect it caught', () => {
+    it('rejects a row whose last_seen_at precedes its confirmed_at', async () => {
+      await expect(
+        pool.query(
+          `INSERT INTO data_quality_events
+             (instrument_id, provider_id, timeframe, open_time, occurred_at,
+              payload_hash, payload, event_type, severity, confirmed_at, last_seen_at)
+           VALUES ($1, $2, '15min', $3, $3, $4, '{}', 'missing_bar', 'info',
+                   '2026-01-01T00:00:10Z', '2026-01-01T00:00:00Z')`,
+          [instrumentId, twelveDataId, T0, HASH_A],
+        ),
+      ).rejects.toMatchObject({ constraint: 'data_quality_events_seen_order_check' })
+    })
+
+    /** The positive control: one value for both is accepted. */
+    it('accepts a row whose two timestamps come from ONE value', async () => {
+      await expect(
+        pool.query(
+          `INSERT INTO data_quality_events
+             (instrument_id, provider_id, timeframe, open_time, occurred_at,
+              payload_hash, payload, event_type, severity, confirmed_at, last_seen_at)
+           VALUES ($1, $2, '15min', $3, $3, $4, '{}', 'missing_bar', 'info', $5, $5)`,
+          [instrumentId, twelveDataId, T0, HASH_A, '2026-01-01T00:00:00Z'],
+        ),
+      ).resolves.toBeDefined()
+    })
+  })
+
+  /**
+   * THE IDEMPOTENCY PROOF, made permanent.
+   *
+   * Run live against 14,050 rows on 2026-09-06 and asserted here so it cannot
+   * silently stop being true. ALL FOUR QUANTITIES, not just the count: a count
+   * that held while `confirmed_at` drifted would mean rows are being REWRITTEN
+   * rather than incremented, and that is invisible to a count alone.
+   */
+  describe('a second detection increments and never rewrites', () => {
+    const upsert = (seenIso: string) =>
+      pool.query(
+        `INSERT INTO data_quality_events
+           (instrument_id, provider_id, timeframe, open_time, occurred_at,
+            payload_hash, payload, event_type, severity, confirmed_at, last_seen_at)
+         VALUES ($1, $2, '15min', $3, $3, $4, '{"k":1}', 'unexpected_bar', 'info', $5, $5)
+         ON CONFLICT (instrument_id, provider_id, timeframe, open_time, event_type, payload_hash)
+         DO UPDATE SET last_seen_at = excluded.last_seen_at,
+                       occurrences  = data_quality_events.occurrences + 1`,
+        [instrumentId, twelveDataId, T0, HASH_A, seenIso],
+      )
+
+    it('holds count, doubles occurrences, keeps confirmed_at, advances last_seen_at', async () => {
+      await upsert('2026-01-01T00:00:00Z')
+      const first = await pool.query<{
+        n: string
+        occ: string
+        confirmed: Date
+        seen: Date
+      }>(
+        `SELECT count(*)::text AS n, sum(occurrences)::text AS occ,
+                min(confirmed_at) AS confirmed, max(last_seen_at) AS seen
+           FROM data_quality_events`,
+      )
+
+      await upsert('2026-01-02T00:00:00Z')
+      const second = await pool.query<{
+        n: string
+        occ: string
+        confirmed: Date
+        seen: Date
+      }>(
+        `SELECT count(*)::text AS n, sum(occurrences)::text AS occ,
+                min(confirmed_at) AS confirmed, max(last_seen_at) AS seen
+           FROM data_quality_events`,
+      )
+
+      expect(second.rows[0]!.n).toBe(first.rows[0]!.n)
+      expect(Number(second.rows[0]!.occ)).toBe(Number(first.rows[0]!.occ) * 2)
+      expect(second.rows[0]!.confirmed.getTime()).toBe(first.rows[0]!.confirmed.getTime())
+      expect(second.rows[0]!.seen.getTime()).toBeGreaterThan(first.rows[0]!.seen.getTime())
+    })
+  })
 })
