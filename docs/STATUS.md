@@ -15,6 +15,37 @@ from 20 to 21.
 
 ---
 
+## ▶ START HERE — T1.5 HAS BEGUN. THE TABLE EXISTS, THE DETECTORS DO NOT.
+
+**Migration 0005 applied 2026-09-06: `data_quality_events`.** Ledger at 6.
+`candles` unchanged at 169,704. The new table is **EMPTY, deliberately** — the
+first detector run is what measures the baseline, so nothing may write to it
+before then, not even test rows. The six mutation controls in
+`data-quality-events.integration.test.ts` run against the HARNESS database and
+never touch this one; the ad-hoc catalog checks run at apply time were wrapped in
+a rolled-back transaction for the same reason. Verified after: **0 rows.**
+
+**VERIFIED BY CATALOG, NOT BY EXIT CODE:** 13 columns all NOT NULL; the unique
+index carrying all six columns IN ORDER read from `pg_index.indkey`; the
+`confirmed_at` index; both foreign keys; and the CHECK vocabulary DIFFED
+term-by-term against the schema file — 9 terms, exact match.
+
+**THE BASELINE DECISION IS ALREADY MADE AND MUST NOT BE RE-OPENED WHEN THE
+FIRST NUMBER APPEARS.** `unexpected_bar` against our calendar is
+INFORMATIONAL — counted, queryable, NOT alerting. Roughly **10,800 of 166,344**
+bars is the expected disagreement (9,645 in the weekly-closure window, 1,168 in
+the daily break). **What alerts is a CHANGE IN THE RATE**, which is a different
+detector that cannot be built until the first run establishes the baseline. See
+the block in `packages/db/src/schema/market-hours.ts`. That decision was taken
+BEFORE any detector existed, precisely so it would not be taken against a number
+already on the screen.
+
+**Next: the detectors.** Every query they run states its EXPECTED COST before it
+is written and is EXPLAINed against real volume — 166,344 rows — before it is
+accepted, with the row count recorded beside any timing.
+
+---
+
 ## ▶ START HERE — T1.4 IS COMPLETE, 2026-09-05
 
 **All ten steps done. `candles` holds 169,704 rows: 166,344 at 15min spanning

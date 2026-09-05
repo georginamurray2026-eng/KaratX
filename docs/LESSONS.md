@@ -1658,11 +1658,40 @@ other one never was" in under a minute.
 without saying *which* is not reporting its input. A gate whose input is
 unstated cannot be reproduced, only re-run and hoped at.
 
-### The feed changed shape in 2025, so ANY figure derived from recent data is wrong for the older era
+### A rate measured under one set of conditions, applied to another
+
+**FIVE INSTANCES ACROSS THREE DIFFERENT QUANTITIES**, which is what makes this a
+shape rather than a recurring arithmetic slip. Three concern BAR DENSITY and
+are below. The fourth concerns WRITE THROUGHPUT. **The fifth is an ILL-FORMED
+PREDICTION about migration timing, and it happened INSIDE this practice on the
+same day the fourth was written up** - see the separate entry at the end of this
+file, which is where the change to the practice is recorded.
+
+**The general form: a rate is only valid under the conditions it was measured
+in, and those conditions are usually not written down beside the number.** Both
+errors took a figure that was correct in its own context and carried it into a
+context where the denominator meant something else.
+
+**THE FOURTH INSTANCE, 2026-09-05 — write throughput.** A rate of ~160 rows per
+second was derived by dividing bars stored by PAGE WALL-CLOCK. That denominator
+includes network time, provider latency and pacer waits, and the database was
+idle for most of it. Measured against database work alone the figure is **~105
+rows per second** — 166,441 upserts in 1,588 s, corroborated independently by
+~3,100 bars per ~30 s page. A 50% overstatement, in the direction that makes a
+planned write look cheaper than it is.
+
+**What to do: record the DENOMINATOR beside the rate.** "105 rows/s of database
+time, over 166,441 upserts" survives being carried elsewhere, because a reader
+can see whether their case matches. "160 rows/s" does not, and cannot be
+checked after the fact.
+
+---
+
+#### The three density instances
 
 Three times now, and the third made it a pattern rather than a coincidence.
 
-**The general form.** Twelve Data's XAU/USD is **weekday-only before 2025** at
+**The density form.** Twelve Data's XAU/USD is **weekday-only before 2025** at
 about 24,342 bars/year, and **24/7 from 2026** at about 35,071. Any density,
 count, duration or cost derived from recent data is therefore **roughly 40% too
 high** when applied to the older era — and any estimate spanning a range that
@@ -1724,3 +1753,59 @@ rather than argued.
 today, and the detectors run BOUNDED by date range precisely so this is not the
 hot path — bounded, the same work is 17 ms. Re-measure when the row count has
 moved materially, and record it beside the timing.
+
+### A prediction is only measurable if the quantity it names is the quantity that will be measured
+
+**2026-09-05, applying migration 0005.** The prediction was **"apply wall-clock
+< 200 ms"**. What got measured was **6,428 ms** — the whole `pnpm db:migrate`
+command, including tsx transpile, Node boot and the Docker connect.
+
+**The right response was not to go and measure the DDL properly.** It was to see
+that the prediction was ILL-FORMED. "Apply wall-clock" does not say DDL-only, so
+no measurement could have confirmed or refuted it: 6,428 ms is not a failed
+prediction, it is a different quantity. Recording it as "the number is still
+missing" would have been the wrong shape — it invites chasing a figure, and here
+that meant a `DROP TABLE` inside a transaction to time statements against real
+foreign-key targets. **A destructive-shaped operation to satisfy a prediction
+that should not have been made.**
+
+**AND THE QUANTITY HAS NO CONSUMER.** The migration ran once, against an empty
+table, and nothing depends on how long it took. A prediction worth making is one
+whose answer changes something.
+
+**THE FIFTH INSTANCE OF THE DENOMINATOR PATTERN — AND THE FIRST TO OCCUR INSIDE
+THE PRACTICE BUILT TO PREVENT IT.** The four before it are above: three bar
+densities and one write throughput. This one happened in a
+prediction-before-measurement table, on the same day the throughput correction
+was written up, in the same session. The practice did not catch it.
+
+**So the practice needs changing, not repeating.** Writing the denominator
+BESIDE THE MEASUREMENT is too late — by then the prediction has already been
+scored against whatever was convenient to measure. **The denominator belongs in
+the PREDICTION.** "< 200 ms" is unfalsifiable in a way "< 200 ms of DDL
+execution, excluding process start and connection" is not, and the second form
+would have made the mismatch obvious before the command was ever run.
+
+---
+
+### Asserting about your own code from memory, when the file is five seconds away
+
+**Second instance, 2026-09-05.** Predicted `pnpm db:migrate` would print
+`Applied 1 migration(s): 0005_data_quality_events`. It printed `Applied 1
+migration:` with the tag on its own indented line — the CLI pluralises properly,
+which is a thing I had written two days earlier and then described from memory.
+
+**The first instance was step 8's `end_date`**, where a request-count claim was
+made by asserting the parameter was not sent, without reading the function that
+sends it. That one cost real API credits; this one cost nothing.
+
+**The tell is identical in both: a confident claim about behaviour that a file in
+the repo settles exactly.** Not an inference, not a measurement — a recollection
+presented in the register of a fact. The cost is unpredictable and the fix is
+trivial, which is precisely why it recurs: nothing about writing it down feels
+risky at the time.
+
+**Cheap rule: if the claim is about code in this repo, open the file.** A
+prediction about the OUTSIDE world is worth making from reasoning, because that
+is the only way to find out. A prediction about a string literal already sitting
+on disk is not a prediction at all.
