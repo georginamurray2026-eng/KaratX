@@ -3,7 +3,12 @@ import { createPacer, TwelveDataClient, type FetchLike, type HttpResponse } from
 import { Pool } from 'pg'
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from 'vitest'
 
-import { runBackfill, toProviderDatetime, type BackfillSeries } from './backfill'
+import {
+  BackfillConflictError,
+  runBackfill,
+  toProviderDatetime,
+  type BackfillSeries,
+} from './backfill'
 
 /**
  * OBLIGATION 47 — the forming bar must not be stored as final.
@@ -84,7 +89,14 @@ function mutableProvider(initial: Bar[]): { fetch: FetchLike; setBars: (b: Bar[]
     let selected = bars
     if (start !== null) selected = selected.filter((b) => b.datetime >= start)
     if (end !== null) selected = selected.filter((b) => b.datetime <= end)
-    selected = selected.slice(0, size)
+    // ANCHORED ON THE NEWEST BARS, LIKE THE REAL API - measured at step 9.
+    //
+    // `start_date=2020-01-24` with `outputsize=5000` returns the most recent
+    // 5,000 bars in the range, NOT the oldest. This double sliced from the
+    // START of the filtered range until 2026-09-05, which is the behaviour the
+    // real API does not have, so no test could detect a bug in WHICH END the
+    // provider anchors on. Obligation 50.
+    selected = selected.slice(-size)
 
     const body = JSON.stringify({
       meta: { symbol: 'XAU/USD', interval: '15min' },
@@ -382,5 +394,123 @@ describe('obligation 47 - a bar trimmed by `to` still proves its predecessor clo
     )
     expect(rows).toHaveLength(20)
     expect(rows[19]?.is_final).toBe(false)
+  })
+})
+
+describe('obligation 51 - a NARROWING revision is counted, not fatal', () => {
+  let pool: Pool
+  let series: BackfillSeries
+
+  beforeAll(async () => {
+    pool = new Pool({ connectionString: inject('migratedUrl') })
+    const { rows } = await pool.query<{ instrument_id: number; provider_id: number }>(
+      `SELECT pi.instrument_id, pi.provider_id FROM provider_instruments pi
+         JOIN providers p ON p.id = pi.provider_id WHERE p.key = 'twelve_data'`,
+    )
+    series = {
+      instrumentId: rows[0]?.instrument_id ?? 0,
+      providerId: rows[0]?.provider_id ?? 0,
+      timeframe: '15min',
+      providerSymbol: 'XAU/USD',
+      providerInterval: '15min',
+    }
+  })
+  afterAll(async () => {
+    await pool.end()
+  })
+  afterEach(async () => {
+    await pool.query('DELETE FROM candles')
+  })
+
+  const immediate = <T>(fn: () => Promise<T>): Promise<T> => fn()
+
+  function run(fetch: FetchLike, onRevision?: (r: unknown) => void) {
+    return runBackfill({
+      pool,
+      client: new TwelveDataClient({ fetch, apiKey: API_KEY }),
+      pacer: createPacer({ now: () => 0, sleep: async () => undefined }),
+      series,
+      from: new Date(SERIES_START),
+      resumeFrom: 'from',
+      pageSize: 100,
+      withRetry: immediate,
+      ...(onRevision === undefined ? {} : { onRevision }),
+    })
+  }
+
+  it('does NOT stop the run, and is recorded per bar', async () => {
+    // The behaviour obligation 51 changes. At the measured 0.2% revision rate a
+    // stop-at-one backfill can never cross its own overlap.
+    const original = Array.from({ length: 30 }, (_, i) => bar(i))
+    const provider = mutableProvider(original)
+    await run(provider.fetch)
+
+    // Bar 5's high moves DOWN — the shape all four observed revisions had.
+    // 4608, not 4603: bar 5 closes at 4606, and a high below the close is
+    // refused by candles_high_check before the classifier runs. Same trap as
+    // the step 6 conflict fixture - the constraints keep catching invalid
+    // synthetic revisions, which is them working.
+    const narrowedBars = original.map((b, i) => (i === 5 ? { ...b, high: '4608.00000' } : b))
+    provider.setBars(narrowedBars)
+
+    const seen: unknown[] = []
+    const second = await run(provider.fetch, (r) => seen.push(r))
+
+    expect(second.counts.conflict, 'a narrowing is not counted as a conflict').toBe(0)
+    expect(second.narrowed).toBe(1)
+    expect(second.stoppedBecause).toBe('complete')
+
+    // PER BAR, with both sides, so the rate and the shape are measurable later.
+    expect(seen).toHaveLength(1)
+    const record = seen[0] as {
+      changed: string[]
+      stored: { high: string }
+      incoming: { high: string }
+    }
+    expect(record.changed).toEqual(['high'])
+    expect(record.stored.high).toBe('4610.00000')
+    expect(record.incoming.high).toBe('4608.00000')
+  })
+
+  it('the stored bar is NOT overwritten by a narrowing - §7 still holds', async () => {
+    // Counted and recorded is not the same as accepted. ADR-013 keeps finalised
+    // history; the narrowing is evidence, not an instruction.
+    const original = Array.from({ length: 30 }, (_, i) => bar(i))
+    const provider = mutableProvider(original)
+    await run(provider.fetch)
+
+    provider.setBars(original.map((b, i) => (i === 5 ? { ...b, high: '4608.00000' } : b)))
+    await run(provider.fetch)
+
+    const { rows } = await pool.query<{ high: string }>(
+      'SELECT high FROM candles WHERE open_time = $1',
+      [new Date(SERIES_START + 5 * INTERVAL_MS)],
+    )
+    expect(rows[0]?.high).toBe('4610.00000')
+  })
+
+  it('CONTROL: a WIDENING revision still stops the run at one', async () => {
+    // The case stop-at-one was built for. Without this, "the run completed"
+    // could mean the classifier waved everything through.
+    const original = Array.from({ length: 30 }, (_, i) => bar(i))
+    const provider = mutableProvider(original)
+    await run(provider.fetch)
+
+    // high moves UP: ticks added, not removed. Not a narrowing.
+    provider.setBars(original.map((b, i) => (i === 5 ? { ...b, high: '4620.00000' } : b)))
+
+    await expect(run(provider.fetch)).rejects.toBeInstanceOf(BackfillConflictError)
+  })
+
+  it('CONTROL: a changed CLOSE still stops the run at one', async () => {
+    const original = Array.from({ length: 30 }, (_, i) => bar(i))
+    const provider = mutableProvider(original)
+    await run(provider.fetch)
+
+    provider.setBars(
+      original.map((b, i) => (i === 5 ? { ...b, high: '4608.00000', close: '4607.00000' } : b)),
+    )
+
+    await expect(run(provider.fetch)).rejects.toBeInstanceOf(BackfillConflictError)
   })
 })

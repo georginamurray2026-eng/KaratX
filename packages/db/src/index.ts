@@ -15,10 +15,12 @@ export {
   finaliseAndOpen,
   isStoredFinal,
   latestFinalOpenTime,
+  storedPrices,
   upsertCandle,
   type CandleInput,
   type CandleUpsertResult,
   type SeriesKey,
+  type StoredPrices,
 } from './queries/candles'
 export {
   checkDatabase,

@@ -62,6 +62,40 @@ necessary and insufficient. Obligation 12 is narrowed to "parity not yet
 asserted", with a discharge condition stated as a NUMBER rather than "close
 enough".
 
+### ▶ T1.4 STEP 9 IS DONE — the full 6.6-year backfill COMPLETED, 2026-09-05
+
+**166,344 fifteen-minute bars, 2020-01-24 13:00Z to 2026-09-05 09:30Z, one
+forming (the newest, correctly). 51 requests, 51 credits, 26.5 minutes, zero
+conflicts, zero retries.** Steps 1-9 are complete; step 10 (obligation 31 is
+evidence) has NOT been started.
+
+**Read [OPEN-QUESTIONS-T1.4.md](./OPEN-QUESTIONS-T1.4.md) before anything
+else.** Every prediction was committed before its run and none has been edited.
+
+**THE FINDING THAT MATTERS MOST IS OBLIGATION 54: REVISIONS REVERT.** Four
+finalised bars were seen revised within thirty minutes, every one narrowing;
+two of them have since gone back to their original values. Dropped ticks do not
+come back, so the tick-dropping explanation is dead - and NOTHING REPLACES IT.
+No mechanism is established. Narrowing is a description of what was seen and
+is now demonstrably not a description of a process.
+
+**§7 never-repair is now demonstrated rather than argued, and as a
+MEASUREMENT:** had the mid-run revision been accepted as a correction, we would
+today disagree with the provider on two bars while believing we agreed. The
+stored values - refused, kept, never repaired - are the ones the provider now
+serves.
+
+**OBLIGATION 5 STILL HAS NEVER EXECUTED IN ANGER.** 51 requests, zero 429s,
+pacer idle 3 seconds of 1,588. Database writes (~30s/page) dwarf the 8.57s
+pacing interval, so THE RATE LIMIT CANNOT BIND ON THIS PATH. This run says
+nothing about the rate limit except that this workload cannot reach it, and a
+real test would have to be BUILT rather than waited for.
+
+**Obligation 31's evidence is now RUNNABLE and has not been run:**
+`backups/karatx-20260905-093443.dump`, 4,637,483 bytes, candles=169,704 — 16x
+the previous dump and the first large enough for a restore to fail mid-stream.
+
+---
 ### ⏸ T1.4 IS AT ITS STOP POINT — steps 1-6 DONE, NOTHING HAS TOUCHED THE NETWORK
 
 **2026-09-04.** Six of ten steps are complete and green. **No API call has been

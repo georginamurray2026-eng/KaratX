@@ -62,7 +62,14 @@ function fakeProvider(options: { bars: ReturnType<typeof makeBars>; pageSize: nu
     let selected = options.bars
     if (start !== null) selected = selected.filter((b) => b.datetime >= start)
     if (end !== null) selected = selected.filter((b) => b.datetime <= end)
-    selected = selected.slice(0, Math.min(size, options.pageSize))
+    // ANCHORED ON THE NEWEST BARS, LIKE THE REAL API - measured at step 9.
+    //
+    // `start_date=2020-01-24` with `outputsize=5000` returns the most recent
+    // 5,000 bars in the range, NOT the oldest. This double sliced from the
+    // START of the filtered range until 2026-09-05, which is the behaviour the
+    // real API does not have, so no test could detect a bug in WHICH END the
+    // provider anchors on. Obligation 50.
+    selected = selected.slice(-Math.min(size, options.pageSize))
 
     const body = JSON.stringify({
       meta: { symbol: 'XAU/USD', interval: '15min' },
@@ -267,7 +274,12 @@ describe('T1.4 backfill - against a real database and a fake provider', () => {
     // Interrupted after one page, exactly as a crash would leave it.
     const first = await run(provider.fetch, { maxPages: 1 })
     expect(first.stoppedBecause).toBe('maxPages')
-    expect(first.counts.inserted).toBe(100)
+    // 97, not 100. Obligation 50 made every page a WINDOW rather than a slice:
+    // the window is 96 intervals wide (96% of pageSize), which spans 97 bars
+    // inclusive of both ends. The window width is what bounds a page now, not
+    // outputsize - that is the whole point, since outputsize anchors on the
+    // newest bars and cannot be paged with.
+    expect(first.counts.inserted).toBe(97)
 
     const resumed = await run(provider.fetch)
 
@@ -279,7 +291,9 @@ describe('T1.4 backfill - against a real database and a fake provider', () => {
     expect(resumed.counts.noop).toBe(4)
     // Two page boundaries in the resumed run, so two forming bars get finalised.
     expect(resumed.counts.applied).toBe(2)
-    expect(resumed.counts.inserted).toBe(150)
+    // 153: the interrupted run stored 97 of 250, so the resume inserts the
+    // remaining 153. Same window arithmetic as above.
+    expect(resumed.counts.inserted).toBe(153)
     expect(resumed.stoppedBecause).toBe('complete')
 
     const { rows } = await pool.query<{ count: string; min: Date; max: Date }>(
@@ -564,5 +578,92 @@ describe('T1.4 - job_runs lifecycle and the stale-row refusal', () => {
     })
 
     await expect(openRun({ pool, jobName: 'backfill' })).resolves.toBeDefined()
+  })
+})
+
+describe('obligation 50 - the run WALKS history rather than jumping to the present', () => {
+  let pool: Pool
+  let series: BackfillSeries
+
+  beforeAll(async () => {
+    pool = new Pool({ connectionString: inject('migratedUrl') })
+    const { rows } = await pool.query<{ instrument_id: number; provider_id: number }>(
+      `SELECT pi.instrument_id, pi.provider_id FROM provider_instruments pi
+         JOIN providers p ON p.id = pi.provider_id WHERE p.key = 'twelve_data'`,
+    )
+    series = {
+      instrumentId: rows[0]?.instrument_id ?? 0,
+      providerId: rows[0]?.provider_id ?? 0,
+      timeframe: '15min',
+      providerSymbol: 'XAU/USD',
+      providerInterval: '15min',
+    }
+  })
+  afterAll(async () => {
+    await pool.end()
+  })
+  afterEach(async () => {
+    await pool.query('DELETE FROM candles')
+  })
+
+  it('reaches the OLDEST bar, not just the newest page of them', async () => {
+    // THE STEP 9 FAILURE, REPRODUCED. `outputsize` anchors on the NEWEST bars in
+    // the range, so a request from far back returns the most recent N and the
+    // frontier jumps straight to the present. Before windowed paging this run
+    // would have stored only the last ~97 bars and reported `complete` — success
+    // while doing almost nothing.
+    //
+    // The double now anchors the same way the real API does, so this test can
+    // only pass because pages are bounded windows.
+    const provider = fakeProvider({ bars: makeBars(500, SERIES_START), pageSize: 100 })
+
+    const result = await runBackfill({
+      pool,
+      client: new TwelveDataClient({ fetch: provider.fetch, apiKey: API_KEY }),
+      pacer: createPacer({ now: () => 0, sleep: async () => undefined }),
+      series,
+      from: new Date(SERIES_START),
+      pageSize: 100,
+      withRetry: (fn) => fn(),
+    })
+
+    const { rows } = await pool.query<{ count: string; first: Date; last: Date }>(
+      'SELECT count(*)::text AS count, min(open_time) AS first, max(open_time) AS last FROM candles',
+    )
+
+    // THE ASSERTION THAT WOULD HAVE CAUGHT STEP 9: the run reached bar 0.
+    expect(rows[0]?.first.toISOString(), 'the run must reach the OLDEST bar').toBe(
+      new Date(SERIES_START).toISOString(),
+    )
+    expect(rows[0]?.count).toBe('500')
+    expect(rows[0]?.last.toISOString()).toBe(
+      new Date(SERIES_START + 499 * 15 * 60_000).toISOString(),
+    )
+    expect(result.stoppedBecause).toBe('complete')
+
+    // ~500 bars at 97 per window, plus the terminating empty windows.
+    expect(result.requestsMade).toBeGreaterThanOrEqual(6)
+    expect(result.requestsMade).toBeLessThanOrEqual(10)
+  })
+
+  it('no gaps - windowed paging joins its own seams', async () => {
+    // A window boundary is a seam, and a seam is where an off-by-one hides.
+    const provider = fakeProvider({ bars: makeBars(500, SERIES_START), pageSize: 100 })
+    await runBackfill({
+      pool,
+      client: new TwelveDataClient({ fetch: provider.fetch, apiKey: API_KEY }),
+      pacer: createPacer({ now: () => 0, sleep: async () => undefined }),
+      series,
+      from: new Date(SERIES_START),
+      pageSize: 100,
+      withRetry: (fn) => fn(),
+    })
+
+    const { rows } = await pool.query<{ gaps: string }>(
+      `SELECT count(*)::text AS gaps FROM (
+         SELECT open_time - lag(open_time) OVER (ORDER BY open_time) AS d FROM candles
+       ) x WHERE d IS NOT NULL AND d <> interval '15 minutes'`,
+    )
+    expect(rows[0]?.gaps).toBe('0')
   })
 })

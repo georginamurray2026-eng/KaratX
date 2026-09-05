@@ -55,4 +55,11 @@ export {
   type TokenTakeResult,
 } from './rate-limit'
 
+export {
+  classifyRevision,
+  type RevisionClassification,
+  type RevisionKind,
+  type RevisionSide,
+} from './revision'
+
 export const CORE_PACKAGE_NAME = '@karatx/core' as const

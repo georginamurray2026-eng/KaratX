@@ -428,3 +428,55 @@ export async function isStoredFinal(
 
   return rows[0]?.is_final ?? false
 }
+
+/** The stored price text for one bar, or `null` if it is not stored. */
+export interface StoredPrices {
+  readonly open: string
+  readonly high: string
+  readonly low: string
+  readonly close: string
+  readonly volume: string | null
+  readonly isFinal: boolean
+}
+
+/**
+ * Read one bar's stored prices, to classify a revision against.
+ *
+ * Only reached on a `conflict`, which step 9 measured at roughly 0.2% of bars,
+ * so the extra round trip is paid on two bars in a thousand rather than on
+ * every one.
+ *
+ * RETURNS THE TEXT POSTGRES GIVES BACK, WHICH IS PADDED TO SCALE. `4375.5959`
+ * stored in `NUMERIC(12,5)` returns as `4375.59590`. The caller must compare by
+ * VALUE - `classifyRevision` does - because a byte comparison against provider
+ * text would report every bar as changed.
+ */
+export async function storedPrices(
+  client: Pool | PoolClient,
+  series: SeriesKey,
+  openTime: Date,
+): Promise<StoredPrices | null> {
+  const { rows } = await client.query<{
+    open: string
+    high: string
+    low: string
+    close: string
+    volume: string | null
+    is_final: boolean
+  }>(
+    `SELECT open, high, low, close, volume, is_final FROM candles
+      WHERE instrument_id = $1 AND provider_id = $2 AND timeframe = $3 AND open_time = $4`,
+    [series.instrumentId, series.providerId, series.timeframe, openTime],
+  )
+
+  const row = rows[0]
+  if (row === undefined) return null
+  return {
+    open: row.open,
+    high: row.high,
+    low: row.low,
+    close: row.close,
+    volume: row.volume,
+    isFinal: row.is_final,
+  }
+}

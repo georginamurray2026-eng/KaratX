@@ -20,10 +20,16 @@
  */
 import { findRepoRoot, loadConfig, loadEnvFileIfPresent } from '@karatx/config'
 import { createFileCaptureSink, createPacer, TwelveDataClient, withRetry } from '@karatx/providers'
+import { appendFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Pool } from 'pg'
 
-import { requireTwelveDataApiKey, runBackfill, type BackfillSeries } from '../jobs/backfill'
+import {
+  emptyCounts,
+  requireTwelveDataApiKey,
+  runBackfill,
+  type BackfillSeries,
+} from '../jobs/backfill'
 import { closeRun, openRun } from '../jobs/job-run'
 
 const REPO_ROOT = findRepoRoot()
@@ -92,6 +98,9 @@ async function main(): Promise<void> {
 
   let lastPageAt = startedAt
   let retries = 0
+  let narrowedCount = 0
+  // Mutated as the run proceeds so the failure path can report the real work.
+  const partial = { counts: emptyCounts(), requests: 0 }
 
   try {
     const result = await runBackfill({
@@ -119,7 +128,25 @@ async function main(): Promise<void> {
             )
           },
         }),
+      // OBLIGATION 51: every narrowing revision, written PER BAR.
+      //
+      // To a file beside the run's captures rather than to a table: designing
+      // where revision events live is T1.5's job, and ADR-013 used exactly this
+      // reasoning to keep the upsert outcome a value rather than an event row.
+      // A schema designed twice by two tasks means the second inherits the
+      // first's guesses.
+      //
+      // THE FILE IS THE COUNTER. Its line count is the run's narrowing total,
+      // and because each line carries BOTH SIDES the rate and the shape are
+      // both measurable afterwards — which is the point of not choosing a
+      // tolerance today.
+      onRevision: async (record) => {
+        narrowedCount += 1
+        await mkdir(captureDir, { recursive: true })
+        await appendFile(join(captureDir, 'revisions.jsonl'), JSON.stringify(record) + '\n', 'utf8')
+      },
       onPage: (info) => {
+        partial.requests = info.page
         const now = Date.now()
         process.stdout.write(
           `  page ${String(info.page).padStart(3)}  ${String(info.bars).padStart(5)} bars  ` +
@@ -139,6 +166,16 @@ async function main(): Promise<void> {
       counts: result.counts,
       requestsMade: result.requestsMade,
     })
+
+    // The narrowing count goes in `context`, NOT a new column. The six outcome
+    // columns map ONE-TO-ONE onto CANDLE_UPSERT_OUTCOMES, and narrowing is a
+    // BACKFILL-level classification rather than a contract outcome — a seventh
+    // column would break the invariant that schema comment states. The
+    // authoritative per-bar record is `revisions.jsonl` beside the captures.
+    await pool.query(
+      `UPDATE job_runs SET context = coalesce(context, '{}'::jsonb) || $2::jsonb WHERE id = $1`,
+      [run.id, JSON.stringify({ narrowed: narrowedCount })],
+    )
 
     const after = await pool.query<{
       count: string
@@ -169,6 +206,7 @@ async function main(): Promise<void> {
     line('noop', String(result.counts.noop))
     line('enriched', String(result.counts.enriched))
     line('conflict', String(result.counts.conflict))
+    line('NARROWED (obligation 51)', String(result.narrowed))
     line('rejected', String(result.counts.rejected))
     process.stdout.write('\nSTORED (15min)\n')
     line('total bars', a?.count ?? '-')
@@ -181,15 +219,13 @@ async function main(): Promise<void> {
       pool,
       id: run.id,
       status: 'failed',
-      counts: {
-        inserted: 0,
-        applied: 0,
-        noop: 0,
-        enriched: 0,
-        conflict: 0,
-        rejected: 0,
-      },
-      requestsMade: 0,
+      // OBLIGATION 52: the REAL counts, not zeros. A failed run is exactly
+      // when the counters matter - it is the row someone reads at 3am to find
+      // out how far the run got. Step 9 recorded requests_made 0 for a run that
+      // made a request and stored 2,758 bars, and the shape of that failure was
+      // only recoverable from the captures.
+      counts: partial.counts,
+      requestsMade: partial.requests,
       error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
     })
     process.stdout.write(`\nRUN FAILED, job_runs row closed as failed.\n\n`)

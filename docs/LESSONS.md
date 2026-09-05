@@ -1513,3 +1513,93 @@ build.** This was found only because a test booted a real minified server.
 **Before T0.10, audit for other places where a minified build would behave
 differently from source, and treat "verified in development" as not covering
 it.**
+
+### A test double that models the WRONG PARAMETER cannot detect a bug in that parameter
+
+Twice in two days, and the second time was the expensive one, so it is recorded
+as a class rather than as two incidents.
+
+**Both doubles modelled "give me N bars from the filtered range".** The real API
+does something different in each case, and in each case the double reported the
+OPPOSITE of the truth rather than merely failing to cover it:
+
+- **Obligation 48.** `mutableProvider` ignored `end_date` entirely. `runBackfill`
+  sends it whenever `to` is set, so a bounded run's response really does stop at
+  the boundary — but the double handed back bars past it. **The bounded test
+  passed while the live call failed**, and the last bar of every parity window
+  was left marked forming.
+- **Obligation 50.** Both doubles sliced from the START of the filtered range.
+  The real API anchors `outputsize` on the NEWEST bars: `start_date=2020-01-24`
+  with `outputsize=5000` returns the most recent 5,000, beginning 2026-07-15. So
+  a full backfill would have paged forever over the same recent window, jumped
+  its frontier to the present, and reported `complete` having fetched none of
+  the history. **It did not silently succeed only because an unrelated conflict
+  stopped it first.**
+
+**THE CLASS: a double that models the SHAPE of a response without modelling
+WHICH PARAMETER SELECTS IT is a filter, not a provider.** It answers "what do I
+get back" and cannot answer "what did I ask for". Every bug about paging,
+bounding, ordering or anchoring is invisible to it — and invisible in the worst
+direction, because the tests go green.
+
+**The tell in both cases was the same:** the double's selection logic was
+SIMPLER than the request it was answering. `runBackfill` sent four parameters;
+the double read two.
+
+**What to do.** When a double serves a request, it must honour **every parameter
+the code sends**, or explicitly reject the ones it does not implement. Silently
+ignoring a parameter is the failure mode. In both instances, fixing the double
+was what made the test fail — the fix to the production code came second, and
+took minutes.
+
+---
+
+### `isoDOW 6,7` is not "the weekend" for an instrument that opens on Sunday evening
+
+Nearly reported a contradiction that did not exist, and the near-miss is the
+lesson.
+
+The step 9 backfill stored **2,166 bars on isoDOW 6–7 before mid-2025**, against
+ADR-008's measured *"weekend bars: 0 in 2020–2024"*. That reads as the ADR being
+wrong about the provider.
+
+**It is not. The two counts measure different things.** Gold reopens at 17:00
+America/New_York on Sunday, which is **21:00–22:00 UTC on a Sunday** — so a
+UTC-calendar weekend filter sweeps up the legitimate Sunday-evening session.
+Split by day, the picture inverts: **Saturday bars before 2025: ZERO.** 1,917 in
+2025 and 3,351 in 2026. ADR-008's figure was Saturday-only, and it is confirmed.
+
+**Same shape as the Saturday-sweep instance already recorded here**: a filter
+that looks like it means "non-trading time" and actually means "a calendar
+property of UTC". The instrument's week does not start when the calendar's does,
+and T1.5's whole reason for existing is that the calendar has to be ours.
+
+**The refinement is worth keeping too:** Saturday synthesis begins in **early
+2025**, not mid-June. ADR-008 sampled one call per year and could only bound the
+onset to a year; 166,000 bars locate it to a month.
+
+**Check what a filter MEANS before reporting it as a contradiction** — and when
+a new measurement appears to contradict a careful old one, suspect the new
+measure first.
+
+---
+
+### A prediction is invalidated by the SYSTEM changing, not only by being wrong
+
+Step 9's committed prediction was **36 requests, ~10 minutes**. The run took
+**51 requests and 26.5 minutes** — a 42% miss on both.
+
+**It is not an estimating error, and filing it as one would be worse than
+useless.** The prediction assumed the paging strategy that existed when it was
+written: bar-count paging, ~174,000 bars ÷ 5,000 per page. Obligation 50 then
+*replaced* that strategy with fixed-width TIME windows, because `outputsize`
+anchors on the newest bars and bar-count paging cannot walk history at all.
+
+A 50-day window holds ~4,800 bars in the 24/7 era but only ~3,100 in the
+weekday-only era, so the same history costs more pages. **The estimate was
+answering a question the system no longer asks.**
+
+**Record which kind of miss a miss is.** A later reader who sees "predicted 36,
+got 51" and files it as "our estimates run ~40% low" will distrust good
+estimates and will not look for the design change that actually caused it. The
+categories are different and only one of them says anything about estimating.

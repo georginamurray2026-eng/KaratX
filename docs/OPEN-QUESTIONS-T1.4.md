@@ -686,6 +686,154 @@ counters matter**, and mine discards them.
 
 ---
 
+### STEP 9 RE-RUN — 2026-09-05. COMPLETE. 51 requests, 26.5 min, 166,344 bars.
+
+Predictions committed at `5273ee9` before the first attempt, unedited.
+
+| | predicted | actual | |
+|---|---|---|---|
+| Requests | 36 (34–40) | **51** | miss — see below, NOT an estimating error |
+| Wall clock | ~10 min (6–20) | **26.5 min** | same cause |
+| Credits | 36 | **51**, one per request | tracked requests |
+| `applied` | ~35, tracking the request count | **48** | **HELD** — 48 against 51 pages |
+| `noop` | ~2,020 | **4,789** | miss — investigated, cause below |
+| `inserted` | ~172,200 | **161,604** | |
+| Total 15m bars | ~174,200 | **166,344** | 4.5% under |
+| Weekend bars | ~12,000 (10–13k) | **11,058** | **HELD** |
+| `conflict` | 0 | **0** | **HELD** |
+| **the DATABASE binds, not the rate limit** | predicted | **pacer idle 3 s of 1,588** | **HELD decisively** |
+
+166,344 bars, **2020-01-24 13:00Z → 2026-09-05 09:30Z**, exactly one forming
+(the newest — correct), parity window intact at 1,982.
+
+**Arithmetic reconciles exactly**, which is how the counts below can be trusted:
+`bars seen 166,443 = 166,344 distinct + 99 re-offered`, and
+`inserted 161,604 + applied 48 + noop 4,789 + narrowed 2 = 166,443`.
+
+---
+
+### 1. THE HEADLINE: revisions REVERT, which kills the only explanation we had
+
+Step 9's aborted run found four finalised bars revised within thirty minutes,
+all NARROWING. That looked like a signature. **Two of the four have since undone
+themselves.**
+
+| `2026-09-01 06:30` high | |
+|---|---|
+| 07:53 stored | 4438.39980 |
+| 08:22 | 4437.27763 — narrowed |
+| 09:30 | **4438.39980 — back to the original** |
+
+Identically for `06:45`. The other two narrowed again and were counted.
+
+**THIS KILLS THE TICK-DROPPING EXPLANATION.** Dropped ticks do not come back. A
+provider that had recomputed an extreme from a cleaned tick set would not
+recompute the dirty value an hour later.
+
+**AND NOTHING REPLACES IT. No mechanism is established.** Four observations
+looked like a signature; two undid themselves; what remains is that this feed
+serves different values for the same finalised bar at different moments, and we
+do not know why. "Narrowing" is still a DESCRIPTION OF WHAT WAS SEEN and is now
+demonstrably not a description of a process. It stays a classifier for deciding
+whether to stop a run — nothing more.
+
+**§7 IS NOW DEMONSTRATED RATHER THAN ARGUED, and this is a measurement.** Had
+the 08:22 narrowing been accepted as a correction and written over the stored
+bars, **we would today disagree with the provider on two bars while believing we
+agreed with it.** The stored values — refused, kept, never repaired — are the
+ones the provider now serves. First concrete evidence that never-repair was
+right, after being carried as a principle since the engineering prompt.
+
+---
+
+### 2. The request and wall-clock misses are not estimating errors
+
+The prediction assumed BAR-COUNT paging (~174,000 ÷ 5,000). **Obligation 50
+replaced that with fixed-width TIME windows after the prediction was
+committed**, because `outputsize` anchors on the newest bars and bar-count
+paging cannot walk history at all.
+
+A 50-day window holds ~4,800 bars in the 24/7 era and only ~3,100 in the
+weekday-only era — visible in the log as pages 29–44 returning 2,957–3,956 and
+pages 45–49 filling to 4,801. Same history, more pages.
+
+**Categorised deliberately:** the SYSTEM changed between prediction and
+measurement. A later reader who files "predicted 36, got 51" as "estimates run
+40% low" will distrust good estimates and miss the design change that caused it.
+
+---
+
+### 3. The `noop` miss — hypothesis tested and REFUTED
+
+The proposed cause was window-boundary overlap at ~53 bars per page.
+**Measured across all 51 capture pages: overlap is 2 bars per page, 99 total.**
+Distribution: 49 pages overlap by 2, one by 1, one by 0. The hypothesis is
+wrong and is recorded as wrong.
+
+**The real cause is my baseline, and it is arithmetic rather than behaviour.**
+The prediction used the parity window (1,982 bars) as what was already stored.
+The table actually held **4,740** — the aborted step-9 run had left **2,758**
+more, spanning 2026-07-15 to 2026-08-13. Every one was re-offered and returned
+`noop`.
+
+```
+noop = 4,740 pre-existing − 2 narrowed + 51 boundary re-offers = 4,789   EXACT
+```
+
+**So `noop` does NOT scale with page count** — the boundary component is ~1 bar
+per page and negligible. It scales with how much of the range was already
+stored, which is the resume overlap working as designed.
+
+---
+
+### 4. OQ-1 REMAINS UNTESTED, and may stay that way
+
+**51 requests, zero 429s, zero retries, pacer idle 3 seconds of 1,588.**
+
+Database writes run ~30 s per page against an 8.57 s pacing interval, so **the
+rate limit cannot bind on this path at all**. The pacer is not protecting the
+run from the provider; the database is.
+
+**Obligation 5's bounded backoff has still never executed in anger.** It has
+been exercised only by unit tests with an injected clock.
+
+**This run tells us nothing about the rate limit except that this workload
+cannot reach it.** A real test would have to be BUILT — deliberately issuing
+requests faster than the documented limit and observing the response — rather
+than waited for. Waiting for a natural 429 on the backfill path will wait
+forever, and recording "no 429 occurred" as reassurance would be reading silence
+as evidence.
+
+---
+
+### 5. A near-miss worth recording
+
+2,166 bars on isoDOW 6–7 before mid-2025 looked like it contradicted ADR-008's
+"0 weekend bars in 2020–2024". **It does not.** A UTC weekend filter sweeps up
+the legitimate Sunday-evening open (17:00 New York = 21:00–22:00 UTC Sunday).
+**Saturday-only, which is ADR-008's actual measure: ZERO before 2025**, 1,917 in
+2025, 3,351 in 2026. The ADR is confirmed.
+
+**Refinement worth keeping:** Saturday synthesis begins in **early 2025**, not
+mid-June. ADR-008 sampled once a year and could only bound the onset to a year;
+166,000 bars locate it to a month.
+
+---
+
+### OQ-10 — ANSWERED, prediction HELD
+
+A **5,000-bar page cost exactly 1 credit** (step 9's first attempt), as did this
+run's 4,801-bar pages. Cost does not scale with page size.
+
+### Obligation 31's dump now exists
+
+`karatx-20260905-093443.dump`, **4,637,483 bytes**, candles=169,704 — 16× the
+previous dump, and the first large enough that a restore failure could land
+mid-stream. **The evidence half of obligation 31 is now RUNNABLE and has not
+been run.**
+
+---
+
 ## What answers these, and in what order
 
 **Step 7 of T1.4: one request.** A narrow window at `15min`, which is enough for
