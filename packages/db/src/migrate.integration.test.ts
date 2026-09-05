@@ -2,6 +2,7 @@ import { Pool } from 'pg'
 import { beforeAll, describe, expect, inject, it } from 'vitest'
 
 import { runMigrations } from './migrate'
+import { shippedMigrations } from './status'
 
 /**
  * Migration proof against a real Postgres - not a mock.
@@ -78,8 +79,22 @@ describe('migrations against an empty database', () => {
     expect(bookkeeping.rows[0]?.exists).toBe(false)
   })
 
-  it('applies cleanly', async () => {
-    await expect(runMigrations(testDatabaseUrl)).resolves.toBeUndefined()
+  it('applies cleanly, AND NAMES WHAT IT APPLIED', async () => {
+    // Obligation 39. This asserted only `resolves.toBeUndefined()`, which is a
+    // claim that nothing threw - satisfied equally by a run that applied every
+    // migration and one that applied none. The runner now returns the tags, so
+    // the assertion can be about the WORK rather than the absence of an error.
+    const applied = await runMigrations(testDatabaseUrl)
+
+    expect(applied.map((m) => m.tag)).toEqual(shippedMigrations().map((e) => e.tag))
+  })
+
+  it('a second run applies NOTHING, and says so distinguishably', async () => {
+    // The case that used to be invisible: byte-identical output either way.
+    await runMigrations(testDatabaseUrl)
+    const second = await runMigrations(testDatabaseUrl)
+
+    expect(second).toEqual([])
   })
 
   it('creates system_events and config, and nothing else', async () => {
@@ -198,7 +213,8 @@ describe('migrations against an empty database', () => {
   it('is a no-op when run a second time', async () => {
     // The property that makes `pnpm db:migrate` safe as a repeatable release
     // step: re-running must neither error nor apply anything again.
-    await expect(runMigrations(testDatabaseUrl)).resolves.toBeUndefined()
+    // Obligation 39: assert it applied NOTHING, rather than that it did not throw.
+    await expect(runMigrations(testDatabaseUrl)).resolves.toEqual([])
 
     const applied = await withPool(testDatabaseUrl, (pool) =>
       pool.query('select id from drizzle.__drizzle_migrations'),

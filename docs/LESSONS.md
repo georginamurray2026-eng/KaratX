@@ -1643,3 +1643,70 @@ other one never was" in under a minute.
 **And the reporting is the real gap:** a scanner that says "129 commits scanned"
 without saying *which* is not reporting its input. A gate whose input is
 unstated cannot be reproduced, only re-run and hoped at.
+
+### The feed changed shape in 2025, so ANY figure derived from recent data is wrong for the older era
+
+Three times now, and the third made it a pattern rather than a coincidence.
+
+**The general form.** Twelve Data's XAU/USD is **weekday-only before 2025** at
+about 24,342 bars/year, and **24/7 from 2026** at about 35,071. Any density,
+count, duration or cost derived from recent data is therefore **roughly 40% too
+high** when applied to the older era — and any estimate spanning a range that
+crosses 2025 needs **both densities**, not an average and not the recent one.
+
+**The three instances, and they look nothing alike from the outside:**
+
+1. **Step 9's request estimate.** 174,000 bars ÷ 5,000 assumed a uniform
+   density. Time-windowed pages hold ~4,800 bars in the 24/7 era and ~3,100 in
+   the weekday-only era, so the same history cost 51 requests against 36
+   predicted.
+2. **The weekend-bar near-miss.** 2,166 "weekend" bars before mid-2025 looked
+   like a contradiction of ADR-008's "zero in 2020–2024" — the filter was
+   counting the legitimate Sunday-evening open, and the eras made the totals
+   look incomparable.
+3. **A query-cost estimate.** A month of June 2024 was predicted at ~2,880 bars
+   and returned **1,818**, because 2024 is weekday-only.
+
+**Why it keeps happening:** every measurement that is convenient to take is
+taken against RECENT data — the newest page, the last month, whatever is in the
+table now — and recent data is 24/7. The older era is only visible if you go
+looking for it.
+
+**What to do.** State which era a density came from, and when a range crosses
+2025-04-26, compute both halves separately. `~35,071/yr` and `~24,342/yr` are
+both measured and both in ADR-008; using one where the other belongs is the
+error, not using an approximation.
+
+---
+
+### Every query against `candles` states its cost before it is written, and is EXPLAINed at real volume
+
+Standing practice from 2026-09-05. `candles` holds **166,344 rows** and grows by
+roughly 35,000 a year, so a plan chosen against a seeded or empty table is not
+evidence about the real one.
+
+**The rule:** state the expected plan and cost BEFORE writing the query, then
+`EXPLAIN (ANALYZE, BUFFERS)` it against the real table, and **record the row
+count beside the timing** so the next measurement is comparable.
+
+**First application — T1.5's three detector queries, at 166,344 rows:**
+
+| query | predicted | measured | plan |
+|---|---|---|---|
+| gap scan, one month | <10 ms | **16.9 ms** | Index Only Scan, 1,818 rows |
+| gap scan, full series | 150–400 ms | **686 ms** | Index Only Scan, **no Sort** |
+| stale feed, `max(open_time)` | — | **0.255 ms** | Index Scan **Backward** |
+
+**The prediction was 2× optimistic on the full scan, and that is recorded
+because a practice that only keeps its hits is worthless.**
+
+**What the measurements showed beyond the timings:** no Seq Scan and no Sort
+anywhere. ADR-013 put `open_time` LAST in `candles_pk` so a B-tree could
+range-scan on it; the window functions get their input pre-sorted and the stale
+check walks the index backwards. That reasoning is now demonstrated at volume
+rather than argued.
+
+**The 686 ms full scan is linear and the table grows ~35,000 bars a year.** Fine
+today, and the detectors run BOUNDED by date range precisely so this is not the
+hot path — bounded, the same work is 17 ms. Re-measure when the row count has
+moved materially, and record it beside the timing.

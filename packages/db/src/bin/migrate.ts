@@ -28,9 +28,24 @@ async function main(): Promise<void> {
   // `.reveal()` is the single greppable point at which the connection string
   // leaves its Secret wrapper. It goes straight into the connection pool and is
   // never logged - which is why the success message names nothing at all.
-  await runMigrations(config.databaseUrl.reveal())
+  const applied = await runMigrations(config.databaseUrl.reveal())
 
-  process.stdout.write('Migrations applied.\n')
+  // OBLIGATION 39: THE TWO CASES MUST NOT LOOK ALIKE.
+  //
+  // This printed `Migrations applied.` whether it applied three migrations or
+  // none. A no-op run and a real one were byte-identical, so verifying that
+  // 0002 and 0003 had landed meant querying `drizzle.__drizzle_migrations`
+  // separately — the message and the exit code were both satisfied by a run
+  // that could have done nothing at all.
+  if (applied.length === 0) {
+    process.stdout.write('No migrations to apply — the database is already up to date.\n')
+    return
+  }
+
+  process.stdout.write(
+    `Applied ${String(applied.length)} migration${applied.length === 1 ? '' : 's'}:\n` +
+      applied.map((m) => `  ${m.tag}\n`).join(''),
+  )
 }
 
 main().catch((error: unknown) => {
