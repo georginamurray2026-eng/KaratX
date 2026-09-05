@@ -64,4 +64,6 @@ export {
 
 export { expectsBarAt, type BarExpectation, type Holiday, type SessionRule } from './calendar'
 
+export { expectedGrid, INTERVAL_MS, type ExpectedGrid } from './expected-grid'
+
 export const CORE_PACKAGE_NAME = '@karatx/core' as const

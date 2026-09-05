@@ -158,6 +158,77 @@ weeks a year.
 
 ---
 
+## OQ-13b. CORRECTION to OQ-13a, before the run — the reasoning was wrong and one half of it was circular
+
+**OQ-13a above is left exactly as written.** This section corrects it. Editing a
+prediction in place would destroy the only thing that makes the file worth
+keeping.
+
+### The Sunday-evening term is FALSIFIED, and it was the dominant one
+
+OQ-13a claimed **1,705 missing Sunday-evening bars**, on the reasoning that the
+"weekday-only before 2025" feed cannot have bars at Sunday 18:00 NY, which falls
+on a UTC Sunday.
+
+**Measured instead of assumed, and it is wrong.** Sunday-evening bars, by year,
+where the calendar expects 24 per Sunday (18:00 to midnight NY):
+
+| year | Sundays with evening bars | bars | per Sunday |
+|---|---|---|---|
+| 2020 | 49 | 1,176 | **24.0** |
+| 2021 | 51 | 1,214 | 23.8 |
+| 2022 | 51 | 1,224 | **24.0** |
+| 2023 | 49 | 1,168 | 23.8 |
+| 2024 | 52 | 1,185 | 22.8 |
+| 2025 | 52 | 1,248 | **24.0** |
+| 2026 | 35 | 840 | **24.0** |
+
+**The feed delivers Sunday evenings in every year, essentially complete.**
+"Weekday-only before 2025" does NOT mean "no bars on a UTC Sunday" — it means no
+Saturday and no Sunday DAYTIME. The feed was already following the session
+calendar closely. **The Sunday-evening contribution to `missing_bar` is near
+zero, not 1,705.**
+
+### And the "independent cross-check" was CIRCULAR
+
+OQ-13a presents two derivations that "agree" at 3,225. **They cannot have
+disagreed.** The top-down figure was computed first from measured totals. The
+bottom-up figure was 1,705 Sunday bars **plus a residual DEFINED AS
+3,225 − 1,705 = 1,520**, then described as "2.5 sessions/year of holiday and
+outage" as if that were a finding.
+
+**A cross-check whose free parameter is fitted to the thing it checks is not a
+cross-check.** It is the first number written twice. The agreement carried no
+information and I presented it as confirmation.
+
+### What survives, and what the prediction now is
+
+**The point estimate is UNCHANGED at 3,225**, because the top-down derivation
+never depended on the Sunday reasoning:
+
+```
+expected OPEN slots   158,756   (460/week x 345.1 weeks)
+stored bars in OPEN   155,531   (166,344 - 10,813)
+missing_bar             3,225
+```
+
+**What is gone is any account of its COMPOSITION.** The Sunday term is ~0, the
+1,520 residual was never measured, and the true breakdown is unknown until the
+detector runs. Holidays are the obvious candidate — `market_holidays` is empty —
+but that is now a hypothesis rather than a quantity.
+
+**The falsifier is replaced.** "~1,700 means holidays are covered after all" is
+meaningless now that the Sunday term is known to be ~0. The new falsifier:
+
+- **near 3,225** — confirms the arithmetic, and the composition becomes the
+  interesting question rather than the total.
+- **materially below ~2,000** — the 10,813 closed-window figure is wrong, since
+  the two are computed from the same total and an error moves both.
+- **above ~5,000** — the expected grid is wrong. **This is still the DST
+  falsifier**, and see OQ-16 for why DST is now believed NOT to be the cause.
+
+---
+
 ## WHAT THE NUMBERS DO NOT MEAN
 
 **The calendar's weekly-open boundary was corrected against THIS FEED in
@@ -241,3 +312,103 @@ in **5.6–8.3 ms**, so the real figure should land near **450–660 ms**.
 **That prediction will be roughly 3x pessimistic, and it is wrong for the
 familiar reason: it was built on a cold measurement without knowing it was
 cold.** Recorded here before the run rather than explained afterwards.
+
+---
+
+## OQ-16. DST and the expected grid — measured on 13 real transitions
+
+The grid generator goes the direction `expectsBarAt` refuses to: **local ->
+instant, which is not a function.** A local time maps to ZERO instants on
+spring-forward and TWO on autumn-back. Three questions were asked of it, and the
+answer to all three turns out to have the same root.
+
+### THE STRUCTURAL FINDING: no session week ever contains a DST transition
+
+**US transitions occur at 02:00 local on a Sunday. The market is closed from
+Friday 17:00 to Sunday 18:00. 02:00 is inside that window — always, in both
+directions, for every transition in the stored range.**
+
+So the nonexistent hour and the doubled hour both fall in a period where no bar
+is expected. The ambiguity never reaches the grid.
+
+**Confirmed against real bars rather than asserted.** Session weeks
+(Sun 18:00 -> Fri 17:00 NY), transition weeks against the week before:
+
+| kind | transition Sunday | DST week | week before |
+|---|---|---|---|
+| spring | 2021-03-14 | **460** | 460 |
+| spring | 2022-03-13 | **460** | 460 |
+| spring | 2023-03-12 | 456 | 452 |
+| spring | 2024-03-10 | **460** | 460 |
+| spring | 2025-03-09 | **460** | 460 |
+| autumn | 2021-11-07 | **460** | 460 |
+| autumn | 2022-11-06 | 452 | 456 |
+| autumn | 2023-11-05 | 452 | 456 |
+| autumn | 2024-11-03 | **460** | 460 |
+| autumn | 2025-11-02 | 476 | 476 |
+
+**460 = 5 x 23h x 4, the calendar's exact expectation, on transition weeks and
+ordinary weeks alike.** A spring week losing an hour would show 456 and an
+autumn week gaining one would show 464. Neither pattern appears. The residual
+variation (452, 456, 476) tracks the era change and holidays, not DST — spring
+and autumn deviate in both directions, which a DST effect could not do.
+
+### The three questions, answered
+
+1. **Spring forward, a rule whose local time falls in the gap.** No instant
+   renders as 02:30 local that day, so a rule at 02:30 matches nothing and the
+   grid emits no bar. Correct, and it is why the generator is built to STEP
+   THROUGH UTC INSTANTS and ask `expectsBarAt` about each, rather than
+   constructing local times and converting them.
+2. **Autumn back, 01:30 twice.** Two distinct instants both render 01:30 local.
+   **The grid emits BOTH**, because both are real fifteen-minute periods and the
+   market genuinely is open for 25 hours that day. A generator working in local
+   time would emit one and under-count by four bars.
+3. **Both DST Sundays contain the weekly open AND a transition.** They do, and
+   it does not matter: the transition is at 02:00 and the open is at 18:00, so
+   the transition is already finished when the week begins. The offset differs
+   between the two Sundays — spring-forward 18:00 is EDT (22:00Z), autumn-back
+   18:00 is EST (23:00Z) — and `expectsBarAt` resolves that going instant ->
+   local, which is total.
+
+### THE DESIGN, AND WHY IT DOES NOT RELY ON THE ABOVE
+
+**The generator NEVER converts local -> instant.** It steps UTC instants at the
+timeframe interval and keeps those `expectsBarAt` calls `open`. That is correct
+whether or not transitions fall in closed windows.
+
+**This matters because the structural finding is a fact about WHERE THE RULES
+SIT, not a property of the calendar.** Move the weekly open to 01:00, or add an
+instrument in a zone that transitions at midnight, and the ambiguity lands
+squarely inside a session. A generator built on local arithmetic would then be
+wrong twice a year and correct in testing today.
+
+### FAILURE MODE, and the prediction already watching for it
+
+**If grid generation is wrong on DST weeks it produces a burst of `missing_bar`
+or `unexpected_bar` twice a year** — four bars per transition, 13 transitions,
+so roughly 52 events clustered on dates a fortnight apart in March and November.
+
+**OQ-13a's falsifier already names this**: *"above ~5,000 means the expected
+grid is wrong, most likely on DST weeks."* It is the same failure seen from the
+other end, and the connection is recorded in the generator's own source so it
+survives someone reading only the code.
+
+**A clustered residual on those 13 dates is the signature to look for**, and it
+is distinguishable from holidays, which cluster in late December.
+
+### NOT OBSERVABLE IN THE STORED RANGE
+
+**There is no autumn transition inside the 24/7 era.** The feed went 24/7 in
+2026 and the data ends 2026-09-05; the next autumn-back is 2026-11-01. So the
+doubled hour has never been observed on a day when the feed was delivering
+around the clock, and case 2 above is reasoned rather than measured.
+
+**Recorded as unmeasured rather than quietly assumed.** The first live run after
+2026-11-01 is when it becomes checkable.
+
+### An environmental note worth writing down
+
+**Development happens in Bangkok, UTC+7, which has no DST.** Nothing about this
+class of bug will ever appear locally, in any manual check, at any time of year.
+It is only ever visible in the data or in a test that names the dates.

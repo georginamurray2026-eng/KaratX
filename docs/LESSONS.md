@@ -1738,12 +1738,22 @@ count beside the timing** so the next measurement is comparable.
 
 | query | predicted | measured | plan |
 |---|---|---|---|
-| gap scan, one month | <10 ms | **16.9 ms** | Index Only Scan, 1,818 rows |
+| gap scan, one month | <10 ms | **16.9 ms — COLD, see below** | Index Only Scan, 1,818 rows |
 | gap scan, full series | 150–400 ms | **686 ms** | Index Only Scan, **no Sort** |
 | stale feed, `max(open_time)` | — | **0.255 ms** | Index Scan **Backward** |
 
 **The prediction was 2× optimistic on the full scan, and that is recorded
 because a practice that only keeps its hits is worthless.**
+
+**RETROACTIVELY WEAKENED, 2026-09-06. THE 16.9 ms WAS A COLD MEASUREMENT AND
+THE TABLE DID NOT SAY SO.** Re-run warm on the same query shape over a month
+holding **2,876 rows — MORE than the 1,818 here — it completes in 5.6–8.3 ms.**
+More rows, less than half the time.
+
+**Every prediction built on this figure inherits an unstated condition**, and at
+least one did: T1.5 predicted detectors 1+2 at 1.4–2.0 s across 80 chunks, which
+should land near 450–660 ms. **Treat every number in this table as COLD unless it
+says otherwise**, and read the entry below before carrying one into a plan.
 
 **What the measurements showed beyond the timings:** no Seq Scan and no Sort
 anywhere. ADR-013 put `open_time` LAST in `candles_pk` so a B-tree could
@@ -1781,6 +1791,23 @@ thought had a denominator.** Bar density had one. Write throughput had one. The
 migration prediction had one. A query timing has one too: *warm or cold*, and it
 dominates everything else at this row count.
 
+**THIS IS A BROADER CATEGORY THAN THE FIVE BEFORE IT, and the difference is worth
+naming.** Those five were RATES: a quantity measured under conditions X and then
+applied to conditions Y — bars per year, rows per second, milliseconds per what
+turned out to be a different unit. The error was in the transfer.
+
+**This one is a SINGLE MEASUREMENT with an unstated environmental condition.**
+Nothing was transferred and no arithmetic was done. 16.9 ms was a correct
+measurement of a real execution, quoted for the same query on the same table —
+and still misleading, because the condition that produced it was never written
+down. **A number does not have to be carried anywhere to be wrong; it only has to
+be quoted without the conditions it was true under.**
+
+**So the practice needs cache state IN THE PREDICTION, beside the row count** —
+"under 10 ms warm, at 166,344 rows" rather than "under 10 ms". Same fix as the
+denominator clause, one level further out: the prediction names the conditions it
+expects to be measured under, and a measurement taken under different ones does
+not score it either way.
 **The rule gains a clause: record the CACHE STATE beside the timing, and
 prefer the warm figure for planning** — a detector run touches each chunk once,
 but the process is long-lived and the buffers stay hot after the first chunk.
@@ -1846,3 +1873,36 @@ risky at the time.
 prediction about the OUTSIDE world is worth making from reasoning, because that
 is the only way to find out. A prediction about a string literal already sitting
 on disk is not a prediction at all.
+
+### A cross-check whose free parameter is fitted to the thing it checks is the first number written twice
+
+**2026-09-06, predicting `missing_bar` for T1.5.** A point estimate of **3,225**
+was derived top-down from measured totals. It was then "confirmed" bottom-up:
+1,705 missing Sunday-evening bars, plus a residual of 1,520 described as
+*"2.5 full sessions/year of holiday and outage"*, summing to 3,225.
+
+**The residual was DEFINED as 3,225 − 1,705.** The second derivation could not
+have disagreed with the first, because its only free parameter was set to make
+it agree. It was presented as independent confirmation and it carried no
+information at all.
+
+**The tell, and it is visible without knowing the answer:** the second
+derivation had **one term that was measured and one term that was solved for**.
+A derivation containing a term solved for the total is not a derivation of the
+total — it is a decomposition of it, which is a different and much weaker claim.
+Decompositions are useful; they just cannot confirm anything.
+
+**Worse, it hid a falsifiable claim that was false.** The 1,705 Sunday-evening
+term was checkable against 166,344 stored bars in a single query, and checking
+it took one minute and showed **~24 Sunday-evening bars in every year including
+2020–2024** — so the term is near zero, not 1,705. The fake agreement is
+precisely what made it feel unnecessary to check.
+
+**The rule: a cross-check must be able to come out wrong.** Before claiming two
+methods agree, ask what the second one would have produced if the first had
+never been computed. If the answer is "it could not have been computed", it is
+not a second method.
+
+**And check the checkable term first.** The Sunday-evening figure was an
+assumption about a feed whose entire history is in the database. Sitting behind
+a sum that already looked right is the only reason it survived.
