@@ -68,12 +68,23 @@ export { expectedGrid, INTERVAL_MS, type ExpectedGrid } from './expected-grid'
 
 export {
   basisOf,
+  classifyGap,
   CALENDAR_PROVENANCE,
   canonicalisePayload,
   scanCalendar,
   type CalendarBasis,
   type CalendarScan,
   type ClosedWindow,
+  type GapKind,
 } from './detect-calendar'
+
+export {
+  ATR_MULTIPLIER,
+  ATR_PERIOD,
+  scanGaps,
+  type GapBar,
+  type GapFinding,
+  type GapScan,
+} from './detect-gap'
 
 export const CORE_PACKAGE_NAME = '@karatx/core' as const

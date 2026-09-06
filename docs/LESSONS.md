@@ -1692,9 +1692,11 @@ checked after the fact.
 
 ---
 
-#### The three density instances
+#### The density instances
 
-Three times now, and the third made it a pattern rather than a coincidence.
+Three times, plus a fourth of the same shape recorded at the end of this file -
+a BOUNDARY serving two roles and counted in both. The third made it a pattern
+rather than a coincidence.
 
 **The density form.** Twelve Data's XAU/USD is **weekday-only before 2025** at
 about 24,342 bars/year, and **24/7 from 2026** at about 35,071. Any density,
@@ -1998,3 +2000,71 @@ runs, and a real sha belonging to someone else.
 **The general form beyond GitHub: when a fact comes from a network call, the
 failure modes of the CALL are more likely than the failure modes of the fact.**
 An answer about the wrong subject looks exactly like an answer.
+
+### A result INSIDE its predicted range can still be wrong, and the DISTRIBUTION is what shows it
+
+**2026-09-06, detector 3's first dry run.** Predicted 60, range 30–120. It
+returned **95**. Inside the range, on a threshold fixed in writing days earlier,
+by a detector whose unit tests all passed. **By every check that had been set
+up, it passed.**
+
+It was wrong. **33 of the 95 sat on Sun 18:00 NY and 5 more on Sun 17:00 — 40%
+on one weekday-hour**, which is the weekly open.
+
+**THE GENERAL FORM: a count is a PROJECTION, and it discards the structure the
+error lives in.** 95 findings spread across six years of news events and 95
+findings piled onto one recurring instant are the same number and completely
+different results. No tightening of the predicted range would have caught this;
+a narrower range would only have made a correct count look like a failure.
+
+**What to predict alongside a count: where the results should SIT.** For this
+detector the answer was available in advance — genuine shocks cluster on
+scheduled releases, so findings should land on 08:30 ET data mornings and 14:00
+ET FOMC afternoons, spread across years. After the fix they do exactly that: 13
+on Fri 08:00 NY, 7 each Wed and Thu 08:00, 4 on Wed 14:00, and the loudest ten
+are all 12:30 or 13:30 UTC.
+
+#### What made the diagnosis fast, and it was not skill
+
+**OQ-17(d) had pre-committed what a clustered result would MEAN**, written
+before the detector existed:
+
+> *flags cluster at session opens => boundary exclusion failed*
+
+So the question was never "is 8x the right multiplier". **Without that
+pre-commitment the natural move is to argue about the threshold** — 95 findings
+feels high, raising it to 12x would have cut the number, the Sunday cluster
+would have thinned rather than vanished, and the bug would have survived behind
+a more comfortable figure. **Tuning the threshold would have moved the number
+and kept the defect.**
+
+That is the entire return on deciding, in advance, what each outcome would mean.
+
+#### The mechanism, concretely
+
+`ATR(14)` was computed over **dead weekend bars and collapsed to 0.37**, against
+a weekday ATR of several dollars. The genuine Sunday-evening open then cleared
+`8 x` almost nothing.
+
+The root cause was scope: run boundaries keyed on **a gap in stored bars**,
+which works only while the feed honours the weekend. 2020–2024 hold ~1,200
+weekend bars a year, so a gap appears and the run breaks. **2026 holds 6,639** —
+contiguous across the closure, so the run never broke.
+
+**Feeding the detector data the calendar says should not exist was the bug.**
+Those weekend bars were already recorded as `unexpected_bar` by detector 1.
+
+### A boundary that serves two roles gets counted in both
+
+**FOURTH IN THE DENSITY FAMILY.** Predicted 1,725 boundary crossings: 345 weekly
+closures plus 1,380 daily breaks. Measured **1,448**.
+
+**The 345 weekly closures were counted twice** — once as ATR **run breaks** and
+once as **crossings** — when a boundary can only be one or the other. Once a
+weekly closure ends a run, there is no comparison left to skip across it.
+1,380 daily breaks plus 130 unexplained gaps is 1,510, and the remainder is
+run-length effects.
+
+Same shape as the three density errors: **an object serving two purposes,
+enumerated under both.** The tell is that the two roles are mutually exclusive
+and were summed anyway.

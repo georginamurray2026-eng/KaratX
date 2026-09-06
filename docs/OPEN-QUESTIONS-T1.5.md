@@ -594,3 +594,68 @@ early-decision discipline exists to prevent.
 the first finding independent of the calendar — no `self_consistent` field, no
 `basis`, nothing derived from boundaries that were themselves measured against
 this feed.
+
+---
+
+## OQ-17 RESULTS — detector 3, run 2026-09-06
+
+**THE FIRST DRY RUN RETURNED 95, INSIDE THE PREDICTED 30-120, AND WAS WRONG.**
+The count passed. The distribution did not: **33 of 95 on Sun 18:00 NY and 5
+more on Sun 17:00** - 40% on one weekday-hour, which is the weekly open.
+
+OQ-17(d) had already pre-committed what that means - *flags cluster at session
+opens => boundary exclusion failed* - so the question was never whether 8x is
+the right multiplier. **The threshold did not move.**
+
+**Mechanism, measured:** ATR(14) computed over dead weekend bars collapsed to
+**0.37** against a weekday ATR of several dollars, so the genuine Sunday open
+cleared `8 x` almost nothing. Root cause was scope: run boundaries keyed on a
+GAP IN STORED BARS, which works only while the feed honours the weekend.
+2020-2024 hold ~1,200 weekend bars a year; **2026 holds 6,639**, contiguous
+across the closure, so the run never broke. Feeding the detector data the
+calendar says should not exist was the bug - those bars are already recorded as
+`unexpected_bar` by detector 1.
+
+### After the fix
+
+| | predicted | actual |
+|---|---|---|
+| **findings** | 60 (30-120) | **47** |
+| bars in scope | - | **155,531** = 166,344 - 10,813 |
+| ATR runs | ~345 | **346** |
+| **unscannable (no ATR)** | ~4,830 | **4,844** |
+| examined | ~149,300 | **149,239** |
+| boundary crossings | ~1,725 | **1,448** |
+| read, 81 chunks, client-observed, warm | 6-12 s | **1.8-2.9 s** |
+
+**The boundary-crossing miss is mine and it is the fourth density-family
+error**: the 345 weekly closures were counted twice, once as run breaks and once
+as crossings, when a boundary can only be one. 1,380 daily breaks plus 130
+unexplained is 1,510.
+
+**The cost prediction over-shot**, in the direction of caution, but it named its
+boundary so it is scoreable - which is the point of the amended practice.
+
+### Where they sit now
+
+Sunday is gone. **Fri 08:00 NY 13, Wed 08:00 7, Thu 08:00 7, Wed 14:00 4** -
+08:30 ET data releases and 14:00 ET FOMC. The loudest ten are all 12:30 or 13:30
+UTC: 2021-11-10 (the CPI surprise), 2024-07-11 CPI, 2026-09-04 NFP.
+
+### THE INDEPENDENCE CLAIM, STATED PRECISELY
+
+- **The THRESHOLD is independent of the calendar.** No boundary or rule id
+  enters the comparison, so a calendar error cannot make a gap look implausible
+  or make a real one look ordinary.
+- **The POPULATION is NOT.** The calendar decides which bars are examined.
+
+**The consequence is the harder failure to notice: if the calendar is wrong
+about a window being closed, detector 3 is SILENT there rather than WRONG
+there.** A wrong row can be disputed; silence appears in no count and is
+indistinguishable from a clean scan.
+
+So the payload carries `scope: "calendar_open_bars_only"` and
+`threshold_basis: "calendar_free"` rather than nothing. The 0-of-47 contrast
+against 14,050-of-14,050 for `basis` still stands, it just no longer overstates.
+
+**47 rows, severity `warn`.** Idempotent: second run 0 inserted, 47 incremented.

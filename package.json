@@ -34,7 +34,8 @@
     "parity-fetch": "pnpm --filter @karatx/worker parity-fetch",
     "backfill": "pnpm --filter @karatx/worker backfill",
     "detect:baseline": "pnpm --filter @karatx/worker detect:baseline",
-    "ci:status": "node scripts/ci-status.mjs"
+    "ci:status": "node scripts/ci-status.mjs",
+    "detect:gaps": "pnpm --filter @karatx/worker detect:gaps"
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "^4.7.2",

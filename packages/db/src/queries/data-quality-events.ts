@@ -194,3 +194,49 @@ export const writeEvents = async (
 
   return { inserted, incremented }
 }
+
+/**
+ * Bars with the prices detector 3 needs, in `[fromMs, toMs)`, ascending.
+ *
+ * EXPECTED COST, stated with its boundary before the query was accepted:
+ * **60-120 ms of CLIENT-OBSERVED time per month chunk, WARM, at 166,344 rows.**
+ * Measured server-side by `EXPLAIN (ANALYZE, BUFFERS)` on 2,876 rows: 75.8 ms
+ * cold, 6.3 and 4.9 ms warm.
+ *
+ * **A SORT IS EXPECTED HERE AND IS NOT A REGRESSION.** Selecting prices forces
+ * heap access, so the planner takes a bitmap scan - which returns physical
+ * order - and must then sort. The "no Sort anywhere" recorded for the gap scan
+ * was only ever true of INDEX-ONLY scans.
+ *
+ * Prices come back as `text`, never parsed to a float anywhere in this system.
+ */
+export const storedBarsWithPrices = async (
+  pool: Pool,
+  instrumentId: number,
+  providerId: number,
+  timeframe: string,
+  fromMs: number,
+  toMs: number,
+): Promise<{ openTimeMs: number; high: string; low: string; close: string }[]> => {
+  const result = await pool.query<{
+    ms: string
+    high: string
+    low: string
+    close: string
+  }>(
+    `SELECT (extract(epoch FROM open_time) * 1000)::bigint::text AS ms,
+            high::text AS high, low::text AS low, close::text AS close
+       FROM candles
+      WHERE instrument_id = $1 AND provider_id = $2 AND timeframe = $3
+        AND open_time >= to_timestamp($4::double precision / 1000)
+        AND open_time <  to_timestamp($5::double precision / 1000)
+      ORDER BY open_time`,
+    [instrumentId, providerId, timeframe, fromMs, toMs],
+  )
+  return result.rows.map((row) => ({
+    openTimeMs: Number(row.ms),
+    high: row.high,
+    low: row.low,
+    close: row.close,
+  }))
+}

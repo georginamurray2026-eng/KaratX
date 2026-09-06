@@ -36,6 +36,7 @@ export const DB_PACKAGE_NAME = '@karatx/db' as const
 export {
   loadCalendar,
   payloadHash,
+  storedBarsWithPrices,
   storedOpenTimes,
   writeEvents,
   WRITE_BATCH,

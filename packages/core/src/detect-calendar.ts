@@ -200,3 +200,53 @@ export const canonicalisePayload = (value: unknown): string => {
   }
   throw new Error(`Payload holds a value that cannot be canonicalised: ${typeof value}`)
 }
+
+/** What lies between two consecutive STORED bars. */
+export type GapKind = 'contiguous' | 'daily_break' | 'weekly_closure' | 'unexplained'
+
+/**
+ * Classify the interval between two consecutive stored bars.
+ *
+ * Detector 3 needs this twice over, for two different purposes that must not
+ * be collapsed:
+ *
+ *   `weekly_closure` ENDS AN ATR RUN. Forty-nine hours means the preceding
+ *     fourteen bars describe a different session.
+ *   `daily_break` does NOT end the run - one hour is short enough that the
+ *     trailing bars stay representative - but the comparison ACROSS it is
+ *     still skipped, because the price move over a closure is not a price move.
+ *   `unexplained` is a gap the calendar does not account for: the market was
+ *     open and bars are simply absent. **Also skipped, and skipped for a
+ *     different reason** - comparing across a hole of unknown size would
+ *     attribute an hour of drift to fifteen minutes.
+ *
+ * Walks the instants between the two bars, so cost scales with gap size: one
+ * step for the ordinary case, 196 across a weekend.
+ */
+export const classifyGap = (
+  rules: readonly SessionRule[],
+  holidays: readonly Holiday[],
+  stepMs: number,
+  previousMs: number,
+  currentMs: number,
+): GapKind => {
+  if (currentMs - previousMs === stepMs) return 'contiguous'
+
+  let sawDailyBreak = false
+  let sawOpen = false
+  for (let at = previousMs + stepMs; at < currentMs; at += stepMs) {
+    const answer = expectsBarAt(rules, holidays, at)
+    if (answer === 'open' || answer === 'unknown') {
+      sawOpen = true
+      continue
+    }
+    if (closedWindowOf(rules, holidays, at) === 'weekly_closure') return 'weekly_closure'
+    sawDailyBreak = true
+  }
+
+  // An open instant with no bar means the gap is not fully explained by the
+  // calendar, whatever else it contains. `missing_bar` already recorded each
+  // absent instant; this only decides whether the price comparison is safe.
+  if (sawOpen) return 'unexplained'
+  return sawDailyBreak ? 'daily_break' : 'contiguous'
+}
