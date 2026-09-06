@@ -2068,3 +2068,60 @@ run-length effects.
 Same shape as the three density errors: **an object serving two purposes,
 enumerated under both.** The tell is that the two roles are mutually exclusive
 and were summed anyway.
+
+### A control in one direction proves nothing once the real answer points the same way
+
+**2026-09-06, detector 4.** `stale_feed` was predicted to emit exactly one row,
+and one row is also what a detector that fired unconditionally would produce. So
+a control was built: put a NOT-STALE frontier through the identical code path
+and require `null`. Sound reasoning, and it was in place before the first run.
+
+**Then the real answer came back `null` as well.** The run happened at 06:01
+Sunday New York, inside the weekend closure, where no bar is expected — so the
+feed was correctly not stale.
+
+**At that moment the control stopped proving anything.** Finding `null`, control
+`null`. **A function that returned `null` unconditionally would have passed
+both**, and the run would have reported "feed is current, control OK" with
+complete confidence and zero evidence.
+
+**THE GENERAL FORM: a control has to point AWAY from the result.** A control is
+only informative while the expected answers differ. When the real answer moves
+onto the same side as the control — which is not under anyone's control, since
+here it depended on the day of the week — the pair collapses into one
+observation.
+
+**So the detector now carries both directions, every run:**
+
+```
+CAN-SAY-NO   frontier + 1 bar               -> must be null
+CAN-SAY-YES  fixed known-open stale window  -> must return a row
+```
+
+Either failing fails the run, because they fail in opposite ways: one means it
+fires regardless, the other means a zero means nothing.
+
+**AND THE CAN-SAY-YES CONTROL USES FIXED INSTANTS**, not an offset from `now`.
+A control derived from the current time inherits the very property that broke
+the first one — its meaning changes with the day of the week, and it would go
+quiet on exactly the weekends when it matters.
+
+**What this cost: nothing, because the control was there to be looked at.** The
+failure mode it exposed is the expensive one — a detector reporting a confident
+zero that no evidence supports.
+
+### The prediction was falsified by the detector being right
+
+`stale_feed` was predicted at **1**. It returned **0**, and the zero is correct:
+the frontier is Saturday 05:15 New York, the check ran Sunday 06:01, and the
+market is shut from Friday 17:00 to Sunday 18:00. **No bar was expected in
+between, so nothing is stale.**
+
+Both parties reasoned "the frontier is a day old, therefore stale" and neither
+checked what day it was. The calendar this whole task exists to encode is what
+answers it — **the prediction was made without consulting the thing being
+built.**
+
+Worth keeping because it is the good kind of falsification: the number was
+wrong, the system was right, and the disagreement is what surfaced the
+reasoning error.

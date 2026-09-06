@@ -15,6 +15,71 @@ from 20 to 21.
 
 ---
 
+## ▶ START HERE — T1.5 IS COMPLETE, 2026-09-06
+
+All four detectors built, run and recorded. **14,097 rows in
+`data_quality_events`.**
+
+### THE BASELINE — quote it with its denominator or not at all
+
+**166,344 bars scanned, 15min, 2020-01-01 to 2026-09-06, calendar rules 1-6 at
+migration 0004.** Every future rate comparison is measured against this.
+
+| detector | count | severity | independent of the calendar? |
+|---|---|---|---|
+| `unexpected_bar` | **10,813** (weekly_closure 9,645, daily_break 1,168) | info | no — self-consistent |
+| `missing_bar` | **3,237** | info | no — self-consistent |
+| `implausible_gap` | **47** at 8 x ATR(14) | warn | **threshold yes, population no** |
+| `stale_feed` | **0** | warn | threshold yes, population no |
+
+**Not run and NOT zeroed:** `negative_price`, `high_below_low`,
+`close_outside_range` — rejected at insert by `candles_positive_check`,
+`candles_high_check`, `candles_low_check`. A scan cannot observe them;
+reporting 0 would report that those constraints exist. **Revisions are also out
+of the baseline** — `candles` stores current values only, and the sole second
+observations anywhere are 99 bar-pairs in T1.4's captures.
+
+### WHAT THE FIRST TWO NUMBERS DO NOT MEAN
+
+**The calendar's weekly-open boundary was corrected against THIS FEED in
+migration 0004**, so detectors 1 and 2 compare the feed to a calendar partly
+derived from it. **Agreement is SELF-CONSISTENCY, NOT CORRECTNESS.** That caveat
+is carried in `payload.basis` on all 14,050 of those rows, so the count cannot
+be read out of the database without it.
+
+**Detectors 3 and 4 carry `scope` instead**: their THRESHOLD is calendar-free,
+their POPULATION is not. The consequence is the harder failure to notice — a
+calendar wrong about a window being closed makes them **SILENT** there rather
+than **WRONG** there, and silence appears in no count.
+
+**What alerts is a CHANGE IN THE RATE, not the level.** 10,813 of 166,344 is
+6.5% and is Tuesday. A move to 40% is a finding. **This run is what establishes
+the baseline that detector does not yet exist to compare against.**
+
+### WHAT REMAINS UNPROVEN
+
+1. **`missing_bar` = 3,237 is a number without an account.** The total is
+   sound — it comes from measured totals — but OQ-13b falsified its composition
+   before the run. The Sunday-evening term is ~0, not 1,705, and what the 3,237
+   is MADE OF is unknown. Holidays are the hypothesis; `market_holidays` is
+   still EMPTY.
+2. **No `stale_feed` row has ever been written.** `occurred_at` stability is
+   proven in unit tests only. The first real outage, or T1.7's polling, tests it
+   against the database.
+3. **The autumn DST doubled hour has never been observed in the 24/7 era** — the
+   next is 2026-11-01, past the data. Reasoned, not measured.
+4. **2,228 instants before 2020-01-24 are uncovered by the calendar**, reported
+   as `unknown` and counted as neither finding. Obligation 55 remains open: the
+   calendar can be non-empty and still cover nothing, and no constraint prevents
+   it.
+5. **`expectsBarAt` costs 28.97 us/call** and is on every path. Fine for a
+   batch job; obligation 57 targets whichever of T1.6/T1.7 first calls it
+   per-bar under a latency budget.
+
+**Next: T1.6, aggregation onto this calendar.**
+
+---
+
 ## ▶ START HERE — T1.5: THE BASELINE EXISTS, 2026-09-06
 
 **THE BASELINE NUMBER. 166,344 bars scanned, 15min, 2020-01-01 to 2026-09-06,

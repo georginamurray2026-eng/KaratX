@@ -138,10 +138,31 @@ export const dataQualityEvents = pgTable(
      * to normalise them would destroy exactly the precision ADR-008 preserves;
      * `4600.123456789012345` survives stripping and does not survive parsing.
      *
-     * CHANGING THE CANONICALISATION CHANGES, RETROACTIVELY, WHAT COUNTS AS A
+     * CHANGING WHAT THE HASH COVERS CHANGES, RETROACTIVELY, WHAT COUNTS AS A
      * DISTINCT EVENT. Existing rows keep hashes computed under the old rule, so
      * old and new never collide and a condition already recorded is recorded
      * again under its new hash. That is a migration, not a refactor.
+     *
+     * THE FIRST VERSION OF THIS COMMENT SAID "changing the canonicalisation",
+     * AND THAT IS TOO NARROW - it names the function when the trap is the
+     * INPUT. What actually bit, on 2026-09-06: two fields were ADDED to
+     * `implausible_gap`'s payload (`scope` and `threshold_basis`). The
+     * canonicalisation function was untouched. Every one of the 47 existing
+     * rows still had its old hash, so the next run inserted 47 NEW rows instead
+     * of incrementing, and the table would have doubled silently.
+     *
+     * **ANY CHANGE TO WHAT GOES INTO THE PAYLOAD IS A HASH CHANGE**: adding a
+     * field, removing one, renaming one, or altering a value's rendering.
+     * Adding a field does not FEEL like editing a uniqueness key, which is
+     * exactly why it is written here. The recovery is the same either way -
+     * delete the rows written under the old shape and re-run, or accept both
+     * generations and know why the count doubled.
+     *
+     * The corollary is a live constraint on detector authors: **the payload
+     * must contain nothing that varies between runs.** A timestamp, a run id or
+     * an elapsed-time count turns every poll into a fresh row. `stale_feed` is
+     * the detector where that is easiest to get wrong, since the condition
+     * persists while the clock moves.
      */
     payloadHash: text('payload_hash').notNull(),
 

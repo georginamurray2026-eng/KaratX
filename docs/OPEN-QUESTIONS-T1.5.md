@@ -659,3 +659,62 @@ So the payload carries `scope: "calendar_open_bars_only"` and
 against 14,050-of-14,050 for `basis` still stands, it just no longer overstates.
 
 **47 rows, severity `warn`.** Idempotent: second run 0 inserted, 47 incremented.
+
+---
+
+## OQ-18. Detector 4 — `stale_feed`. THE PREDICTION WAS FALSIFIED BY THE DETECTOR BEING RIGHT
+
+**Predicted 1. Actual 0, and the 0 is correct.**
+
+The frontier is **Saturday 2026-09-05 05:15 New York**; the check ran **Sunday
+2026-09-06 06:01 NY**. The market is shut from Friday 17:00 to Sunday 18:00, so
+**no bar was expected in between and nothing is stale.**
+
+Both the prediction and the instruction that set it reasoned "the frontier is a
+day old, therefore stale". Neither checked what day it was. **The prediction was
+made without consulting the calendar this task exists to build.**
+
+### The control problem, which the run exposed rather than confirmed
+
+The plan required a positive control - run a NOT-STALE frontier through the same
+code path and confirm zero - because a detector predicted to emit one row cannot
+be validated by emitting one row. That control was built and it passed.
+
+**Then the real answer came back null too.** Finding `null`, control `null`. **A
+function returning `null` unconditionally would have passed both**, and the run
+would have reported "feed is current, control OK" with no evidence at all.
+
+**A control only informs while it points AWAY from the result.** So the detector
+now runs BOTH directions on every invocation, and either failing fails the run:
+
+| control | input | must be |
+|---|---|---|
+| CAN-SAY-NO | frontier + 1 bar | `null` |
+| CAN-SAY-YES | 2026-04-01 12:00Z frontier, checked 14:00Z | a row |
+
+Both pass. **CAN-SAY-YES uses FIXED instants, never an offset from `now`** - a
+control derived from the current time inherits the exact property that broke the
+first one, and would go quiet on the weekends when it matters most.
+
+### occurred_at, purity, and what is NOT proven live
+
+`occurred_at` is the **first expected-and-absent bar** - not the last that
+arrived, not `now`. Asserted in `detect-stale.test.ts` across checks 2h, 7h and
+26h apart with the frontier unchanged: **identical every time.** If it drifted,
+the payload would change, the hash with it, and every poll would write a new row
+instead of incrementing one.
+
+`absentBars` DOES move with the clock and is deliberately **excluded from the
+payload** - asserted as growing, so anyone tempted to include it meets the
+property first.
+
+**PURITY: `nowMs` is a parameter.** The clock is read once, in
+`apps/worker/src/bin/detect-stale.ts`, and passed down. Every instant in the
+test file is fixed and named - a time-dependent test that passes today is the
+shape that fails at 3am on a Sunday, and for a detector about elapsed time
+against a calendar with a weekend in it, that failure would be seasonal.
+
+**NOT PROVEN LIVE: the idempotency of a `stale_feed` ROW.** No such row exists,
+because the feed is not stale. The stability of `occurred_at` is proven in unit
+tests only. The first genuine outage - or T1.7's polling - is what tests it
+against the database.

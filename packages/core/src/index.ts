@@ -87,4 +87,6 @@ export {
   type GapScan,
 } from './detect-gap'
 
+export { detectStaleFeed, STALE_GRACE_BARS, type StaleFeed } from './detect-stale'
+
 export const CORE_PACKAGE_NAME = '@karatx/core' as const
