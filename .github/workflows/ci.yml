@@ -33,9 +33,9 @@ jobs:
     name: format, lint, typecheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -90,9 +90,9 @@ jobs:
     # default include swept them into the unit run, and the suite silently began
     # requiring a database. It passed only because Postgres happened to be up.
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -147,9 +147,9 @@ jobs:
       # container, identical in kind to the one in .env.example.
       DATABASE_URL: postgresql://karatx:karatx_local_dev@127.0.0.1:5432/karatx
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -197,9 +197,9 @@ jobs:
     # run therefore proves the database was absent, instead of being compatible
     # with either condition.
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -213,7 +213,7 @@ jobs:
       # happens inside the run rather than as a separate step.
       - run: pnpm --filter @karatx/web test:e2e
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report
@@ -225,7 +225,7 @@ jobs:
     name: secrets, dependencies, migration immutability
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           # Full history: gitleaks scans every commit, and the migration check
           # needs the merge base with main.
@@ -253,8 +253,8 @@ jobs:
       #
       # gitleaks does not need Node. Paying ~10s for install anyway buys three
       # uniformly-guarded checks that all report.
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
