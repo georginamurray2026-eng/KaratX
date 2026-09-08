@@ -3,9 +3,10 @@
 Handoff file between Claude Code sessions (§27, §44). The repository is the
 project memory — do not rely on conversation history.
 
-**Last verified:** 2026-09-02, by inspecting the repository and running the
-commands below. Every figure here came from an actual run, not from a
-handover document.
+**Last verified:** 2026-09-06 by running the detectors; **this file was
+updated 2026-09-08 without re-reading the database** — see the warning in the
+handoff below. Every figure came from an actual run, not from a handover
+document, but "from a run" and "true now" are different claims.
 
 **Obligation counts live in [OBLIGATIONS.md](./OBLIGATIONS.md) and are
 deliberately not restated here** — see the note where the summary table used to
@@ -15,72 +16,137 @@ from 20 to 21.
 
 ---
 
-## ▶ START HERE — T1.5 IS COMPLETE, 2026-09-06
+## ▶ START HERE — T1.5 COMPLETE. NEXT IS T1.6.
 
-All four detectors built, run and recorded. **14,097 rows in
-`data_quality_events`.**
+**Read this whole section before touching anything.** Written for a session with
+no conversation history (§27, §44).
 
-### THE BASELINE — quote it with its denominator or not at all
+### ⚠ THE FIGURES BELOW ARE FROM THE COMMIT, NOT A LIVE READ
+
+They were produced by runs on 2026-09-06 and recorded here. **The Postgres
+container was stopped afterwards, so nothing has re-read the database since.**
+A future session must **re-verify before relying on any of them**, not assume
+they still hold:
+
+```
+pnpm db:up
+docker exec karatx-postgres psql -U karatx -d karatx -c \
+  "SELECT event_type, count(*), min(occurrences), max(occurrences)
+     FROM data_quality_events GROUP BY 1 ORDER BY 2 DESC;"
+docker exec karatx-postgres psql -U karatx -d karatx -c \
+  "SELECT timeframe, count(*) FROM candles GROUP BY 1;"
+```
+
+If those disagree with the tables below, **the database is right and this file
+is stale** — fix this file.
+
+### What T1.5 delivered
+
+Four detectors, each pure in `packages/core`, orchestrated from
+`apps/worker`, writing through `packages/db`. `packages/core` reads no
+clock and performs no I/O; `stale_feed` is the only one that needs `now`, and
+it takes it as a parameter.
+
+Run them with `pnpm detect:baseline`, `pnpm detect:gaps`,
+`pnpm detect:stale` (each takes `--dry-run`).
+
+### THE BASELINE — four numbers, quoted with their denominator or not at all
 
 **166,344 bars scanned, 15min, 2020-01-01 to 2026-09-06, calendar rules 1-6 at
 migration 0004.** Every future rate comparison is measured against this.
 
-| detector | count | severity | independent of the calendar? |
+| detector | count | severity | calendar-independent? |
 |---|---|---|---|
 | `unexpected_bar` | **10,813** (weekly_closure 9,645, daily_break 1,168) | info | no — self-consistent |
 | `missing_bar` | **3,237** | info | no — self-consistent |
 | `implausible_gap` | **47** at 8 x ATR(14) | warn | **threshold yes, population no** |
 | `stale_feed` | **0** | warn | threshold yes, population no |
 
-**Not run and NOT zeroed:** `negative_price`, `high_below_low`,
-`close_outside_range` — rejected at insert by `candles_positive_check`,
-`candles_high_check`, `candles_low_check`. A scan cannot observe them;
-reporting 0 would report that those constraints exist. **Revisions are also out
-of the baseline** — `candles` stores current values only, and the sole second
-observations anywhere are 99 bar-pairs in T1.4's captures.
+**14,097 rows total.** Not run and **NOT zeroed**: `negative_price`,
+`high_below_low`, `close_outside_range` — rejected at insert by the
+`candles` CHECKs, so a scan cannot observe them and a 0 would report only that
+the constraints exist. Revisions are out of the baseline: `candles` stores
+current values only.
 
-### WHAT THE FIRST TWO NUMBERS DO NOT MEAN
+### THE CALENDAR CORRECTION IN MIGRATION 0004 — read before trusting any count
 
-**The calendar's weekly-open boundary was corrected against THIS FEED in
-migration 0004**, so detectors 1 and 2 compare the feed to a calendar partly
-derived from it. **Agreement is SELF-CONSISTENCY, NOT CORRECTNESS.** That caveat
-is carried in `payload.basis` on all 14,050 of those rows, so the count cannot
-be read out of the database without it.
+`market_hours` was measured against Twelve Data and **corrected**: the
+`daily_break` local end 17:45 -> 18:00, and the `weekly_open` local start
+17:00 -> 18:00. **The seed was not a mistake** — Massive supplied the original
+boundaries and the two venues genuinely differ by an hour (ADR-008).
 
-**Detectors 3 and 4 carry `scope` instead**: their THRESHOLD is calendar-free,
-their POPULATION is not. The consequence is the harder failure to notice — a
-calendar wrong about a window being closed makes them **SILENT** there rather
-than **WRONG** there, and silence appears in no count.
+**The consequence governs how the first two numbers may be used.** Detectors 1
+and 2 compare the feed to a calendar **partly derived from that same feed**, so
+agreement is **SELF-CONSISTENCY, NOT CORRECTNESS**. That caveat is carried in
+`payload.basis` on all 14,050 of those rows, so the count cannot be read out of
+the database without it. Detectors 3 and 4 carry `scope` instead: their
+threshold is calendar-free, their population is not — **a calendar error makes
+them SILENT rather than WRONG, and silence appears in no count.**
 
 **What alerts is a CHANGE IN THE RATE, not the level.** 10,813 of 166,344 is
-6.5% and is Tuesday. A move to 40% is a finding. **This run is what establishes
-the baseline that detector does not yet exist to compare against.**
+6.5% and is Tuesday. A move to 40% is a finding. **This run established the
+baseline that the rate detector does not yet exist to compare against.**
 
-### WHAT REMAINS UNPROVEN
+### THE FIVE UNPROVEN ITEMS
 
-1. **`missing_bar` = 3,237 is a number without an account.** The total is
-   sound — it comes from measured totals — but OQ-13b falsified its composition
-   before the run. The Sunday-evening term is ~0, not 1,705, and what the 3,237
-   is MADE OF is unknown. Holidays are the hypothesis; `market_holidays` is
-   still EMPTY.
+1. **`missing_bar` = 3,237 is a number without an account.** The total comes
+   from measured totals and is sound; OQ-13b falsified its COMPOSITION before
+   the run. The Sunday-evening term is ~0, not the 1,705 first claimed, and what
+   the 3,237 is made of is unknown. Holidays are the hypothesis and
+   `market_holidays` is still EMPTY.
 2. **No `stale_feed` row has ever been written.** `occurred_at` stability is
-   proven in unit tests only. The first real outage, or T1.7's polling, tests it
-   against the database.
-3. **The autumn DST doubled hour has never been observed in the 24/7 era** — the
-   next is 2026-11-01, past the data. Reasoned, not measured.
+   proven in unit tests only. The first real outage, or T1.7's polling, is what
+   tests it against the database.
+3. **The autumn DST doubled hour has never been observed in the 24/7 era.** The
+   next is 2026-11-01, past the stored data. Reasoned, not measured.
 4. **2,228 instants before 2020-01-24 are uncovered by the calendar**, reported
-   as `unknown` and counted as neither finding. Obligation 55 remains open: the
+   as `unknown` and counted as neither finding. **Obligation 55 stays open:** a
    calendar can be non-empty and still cover nothing, and no constraint prevents
    it.
-5. **`expectsBarAt` costs 28.97 us/call** and is on every path. Fine for a
-   batch job; obligation 57 targets whichever of T1.6/T1.7 first calls it
-   per-bar under a latency budget.
+5. **`expectsBarAt` costs 28.97 us/call** — measured directly, ~34,500
+   calls/second — and is on every path that asks whether a bar should exist.
 
-**Next: T1.6, aggregation onto this calendar.**
+### ▶ WHAT T1.6 NEEDS BEFORE IT STARTS
+
+T1.6 aggregates 15min bars onto this calendar. Two obligations land on it
+directly, and both should be settled in the PLAN rather than discovered:
+
+**Obligation 57 — `expectsBarAt` at 28.97 us/call.** Of T1.5's 14.2 s baseline
+wall clock, reads were 0.8 s and writes 4.3 s; **~9 s was this one function**
+across ~411,000 calls. Irrelevant for a batch job and recorded precisely because
+T1.6 is the first task likely to call it PER BAR. **The fix, if one is needed,
+does not make it impure:** resolve the local rendering once per DAY rather than
+per bar — a day has one offset except across a transition, and the transition
+instants are computable — or memoise per (zone, UTC day). Decide in the plan
+whether T1.6's path is latency-sensitive; if it is not, say so and close 57 with
+a note.
+
+**Obligation 49 — 1D parity is BLOCKED on T1.6.** Of 1,449 fetched daily bars,
+**0 are at 21:00Z and 1,449 at 00:00Z**, while every golden fixture daily bar is
+at 21:00Z. Twelve Data's `1day` is a **UTC-day bar**; the fixture's day opens
+at **17:00 America/New_York**. **These are different objects and no filtering
+reconciles them.** T1.6 aggregating 15min bars onto the session calendar is what
+produces a 1D series comparable to the fixture — so **1D parity cannot be
+attempted before T1.6 and must not be attempted with the fetched series.**
+
+**Also carry into T1.6:**
+
+- **Every query against `candles` states its EXPECTED COST before it is
+  written**, naming the **boundary** (server-side / client-observed /
+  wall-clock), the **cache state** (cold / warm) and the **row count**, and is
+  `EXPLAIN`ed at real volume — 166,344 rows — before acceptance. Cold-to-warm
+  is worth up to 10x and `EXPLAIN ANALYZE` never measures what a job
+  experiences.
+- **Any change to what goes INTO an event payload is a hash change** and
+  invalidates existing rows. See the comment on
+  `data_quality_events.payload_hash`.
+- **1D bars in `candles` are UTC-day and are NOT session days.** Do not read
+  them as daily candles.
+
 
 ---
 
-## ▶ START HERE — T1.5: THE BASELINE EXISTS, 2026-09-06
+## History — T1.5 mid-task, 2026-09-06 (superseded by the handoff above)
 
 **THE BASELINE NUMBER. 166,344 bars scanned, 15min, 2020-01-01 to 2026-09-06,
 calendar rules 1-6 at migration 0004.** Every future rate comparison is measured
@@ -122,7 +188,7 @@ distribution. Then `stale_feed`.
 
 ---
 
-## ▶ START HERE — T1.5 HAS BEGUN. THE TABLE EXISTS, THE DETECTORS DO NOT.
+## History — T1.5 opening, 2026-09-06 (superseded)
 
 **Migration 0005 applied 2026-09-06: `data_quality_events`.** Ledger at 6.
 `candles` unchanged at 169,704. The new table is **EMPTY, deliberately** — the
@@ -153,7 +219,7 @@ accepted, with the row count recorded beside any timing.
 
 ---
 
-## ▶ START HERE — T1.4 IS COMPLETE, 2026-09-05
+## History — T1.4 complete, 2026-09-05 (superseded)
 
 **All ten steps done. `candles` holds 169,704 rows: 166,344 at 15min spanning
 2020-01-24 13:00Z to 2026-09-05 09:30Z, plus 1,911 at 1h and 1,449 at 1D.**
