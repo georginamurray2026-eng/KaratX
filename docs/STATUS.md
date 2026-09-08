@@ -3,20 +3,170 @@
 Handoff file between Claude Code sessions (§27, §44). The repository is the
 project memory — do not rely on conversation history.
 
-**Last verified:** 2026-09-06 by running the detectors; **this file was
-updated 2026-09-08 without re-reading the database** — see the warning in the
-handoff below. Every figure came from an actual run, not from a handover
-document, but "from a run" and "true now" are different claims.
+**Last verified: 2026-09-08, and every figure below was read from the live
+database on that date**, not carried from a handover document. The command is
+named where the figures appear, so a cold session can re-run it rather than
+trust it.
 
 **Obligation counts live in [OBLIGATIONS.md](./OBLIGATIONS.md) and are
-deliberately not restated here** — see the note where the summary table used to
-be. As of 2026-09-05: nothing overdue, nothing awaiting a person. **Obligation
-43 was raised 2026-09-04** out of the T1.4 estimate and takes the open count
-from 20 to 21.
+deliberately not restated here.** Predictions and their results live in
+[OPEN-QUESTIONS-T1.6.md](./OPEN-QUESTIONS-T1.6.md). Neither is summarised here;
+both are linked because a second copy of a count is a second thing to drift.
 
 ---
 
-## ▶ START HERE — T1.5 COMPLETE. NEXT IS T1.6.
+## ▶ START HERE — T1.6 COMPLETE EXCEPT 4H. 40,359 DERIVED BARS ARE IN `candles`.
+
+**Read this whole section before touching anything.** Written for a session with
+no conversation history (§27, §44).
+
+### ⚠ FIRST ACTION: NOTHING IS PUSHED. CI HAS SEEN NONE OF T1.6.
+
+**11 commits sit on local `main` ahead of `origin/main`**, `9d1aede` through
+`8bf4475`. `pnpm ci:status` reports the newest run in the repository as **#73 on
+`6b5e0d1`** — the last PUSHED commit, which predates all of T1.6.
+
+**This is "CI has not run", not "CI failed".** Every gate was run locally and
+green before each commit — `pnpm test`, `pnpm test:integration`, `pnpm
+typecheck`, `pnpm lint`, `pnpm format:check`. **That is a reason to expect green,
+not evidence of it.** Decide deliberately whether to push; nothing about T1.6
+requires it.
+
+### ⚠ THE TRAP: AN UNSCOPED TIMEFRAME FILTER NOW RETURNS TWO INCOMPATIBLE SERIES
+
+**`candles` holds two provenances. A query that filters on `timeframe` alone is
+wrong and will look entirely reasonable.**
+
+```sql
+SELECT count(*) FROM candles WHERE timeframe = '1D';   -- 3,003. WRONG.
+```
+
+Those 3,003 rows are **two different objects**:
+
+| | rows | opens at | what it is |
+|---|---|---|---|
+| provider 1, `1D` | 1,449 | **00:00Z** | Twelve Data's **UTC-day** bar |
+| provider 3, `1D` | 1,554 | **22:00Z / 23:00Z** | our **session-day** bar, 18:00 New York under EDT / EST |
+
+They overlap at **no instant at all** — obligation 49 argued that from the
+primary key, and T1.6 confirmed it by observation. No filtering reconciles them;
+mixing them produces a daily series that is neither.
+
+**The same trap on `1h`:** `WHERE timeframe = '1h'` returns **40,716** — 1,911
+vendor bars plus 38,805 derived ones.
+
+**EVERY QUERY AGAINST `candles` MUST SCOPE `provider_id`.** Resolve it BY KEY —
+`SELECT id FROM providers WHERE key = 'karatx_derived'`, or `providerIdByKey`
+from `@karatx/db`. **NEVER the literal 3.** `providers.id` is
+`GENERATED ALWAYS AS IDENTITY`; 3 is an accident of insertion order on this
+machine and will differ in a rebuilt or restored database (ADR-014).
+
+### THE TABLE AS IT STANDS — read live 2026-09-08
+
+```
+docker exec karatx-postgres psql -U karatx -d karatx -c \
+  "SELECT p.key, c.provider_id, c.timeframe, count(*)
+     FROM candles c JOIN providers p ON p.id = c.provider_id
+    GROUP BY 1,2,3 ORDER BY 2,3;"
+```
+
+| key | provider_id | timeframe | rows |
+|---|---|---|---|
+| `twelve_data` | 1 | `15min` | **166,344** |
+| `twelve_data` | 1 | `1D` | 1,449 |
+| `twelve_data` | 1 | `1h` | 1,911 |
+| `karatx_derived` | 3 | `1D` | **1,554** |
+| `karatx_derived` | 3 | `1h` | **38,805** |
+
+**210,063 rows total.** 169,704 vendor, 40,359 derived.
+
+### THE T1.5 BASELINE IS UNCHANGED — 166,344 bars and 14,097 events
+
+The detectors scan `15min` under provider 1, and T1.6 wrote no `15min` rows and
+touched no vendor row. `data_quality_events` still reads **14,097**. **Every
+rate in the T1.5 baseline still has the same denominator and remains
+comparable.**
+
+**BUT THAT PROTECTION IS INCIDENTAL, NOT DESIGNED.** The detectors are safe
+because they filter on `timeframe = '15min'` and no derived bar carries that
+value — not because anything scopes them to a provider. **The day a derived
+`15min` series exists, or a detector widens its timeframe filter, the baseline
+silently acquires a second provenance and every rate becomes a blend.** Gate
+test 5 of the aggregation integration suite makes this deliberate rather than
+lucky: it asserts no row outside `15min` exists under any provider but the
+derived one.
+
+### VENDOR `raw_datetime` IS NO LONGER ENFORCED BY THE DATABASE
+
+Migration 0006 dropped `NOT NULL` so derived bars can store NULL honestly, and a
+column cannot be nullable for one provider and `NOT NULL` for another — so the
+guarantee left the database for **every** provider (ADR-014).
+
+**What replaces it:** `assertRawDatetimePresent` in
+`packages/db/src/queries/candles.ts`, called first in `upsertCandle`, refusing a
+null/empty/non-string `raw_datetime` for any provider but `karatx_derived`.
+Mutation-proven in both directions.
+
+**THE INVARIANT TO WATCH, and the query that checks it:**
+
+```sql
+SELECT count(*) FROM candles WHERE raw_datetime IS NULL;              -- 40,359
+SELECT count(*) FROM candles WHERE raw_datetime IS NULL
+   AND provider_id <> (SELECT id FROM providers WHERE key='karatx_derived'); -- 0
+```
+
+**Every NULL must be a derived row. The second query must return 0 for ever.**
+A non-zero result means a vendor bar was stored without the provider's own
+datetime text, which is unrecoverable after the fact — that is the entire reason
+the column exists.
+
+### THE RESTORE POINT
+
+**`backups/karatx-20260908-175307.dump`** — 5,138,380 bytes, `migrations: 7`,
+`providers: 3`. Taken immediately before the aggregation run, so it restores to
+**169,704 candles with 0 derived rows**.
+
+**`backups/karatx-20260908-123227.dump` IS PRE-0006 AND MUST NOT BE USED.** It
+predates the migration, so restoring it leaves a database with no
+`karatx_derived` provider and a `NOT NULL` on `raw_datetime`, against code that
+expects neither. Back up before every migration; obligation 38 records that the
+restore FAILURE path is still unexercised.
+
+### WHAT T1.6 DID NOT DO — stated so nobody assumes otherwise
+
+- **NO 4H.** Deferred by **obligation 59**, and there is no dead branch for it:
+  `aggregate` throws on `'4h'` and the message says the rule is absent rather
+  than disabled. **This BLOCKS Phase 2 from consuming 4H data.** The session day
+  is 23 hours before 2025 and 24 after, so no single division is correct across
+  both eras, and no 4H golden fixture exists to validate a choice.
+- **NO PARITY ASSERTION.** Obligation 12 is untouched. Derived bars have never
+  been compared with the TradingView fixtures, and obligation 12 now carries the
+  warning that some 1H bars will differ **by construction** — 1,168
+  `unexpected_bar` events sit inside `daily_break` and T1.6 excludes those bars
+  deliberately.
+- **NO OPTIMISATION, DESPITE THE THRESHOLD BEING CROSSED.** OQ-22 fixed a rule
+  before any number existed; the run measured ~52.6 s of provider lookups, 24.1%
+  of a 218.4 s wall clock, so **the derived-provider-id cache is owed**. It is
+  also **the smaller of two wins** — the second run wrote nothing and still cost
+  94% of the first, so round trip plus statement evaluation is 93.8% of the cost
+  and the write itself is 6.2%. See obligation 57 and
+  [OPEN-QUESTIONS-T1.6.md](./OPEN-QUESTIONS-T1.6.md).
+
+### RUNNING IT
+
+```
+pnpm aggregate --dry-run    # aggregates, writes nothing, reports every figure
+pnpm aggregate              # writes, idempotently — a second run is all `noop`
+```
+
+Idempotency is proven by four assertions plus an md5 over every derived row's
+timestamps, not by a row count alone.
+
+---
+
+## History — T1.5 complete / T1.6 not started, 2026-09-08 (superseded by the handoff above)
+
+**SUPERSEDED. Its figures predate T1.6 and its "NEXT IS T1.6" is done.** Kept because its T1.5 baseline, its calendar-correction note and its five unproven items are still the record of where those numbers came from.
 
 **Read this whole section before touching anything.** Written for a session with
 no conversation history (§27, §44).

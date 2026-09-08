@@ -2165,3 +2165,90 @@ specific enough to be wrong.
 **Corollary for self-attributed causes specifically.** "This was my fault" feels
 like the rigorous, non-defensive conclusion, and that is exactly why it escapes
 scrutiny. It is a causal claim like any other and needs the same evidence.
+
+
+### A range is widened by its WEAKEST TERM, not drawn around the sum
+
+OQ-24 predicted the aggregation write phase at ~137 seconds, range 100–185. The
+actual was **218.4 s** — outside the range by 18%.
+
+**Two of its three terms landed exactly.** The provider-lookup latency was
+measured on the machine that would run it, 1.3040 ms over 3,000 iterations. The
+lookup count was predicted at 40,359 and came back **40,359, to the row**. The
+third term — 1.8 ms per upsert — was never measured, and it carried **82.1 s of
+the 81.4 s total error**. Actual: 3.83 ms.
+
+**The prediction NAMED ITS OWN WEAK TERM, one sentence below the number:** "the
+1.8 ms upsert figure is an assumption, not a measurement — the write path has
+never been run, and measuring it would have meant running it." That sentence was
+correct, honest, and had no effect on the range, which was still drawn
+symmetrically around the total as though its three terms were equally solid.
+
+**The arithmetic that would have got it right was available before the run.**
+The upsert term was ~58% of the predicted per-row cost. A factor-of-two
+uncertainty on that term alone — nothing exotic, the default width for a number
+nobody has measured — spans roughly **90–240 s**, which contains the actual. The
+other two terms deserved no widening at all, because they were measured.
+
+**The rule: propagate uncertainty from the terms, not from the total.** A range
+drawn around a sum treats every component as equally trustworthy. When one
+component is a guess and the others are measurements, the range must be widened
+by the guess alone, and it will be asymmetric — the guessed term can be 2x, but
+it cannot be 0.5x if the other terms are floors.
+
+**And the generalisation must not be "upserts are slower than you think".** That
+reading fixes one constant, leaves the method that produced it intact, and the
+next prediction with an unmeasured term fails the same way. The defect was never
+in the estimate of the upsert; it was in the shape of the interval around it.
+
+---
+
+### MEASURE THE BASELINE, NOT ONLY THE ACTION — cost attributed to what you were doing is a guess
+
+The aggregation run spent **207.2 s** in what the report called the write phase,
+inserting 40,359 rows. The obvious reading is that writing 40,359 rows costs
+207 seconds.
+
+**The second run wrote nothing and cost 194.3 s.**
+
+```
+run 1   5.134 ms per row   (all `inserted`)
+run 2   4.815 ms per row   (all `noop`, nothing written)
+        ------
+        0.319 ms per row   =  the write itself
+```
+
+**The write is 6.2% of the cost. Round trip plus statement evaluation is 93.8%.**
+A no-op upsert — which reads the stored row, evaluates the six-case conflict
+predicates, decides to change nothing, and returns — costs 94% of what a full
+insert costs.
+
+**Without the no-op run, the whole 207 s would have been attributed to writing,
+and every optimisation that followed would have targeted 6% of the cost.** The
+instinct on seeing "207 s of write time" is to write less: skip rows already
+present, diff before upserting, short-circuit unchanged periods. A re-run that
+skipped all 40,359 writes perfectly would still pay ~194 s, because it would
+still make 40,359 round trips to discover there was nothing to do. Every one of
+those optimisations is sound engineering aimed at the wrong 6%.
+
+**The baseline run was nearly free and was not planned.** It happened because
+idempotency needed proving, and the cost measurement fell out of it. That is
+luck, and the lesson is to stop relying on it.
+
+**The rule: a cost attributed to an action is a guess until something measures
+the same path NOT performing that action.** Before optimising anything, run the
+null version — the same code path doing nothing — and subtract. The difference is
+the action's cost; everything else is overhead that will survive any amount of
+work on the action itself.
+
+**This generalises past writes.** The same trap is available wherever a
+measurement brackets a call that does more than the thing being measured: a
+backfill that fetches and parses and stores, a detector that reads and scans and
+writes, a request whose latency is attributed to the handler. In each case there
+is a null version — fetch and discard, read and skip, handle nothing — and it
+costs almost nothing to measure once.
+
+**Corollary, and it is the one that bites:** an optimisation validated only
+against the total will appear to work whenever anything else in the path
+improves, and its own contribution is never isolated. Measure the baseline
+before, not after.
