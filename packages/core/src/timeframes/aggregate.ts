@@ -355,9 +355,17 @@ export const aggregate = (
   }
 
   // A period containing an UNKNOWN instant cannot state what it requires.
+  // Kept per period as well as as a set, because the span filter below has to
+  // ask whether a period's UNKNOWN instants reach the input - a period with no
+  // expected slots at all has nothing else to answer with.
   const poisonedByUnknown = new Set<string>()
+  const unknownByPeriod = new Map<string, number[]>()
   for (const at of grid.unknown) {
-    poisonedByUnknown.add(periodKeyOf(at, timeframe, timezone, boundaryMinute))
+    const key = periodKeyOf(at, timeframe, timezone, boundaryMinute)
+    poisonedByUnknown.add(key)
+    const slots = unknownByPeriod.get(key)
+    if (slots === undefined) unknownByPeriod.set(key, [at])
+    else slots.push(at)
   }
   for (const key of poisonedByUnknown) {
     if (!requiredByPeriod.has(key)) requiredByPeriod.set(key, [])
@@ -373,10 +381,25 @@ export const aggregate = (
   // overshoots, and without this a caller passing one hour of bars would be
   // told that two whole session days were rejected - periods it never claimed
   // to cover, counted against it.
-  const inSpan = (slots: readonly number[]): boolean =>
-    slots.some((at) => at >= fromMs && at < toMs)
+  //
+  // THE TEST IS THE SAME WHETHER OR NOT THE CALENDAR COULD ANSWER, AND THAT
+  // WAS A DEFECT BEFORE IT WAS A COMMENT. An out-of-span period used to be
+  // dropped when the calendar covered it and KEPT when it did not, so the
+  // rejection denominator moved with calendar COVERAGE rather than with what
+  // the caller supplied: two runs over identical input could report different
+  // denominators purely because one had a gap in its pad. A denominator that
+  // depends on something the caller cannot see is not a denominator.
+  //
+  // Unknowns are not lost by this. `unknownInstants` reports every one of them
+  // and is deliberately SPAN-INDEPENDENT - a calendar gap is a fact about the
+  // calendar, not about the window someone happened to ask for. That is the
+  // right home for it (obligation 55), and the rejection count is not.
+  const inSpan = (instants: readonly number[]): boolean =>
+    instants.some((at) => at >= fromMs && at < toMs)
   for (const [key, slots] of [...requiredByPeriod.entries()]) {
-    if (!inSpan(slots) && !poisonedByUnknown.has(key)) requiredByPeriod.delete(key)
+    if (inSpan(slots)) continue
+    if (inSpan(unknownByPeriod.get(key) ?? [])) continue
+    requiredByPeriod.delete(key)
   }
 
   const bars: AggregatedBar[] = []

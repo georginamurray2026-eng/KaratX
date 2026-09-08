@@ -273,3 +273,96 @@ tell it.
 A plan that is neither Index Scan nor Seq Scan — a Bitmap Heap Scan, say — is
 also a falsification of the prediction as written, and should be reported with
 the plan rather than filed as close enough.
+
+---
+
+## OQ-21 RESULT — FALSIFIED. Recorded 2026-09-09, from the implementation, before any run.
+
+**The prediction above is left exactly as written.** It was wrong, and a
+prediction edited after the fact is not a prediction.
+
+| | |
+|---|---|
+| **Predicted** | fewer than 4,000 `expectsBarAt` calls for a full aggregation |
+| **Actual** | one call per 15-minute slot in the padded range, **~464,000 for a full run** |
+| **Wrong by** | a factor of about 116 |
+
+### The derivation, rather than the number
+
+The number is not asserted. It follows from what `expectedGrid` does, which is
+to step every 15-minute instant in a range and ask `expectsBarAt` about each
+one — **whether or not a bar exists there**. So the count is a property of the
+SPAN, not of the data:
+
+```
+stored range   2020-01-24 13:00Z .. 2026-09-05 09:45Z
+span                                        6.614 years
+span / 15 min                            231,923 slots
+
+padded, 1H  (1 hour either side)          231,931 calls
+padded, 1D  (26 hours either side)        232,131 calls
+                                         --------------
+one full run, BOTH timeframes             464,062 calls
+at 28.97 us/call (obligation 57)             13.4 s
+```
+
+**THE PAD IS PART OF THE ANSWER, NOT AN OVERHEAD.** It exists because a grid
+derived from the input span lets a period's required set be truncated by the
+input itself — one bar at 00:00 produced a one-constituent "hourly" bar that
+satisfied every completeness check. That defect was found by the first test run
+and fixed in the code; the pad is what fixes it.
+
+### **STEP 10 SHOULD PREDICT ~464,000, NOT ~232,000**
+
+Stated plainly because the halving error is the easy one to make: **there are
+TWO invocations, one per timeframe**, and each walks the whole span
+independently. A prediction of ~232,000 would be right about one call and wrong
+about the run, and would then "confirm" at half the true figure.
+
+### Why the prediction was wrong — and it was not an arithmetic slip
+
+The reasoning was: **a session boundary is a property of a day, not of a bar.**
+That is TRUE, and it is still true. Resolving where a day begins and ends does
+not require asking about each bar inside it.
+
+**What the prediction missed is that the boundary is not what aggregation needs.
+It needs the REQUIRED CONSTITUENT COUNT, and that is a property of every slot.**
+"How many 15-minute bars must this hour contain?" is answerable only by asking
+the calendar about each candidate slot — a holiday early close, a daily break
+edge, or an era change all move the answer within a single day.
+
+Getting under 4,000 was reachable, and the way to reach it was to derive counts
+from session-boundary arithmetic: resolve the day's open and close, subtract the
+break, divide by fifteen minutes. **That is a SECOND IMPLEMENTATION OF THE
+SESSION RULES**, free to drift from `expectsBarAt` — and the calendar-count
+invariant exists precisely to prevent it. `aggregate.ts` states the failure it
+prevents: a shortened session satisfied by a full count, or a full session
+satisfied by fewer, is a wrong bar that looks entirely right.
+
+**So the invariant wins and the prediction loses.** The cost was not accepted
+casually; it was accepted in preference to a second source of truth about when
+the market is open.
+
+### Obligation 57 is now OWNED BY T1.6, not deferred
+
+57 said it was owned by "whichever of T1.6 or T1.7 first calls it per-bar in a
+latency-sensitive path", and that if neither did, it would close unactioned with
+a note. **T1.6 calls it per slot, which is worse than per bar**, so the
+condition is met and the row is updated to say so.
+
+**It does not follow that it must be optimised now, and it has not been.**
+13.4 seconds inside a batch job is irrelevant, exactly as 57 predicted for this
+case. What has changed is ownership: the fix is no longer hypothetical, and 57
+already names it — resolve the local rendering once per day, or memoise per
+(zone, UTC day), both of which keep the function pure. **The optimisation
+belongs with a measurement of the real run, not with this estimate.**
+
+### What would falsify THIS result
+
+- **A measured full run materially below 464,000 calls** means the padded span
+  is smaller than derived here, or one timeframe is not being walked.
+- **Materially above it** means something calls `aggregate` more than once per
+  timeframe, or the pad is wider than intended.
+- **A wall-clock contribution far from 13.4 s** would falsify obligation 57's
+  28.97 us/call at this call site rather than falsifying the count — and that is
+  a different finding, about the measurement rather than about the design.

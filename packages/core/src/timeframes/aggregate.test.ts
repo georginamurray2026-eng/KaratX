@@ -500,3 +500,63 @@ describe('aggregate - volume', () => {
     expect(r.bars[0]!.volume).toBeNull()
   })
 })
+
+describe('aggregate - the span filter is consistent', () => {
+  /**
+   * Rules that only take force partway through the PADDED range, so the pad
+   * region is genuinely `unknown` rather than `closed`. That is the only way
+   * to reach a period the caller never asked about which the calendar also
+   * cannot answer for.
+   */
+  const lateRules = RULES.map((r) => ({ ...r, effectiveFrom: '2026-06-15' }))
+
+  it('an out-of-span UNKNOWN period is not counted as expected or rejected', () => {
+    // THE INCONSISTENCY THIS PINS DOWN: an out-of-span period was dropped when
+    // the calendar could answer for it and KEPT when it could not, so the
+    // rejection denominator moved depending on calendar coverage rather than on
+    // what the caller supplied. Two runs over identical input would report
+    // different denominators purely because one had a calendar gap in its pad.
+    const r = aggregate(
+      bars('2026-06-16T00:00:00Z', '2026-06-16T01:00:00Z'),
+      '1D',
+      config(lateRules),
+    )
+
+    // Only the session day the input actually reaches.
+    expect(r.periodsExpected).toBe(1)
+    expect(r.periodsRejectedForMissingConstituents).toBe(1)
+    expect(r.bars).toEqual([])
+  })
+
+  it('but the unknown instants are STILL reported, because that is span-independent', () => {
+    // The positive control. Making the denominator span-consistent must not
+    // silence the calendar gap - obligation 55 is about exactly this, and
+    // unknownInstants is its span-independent home.
+    const r = aggregate(
+      bars('2026-06-16T00:00:00Z', '2026-06-16T01:00:00Z'),
+      '1D',
+      config(lateRules),
+    )
+
+    expect(r.unknownInstants.length).toBeGreaterThan(0)
+    expect(r.unknownInstants).toContain(ms('2026-06-14T22:00:00Z'))
+    // And they are genuinely outside the span the caller supplied.
+    expect(r.unknownInstants.every((at) => at < ms('2026-06-16T00:00:00Z'))).toBe(true)
+  })
+
+  it('an IN-span unknown period is still counted and rejected', () => {
+    // The other positive control: span-consistency must not become "drop every
+    // unknown period". A period the caller DID reach, which the calendar cannot
+    // answer for, is a real rejection and must stay in the denominator.
+    const r = aggregate(
+      bars('2026-06-14T23:00:00Z', '2026-06-15T00:00:00Z'),
+      '1D',
+      config(lateRules),
+    )
+
+    expect(r.unknownInstants.length).toBeGreaterThan(0)
+    expect(r.periodsExpected).toBeGreaterThan(0)
+    expect(r.periodsRejectedForMissingConstituents).toBe(r.periodsExpected)
+    expect(r.bars).toEqual([])
+  })
+})
