@@ -2125,3 +2125,43 @@ built.**
 Worth keeping because it is the good kind of falsification: the number was
 wrong, the system was right, and the disagreement is what surfaced the
 reasoning error.
+
+### A mechanism that explains one occurrence is not yet an explanation of the pattern
+
+**2026-09-06 to 2026-09-08, the GitHub rate limit.** `pnpm ci:status` returned
+`HTTP 403` and the budget read **0 of 60**. The diagnosis given at the time:
+*"the cause is mine — my own polling loops burned it, retrying every 40 seconds
+against a 60/hour budget."*
+
+**That was true of that occurrence.** Those loops existed and did consume the
+budget.
+
+**It was wrong as an explanation of the pattern.** Two days later the same 403
+appeared after this session had made **a handful of requests all day**. The
+unauthenticated GitHub budget is **per-IP**, not per-process, so it is consumed
+by anything sharing that address — other tools, other sessions, a NAT gateway.
+**Reducing polling inside `ci:status` cannot reliably fix it**, and the
+remedy that follows from the correct diagnosis is a different one entirely: an
+authenticated request, which raises the ceiling to 5,000/hour.
+
+**THE SHAPE, AND IT HAS APPEARED BEFORE.** This is the gitleaks version-check
+defect in a new place. There, `gitleaks version` printed `v8.30.1` and the
+explanation "gitleaks is on PATH" fitted that observation exactly — while being
+false, because the `||` chain had fallen through to the Docker fallback. Here,
+"my polling exhausted the budget" fitted the observation exactly while being
+false as a general account.
+
+**In both cases the mechanism was real, sufficient to explain what was seen, and
+still the wrong cause.** A plausible mechanism that accounts for one data point
+is a hypothesis; treating it as the explanation is what stops the second data
+point from being collected.
+
+**The test is cheap: ask what the explanation PREDICTS about the next
+occurrence.** "My polling caused it" predicts that the 403 stops when the
+polling stops. It did not. One observation was enough to refute it, and that
+observation only got looked at because the claim had been written down in a form
+specific enough to be wrong.
+
+**Corollary for self-attributed causes specifically.** "This was my fault" feels
+like the rigorous, non-defensive conclusion, and that is exactly why it escapes
+scrutiny. It is a causal claim like any other and needs the same evidence.
