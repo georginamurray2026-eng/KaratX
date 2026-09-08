@@ -1,0 +1,64 @@
+-- T1.6 - a provider identity for DERIVED bars, and the one column that cannot
+-- be honestly filled for them.
+--
+-- WHY A PROVIDER ROW. ADR-013 puts `provider_id` in the candles primary key
+-- because candles are per-provider rather than canonical. An aggregated 1H/4H/1D
+-- bar is not Twelve Data's claim about the market - it is ours, computed from
+-- their 15min bars on our session calendar. Storing it under `twelve_data`
+-- would assert something the provider never sent, and would collide with the
+-- 1,911 1h and 1,449 1D bars that provider genuinely did send.
+--
+-- WHY `raw_datetime` MUST BECOME NULLABLE. That column exists to preserve the
+-- provider's own datetime string, because a timezone mis-parse is both
+-- unrecoverable and undetectable after the fact (ADR-013). A derived bar has no
+-- provider string: no one sent it. The alternatives were to invent one, or to
+-- store the empty string - both of which would put a value there that looks
+-- like a provider's rendering and is not. NULL is the honest answer, and it
+-- means "there was never a wire format here" rather than "we lost it".
+--
+-- ADR-003 FORWARD COMPATIBILITY. Dropping NOT NULL is a relaxation: every row
+-- the previous release writes still satisfies the column, so the previous
+-- release continues to work against this schema. It is not a one-way door.
+--
+-- `providers.id` IS `GENERATED ALWAYS AS IDENTITY`. The INSERT below supplies
+-- `key` and `display_name` only, and the id it receives is whatever the
+-- sequence hands out - it is NOT 3, and nothing may assume it is. NEVER
+-- HARD-CODE A PROVIDER ID, in code, in a fixture, in a test or in a later
+-- migration. Look it up by `key`, which carries a UNIQUE constraint precisely
+-- so that lookup is total. A hard-coded id is correct on the machine that
+-- generated it and silently points at the wrong provider everywhere else, and
+-- the row it mislabels is a price series.
+--
+-- WHAT THIS MIGRATION DELIBERATELY DOES NOT CHANGE:
+--
+--   candles_pk                (instrument_id, provider_id, timeframe,
+--                             open_time) - unchanged. Derived bars are
+--                             distinguished by provider_id, which is what that
+--                             key is for; no new key shape is needed.
+--   candles_one_forming_idx   unchanged. At most one forming bar per series
+--                             still holds, and holds per provider, so a
+--                             forming derived aggregate does not contend with
+--                             a forming Twelve Data bar.
+--   candles_timeframe_check   unchanged. '1h', '4h' and '1D' are already in
+--                             the permitted set, so aggregation needs no new
+--                             timeframe value.
+--   no new index              nothing is added speculatively. ADR-013 names
+--                             the reconciliation index as deliberately absent
+--                             and says a later session should add one against
+--                             a MEASURED query plan. The same rule applies to
+--                             T1.6's read pattern: measure first.
+--   no provider_instruments   deliberately omitted. That table's
+--     row                     `provider_symbol` is NOT NULL and carries the
+--                             VENDOR SYMBOL TRANSLATION - 'XAU/USD' for
+--                             twelve_data, 'C:XAUUSD' for massive. A derived
+--                             provider has no vendor and therefore no vendor
+--                             symbol, so any value put there would be an
+--                             invention. Adding the row would require making
+--                             something up; not adding it costs nothing,
+--                             because nothing translates a symbol we never
+--                             send to anyone.
+
+ALTER TABLE "candles" ALTER COLUMN "raw_datetime" DROP NOT NULL;
+--> statement-breakpoint
+INSERT INTO "providers" ("key", "display_name") VALUES
+	('karatx_derived', 'KaratX (derived)');

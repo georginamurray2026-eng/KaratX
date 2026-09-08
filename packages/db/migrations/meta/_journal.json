@@ -43,6 +43,13 @@
       "when": 1788626396233,
       "tag": "0005_data_quality_events",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788871461576,
+      "tag": "0006_karatx_derived_provider",
+      "breakpoints": true
     }
   ]
 }

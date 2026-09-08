@@ -146,7 +146,7 @@ export const candles = pgTable(
      * On a FORMING bar the incoming text is stored, and a change to it alone
      * counts as a difference - so the forming path does not lose it.
      */
-    rawDatetime: text('raw_datetime').notNull(),
+    rawDatetime: text('raw_datetime'),
 
     /** False for the forming bar. Same type, flagged - not a second shape. */
     isFinal: boolean('is_final').notNull(),
