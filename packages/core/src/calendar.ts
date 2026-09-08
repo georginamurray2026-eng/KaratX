@@ -94,7 +94,7 @@ export interface Holiday {
 }
 
 /** Local wall clock, resolved from an instant. */
-interface LocalMoment {
+export interface LocalMoment {
   /** `YYYY-MM-DD` in the session zone. */
   readonly date: string
   /** ISO day of week: 1 = Monday .. 7 = Sunday. */
@@ -166,7 +166,7 @@ const formatterFor = (timezone: string): Intl.DateTimeFormat => {
   return made
 }
 
-const localMomentOf = (instantMs: number, timezone: string): LocalMoment => {
+export const localMomentOf = (instantMs: number, timezone: string): LocalMoment => {
   const parts = formatterFor(timezone).formatToParts(new Date(instantMs))
   let year = ''
   let month = ''

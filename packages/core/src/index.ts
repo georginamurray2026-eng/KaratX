@@ -89,4 +89,13 @@ export {
 
 export { detectStaleFeed, STALE_GRACE_BARS, type StaleFeed } from './detect-stale'
 
+export {
+  aggregate,
+  type AggregatedBar,
+  type AggregateResult,
+  type AggregateTimeframe,
+  type BoundaryConfig,
+  type ConstituentBar,
+} from './timeframes/aggregate'
+
 export const CORE_PACKAGE_NAME = '@karatx/core' as const
