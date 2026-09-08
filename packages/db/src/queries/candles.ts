@@ -257,6 +257,48 @@ async function runUpsert(
 }
 
 /**
+ * Resolve a provider's surrogate id from its stable key.
+ *
+ * THE ONE PLACE THAT TURNS A KEY INTO AN ID. `providers.id` is
+ * `GENERATED ALWAYS AS IDENTITY`, so the number differs between databases and
+ * a literal is correct only where it was written (ADR-014). Every caller goes
+ * through here rather than writing its own SELECT, so there is one query and
+ * one failure message rather than one per caller.
+ *
+ * Throws rather than returning undefined: a missing provider row is a broken
+ * install, and a caller that treated it as "no match" would silently take the
+ * wrong branch.
+ */
+export const providerIdByKey = async (client: Pool | PoolClient, key: string): Promise<number> => {
+  const { rows } = await client.query<{ id: number }>('SELECT id FROM providers WHERE key = $1', [
+    key,
+  ])
+  const id = rows[0]?.id
+  if (id === undefined) {
+    throw new Error(
+      `No provider row with key "${key}". Providers are reference data inserted by migrations; ` +
+        `if this is missing, the database has not been migrated to the expected point.`,
+    )
+  }
+  return id
+}
+
+/**
+ * How many times the raw_datetime guard has performed its provider lookup.
+ *
+ * PROCESS-GLOBAL INSTRUMENTATION, NOT BUSINESS STATE. It exists because OQ-22
+ * predicted ~43,000 of these per full aggregation run and a prediction is worth
+ * nothing without a counter to compare it against. Reset it at the start of a
+ * run; it is not per-connection, per-transaction or safe across concurrent
+ * runs in one process, and nothing should branch on it.
+ */
+let guardLookups = 0
+export const rawDatetimeGuardLookups = (): number => guardLookups
+export const resetRawDatetimeGuardLookups = (): void => {
+  guardLookups = 0
+}
+
+/**
  * The provider whose bars this system DERIVES rather than receives.
  *
  * A KEY, NOT AN ID, AND THAT IS NOT STYLE. `providers.id` is
@@ -292,10 +334,8 @@ async function assertRawDatetimePresent(
   // so `undefined` and a non-string both have to be caught here too.
   if (typeof candle.rawDatetime === 'string' && candle.rawDatetime !== '') return
 
-  const { rows } = await client.query<{ id: number }>('SELECT id FROM providers WHERE key = $1', [
-    DERIVED_PROVIDER_KEY,
-  ])
-  if (rows[0]?.id === candle.providerId) return
+  guardLookups += 1
+  if ((await providerIdByKey(client, DERIVED_PROVIDER_KEY)) === candle.providerId) return
 
   throw new ValidationError(
     `A candle for provider ${String(candle.providerId)} was offered with no ` +
@@ -553,3 +593,64 @@ export async function storedPrices(
     isFinal: row.is_final,
   }
 }
+
+/** One 15M bar as the aggregation reads it. */
+export interface SpineBar {
+  readonly openTimeMs: number
+  readonly open: string
+  readonly high: string
+  readonly low: string
+  readonly close: string
+  readonly volume: string | null
+  readonly isFinal: boolean
+}
+
+/**
+ * THE SPINE READ - the constituent bars an aggregation run consumes.
+ *
+ * EXPECTED COST, STATED BEFORE THE QUERY WAS WRITTEN (OQ-23): an Index Scan on
+ * `candles_pk`, no Sort node. The primary key is
+ * (instrument_id, provider_id, timeframe, open_time) - three equality-filtered
+ * columns then the ranged one - so this shape is a range scan on the trailing
+ * column and ORDER BY open_time is free. A Seq Scan here FALSIFIES ADR-013's
+ * no-new-index decision and must be reported rather than worked around.
+ *
+ * Prices come back as text. ADR-008 and ADR-013 both forbid float: the value is
+ * exact in NUMERIC and would stop being exact the moment it became a double.
+ */
+export const spineBars = async (
+  client: Pool | PoolClient,
+  series: SeriesKey,
+  fromMs: number,
+  toMs: number,
+): Promise<SpineBar[]> => {
+  const { rows } = await client.query<{
+    ms: string
+    open: string
+    high: string
+    low: string
+    close: string
+    volume: string | null
+    is_final: boolean
+  }>(SPINE_SQL, [series.instrumentId, series.providerId, series.timeframe, fromMs, toMs])
+
+  return rows.map((row) => ({
+    openTimeMs: Number(row.ms),
+    open: row.open,
+    high: row.high,
+    low: row.low,
+    close: row.close,
+    volume: row.volume,
+    isFinal: row.is_final,
+  }))
+}
+
+/** Exported so the run can EXPLAIN exactly the statement it executes. */
+export const SPINE_SQL = `SELECT (extract(epoch FROM open_time) * 1000)::bigint::text AS ms,
+            open::text AS open, high::text AS high, low::text AS low, close::text AS close,
+            volume::text AS volume, is_final
+       FROM candles
+      WHERE instrument_id = $1 AND provider_id = $2 AND timeframe = $3
+        AND open_time >= to_timestamp($4::double precision / 1000)
+        AND open_time <  to_timestamp($5::double precision / 1000)
+      ORDER BY open_time`

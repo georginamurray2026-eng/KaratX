@@ -19,7 +19,13 @@ export {
   upsertCandle,
   type CandleInput,
   type CandleUpsertResult,
+  providerIdByKey,
+  rawDatetimeGuardLookups,
+  resetRawDatetimeGuardLookups,
+  spineBars,
+  SPINE_SQL,
   type SeriesKey,
+  type SpineBar,
   type StoredPrices,
 } from './queries/candles'
 export {

@@ -13,6 +13,7 @@
     "timezone-test": "tsx src/bin/timezone-test.ts",
     "forming-bar-test": "tsx src/bin/forming-bar-test.ts",
     "parity-fetch": "tsx src/bin/parity-fetch.ts",
+    "aggregate": "tsx src/bin/aggregate-run.ts",
     "backfill": "tsx src/bin/backfill-run.ts",
     "detect:baseline": "tsx src/bin/detect-baseline.ts",
     "detect:gaps": "tsx src/bin/detect-gaps.ts",

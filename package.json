@@ -32,6 +32,7 @@
     "timezone-test": "pnpm --filter @karatx/worker timezone-test",
     "forming-bar-test": "pnpm --filter @karatx/worker forming-bar-test",
     "parity-fetch": "pnpm --filter @karatx/worker parity-fetch",
+    "aggregate": "pnpm --filter @karatx/worker aggregate",
     "backfill": "pnpm --filter @karatx/worker backfill",
     "detect:baseline": "pnpm --filter @karatx/worker detect:baseline",
     "ci:status": "node scripts/ci-status.mjs",

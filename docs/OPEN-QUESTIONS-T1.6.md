@@ -366,3 +366,228 @@ belongs with a measurement of the real run, not with this estimate.**
 - **A wall-clock contribution far from 13.4 s** would falsify obligation 57's
   28.97 us/call at this call site rather than falsifying the count — and that is
   a different finding, about the measurement rather than about the design.
+
+---
+
+## DRY-RUN RESULTS — 2026-09-09. Nothing was written.
+
+**The predictions above are left exactly as written.** Scored below.
+
+### OQ-19 — 1H CONFIRMED, 1D FALSIFIED AS WRITTEN
+
+| | Predicted | Actual |
+|---|---|---|
+| 1H | ceiling 41,586, expect materially fewer | `periodsExpected` **39,684**, produced **38,805** |
+| 1D | **1,700–1,900** | `periodsExpected` **1,726**, produced **1,554** |
+
+**1H holds.** Under the ceiling, and materially so.
+
+**THE 1D PREDICTION IS FALSIFIED, AND THE ACCOUNT MATTERS MORE THAN THE MISS.**
+1,554 is outside 1,700–1,900. The range itself was not badly derived — the
+method produced ~1,802 and `periodsExpected` came out at 1,726, comfortably
+inside it. **What was wrong is WHICH QUANTITY the prediction named.**
+
+The method counted SESSION DAYS THAT EXIST. The prediction stated it as a ROW
+count, and rows are days that AGGREGATE COMPLETELY — 172 fewer, because a day
+missing any constituent yields nothing at all. Those are different quantities
+and OQ-19 used one to predict the other.
+
+**The distinction was known and was applied unevenly.** The 1H entry hedged it
+explicitly — "expect materially fewer", with the missing-constituent reason
+spelled out. The 1D entry gave a single range with no such hedge. The same
+paragraph that got it right for one timeframe dropped it for the other.
+
+**Not adjusted, not re-derived.** The prediction was wrong.
+
+### OQ-21 — CONFIRMED at 464,062
+
+Predicted (in the falsification record) 231,931 + 232,131 = 464,062. Actual
+**464,062**, to the call. The derivation was exact.
+
+**One divergence, in the COST rather than the count.** 13.4 s was projected at
+obligation 57's 28.97 us/call. Actual aggregation time was **9.89 s** — 1H
+4.10 s plus 1D 5.79 s — **26% under**, and that 9.89 s also contains bucketing,
+completeness checks and OHLC folding. So the all-in cost at this call site is
+≤21.3 us/call. This does NOT falsify 57's 28.97 us, which was measured in
+isolation under different conditions; it means the projection was high, and the
+projection was mine.
+
+### 1D COSTS 5.79 s AGAINST 1H's 4.10 s ON THE SAME CALL COUNT — a new finding
+
+Both timeframes make ~232,000 `expectsBarAt` calls, so the 1.69 s difference is
+not `expectsBarAt`. It is **`periodKeyOf` calling `localMomentOf` once per
+expected slot** to assign a session day — a SECOND per-slot `Intl` cost that
+only 1D pays, on top of the one inside `expectsBarAt`.
+
+**OBLIGATION 57's FIX MUST THEREFORE COVER BOTH `Intl` PATHS, NOT
+`expectsBarAt` ALONE.** Memoising only the calendar answer would leave roughly
+40% of the 1D overhead untouched, and the row would be closed against a
+measurement that improved the smaller half. Both resolve a local rendering for
+the same instant, so one memoisation keyed on (zone, UTC day) serves both — but
+it has to be applied in both places deliberately.
+
+### OQ-23 — CONFIRMED. Index Scan, no Sort.
+
+```
+Index Scan using candles_pk on candles  (cost=0.42..23254.90 rows=166265)
+                                        (actual rows=166344 loops=1)
+  Index Cond: instrument_id = 1 AND provider_id = 1 AND timeframe = '15min'
+              AND open_time >= ... AND open_time < ...
+```
+
+**No Seq Scan. ADR-013's no-new-index decision holds at 166,344 rows** — the
+primary key's column ordering serves the spine read exactly as designed, and
+`ORDER BY open_time` costs nothing.
+
+| Boundary | Cold | Warm |
+|---|---|---|
+| **server-side** (`EXPLAIN ANALYZE`) | **460.0 ms** | **227.0 ms** |
+| buffers | hit 2,881 / **read 1,468** | hit 4,349 / read 0 |
+
+Row count 166,344; the planner estimated 166,265.
+
+**THE COLD/WARM RATIO IS 2.0x, NOT THE "UP TO 10x" THE RULE WARNS ABOUT, AND
+THAT IS A LIMITATION OF THE MEASUREMENT RATHER THAN A FINDING ABOUT THE QUERY.**
+"Cold" was produced by restarting the container, which empties `shared_buffers`
+but **leaves the operating system's page cache intact**. Only 1,468 of 4,349
+buffers actually needed reading; the rest were served from a cache the restart
+did not clear. A genuinely cold read — cold OS cache too — has not been
+measured, and this number must not be quoted as one.
+
+**AND THE BOUNDARY DISTINCTION EARNED ITS KEEP.** Server-side warm execution is
+227 ms. The job's **client-observed** read of the same data was **1,655 ms
+across 81 month chunks — 7.3x the server figure.** `EXPLAIN ANALYZE` never
+measures what the job experiences, which is why the rule requires both.
+
+### The 10,813 agreement — A SHARED-BASIS CHECK, NOT AN INDEPENDENT ONE
+
+`unexpectedBarsExcluded` came out at **10,813** for both timeframes, matching
+T1.5's `unexpected_bar` count exactly.
+
+**THIS IS NOT TWO INDEPENDENT IMPLEMENTATIONS AGREEING, AND MUST NOT BE
+RECORDED AS ONE.** Both sides ask `expectsBarAt` in `packages/core` which
+instant the calendar covers. They share the calendar, the function and the
+rules. **A calendar error is therefore INVISIBLE to this check** — both sides
+would move together and still agree to the unit.
+
+What it does prove is narrower and still worth having: the aggregation's notion
+of "outside the expected grid" is the same notion T1.5 counted, so the two
+figures can be quoted side by side without a caveat about scope. That is a
+CONSISTENCY check between consumers of one source, not corroboration of the
+source.
+
+### 39,684 against T1.5's 39,689 — a FIVE-PERIOD GAP, not "0.01%"
+
+T1.5 recorded 158,756 expected open slots; ÷4 = 39,689. Aggregation reports
+39,684 hour-periods. **The difference is 5 periods, and expressing it as 0.01%
+hides that it is a small integer with a specific cause waiting to be found.**
+
+Likely candidates, none verified: the two figures cover ranges that differ at
+the edges; 158,756 was itself derived (460 bars/week x 345.1 weeks) rather than
+counted; and hour-periods are not slots/4 wherever a session boundary falls
+mid-hour. **Not investigated, and recorded as open** — five is small enough to
+enumerate exactly, and a number that can be enumerated should not be rounded
+away.
+
+---
+
+## OQ-24. The write cost — recorded before any write has happened
+
+**No row has ever been written by this job.** The dry run exercised the read and
+aggregate paths only.
+
+### The shape of the cost: TWO round trips per row
+
+Every derived row costs two statements, not one:
+
+1. **`upsertCandle`** — the ADR-013 conflict statement.
+2. **The `assertRawDatetimePresent` provider lookup** — taken on EVERY derived
+   write, because every derived bar carries a NULL `raw_datetime` and the guard
+   short-circuits only on a non-empty string (ADR-014).
+
+```
+rows to write     38,805 (1H)  +  1,554 (1D)  =  40,359
+round trips       40,359 x 2                  =  80,718
+```
+
+### The latency, MEASURED rather than assumed
+
+A probe against this database, 3,000 iterations each on one warmed pooled
+connection:
+
+```
+SELECT 1                    1.1723 ms / round trip
+SELECT id FROM providers
+  WHERE key = $1            1.3040 ms / round trip
+```
+
+**1.17 ms for `SELECT 1` is SLOW for a local server, and that is the
+environment rather than the query.** Postgres is in a Docker container reached
+over localhost TCP on Windows; the same code against a unix socket or a
+co-located server would be substantially faster. **This prediction is specific
+to this machine and does not transfer.**
+
+### The prediction
+
+```
+guard lookups   40,359 x 1.30 ms                    ~ 52 s
+upserts         40,359 x ~1.8 ms  (heavier statement, ~1.4x the
+                                   trivial round trip: a large CTE,
+                                   an index probe and a write)      ~ 73 s
+                                                                   -------
+write phase                                                        ~ 125 s
+read + aggregate (measured in the dry run)                          ~ 12 s
+                                                                   -------
+TOTAL WALL CLOCK                                                   ~ 137 s
+```
+
+**Predicted range: 100–185 s.** The width is honest: the 1.8 ms upsert figure is
+an assumption, not a measurement — the write path has never been run, and
+measuring it would have meant running it.
+
+**THE SPINE READ IS NOT A BASIS FOR THIS.** It moved 166,344 rows in 1,655 ms,
+which is ~0.01 ms per row — and that is a BULK regime, one statement streaming
+many rows. The write path is the opposite: many statements, one row each,
+paying full round-trip latency every time. Extrapolating from the first to the
+second would predict ~0.4 s and be wrong by two orders of magnitude.
+
+### **THE OQ-22 CACHING THRESHOLD IS PREDICTED TO BE CROSSED**
+
+OQ-22 fixed the threshold in advance: cache the derived provider id if the
+lookup cost exceeds **10% of total job wall clock, or 5 seconds absolute,
+whichever is the smaller bar to clear**.
+
+**Predicted lookup cost is ~52 s — about 38% of the predicted wall clock, and
+more than 10x the absolute bar.** If the run lands anywhere near this, **the
+threshold is crossed and caching becomes owed**, on a rule fixed before the
+number existed rather than chosen against it.
+
+The constraint recorded with that threshold still binds: a cached id must be
+keyed so a different database cannot return a stale one. A module-level `let`
+holding a bare number would pass every test — each test process is fresh — and
+fail only in a long-lived worker reconnected to a restored database.
+
+### OQ-22's own projection, and why the original was high
+
+| | |
+|---|---|
+| OQ-22 predicted | ~43,000 guard lookups |
+| Projected from the dry run | **40,359** |
+| Gap | 2,629 low, ~6% |
+
+**Why the original was high:** it summed the 1H CEILING (41,586, which assumes
+every hour complete) and the RAW DAY ESTIMATE (1,802, days that exist) — the
+same conflation OQ-19's 1D prediction made. The actual count is COMPLETED
+periods: 38,805 + 1,554. **The error is the same one, in a second place, which
+is worth more than either instance on its own.**
+
+### What falsifies OQ-24
+
+- **Wall clock outside 100–185 s.** Below means round-trip latency in the write
+  path is better than the probe suggests; above means the upsert is heavier than
+  1.4x a trivial round trip, or chunk transactions cost more than assumed.
+- **Guard lookups ≠ rows produced.** The counter must equal 40,359 exactly; any
+  other number means the guard is being taken more or less than once per write.
+- **A lookup cost under 5 s** would leave the OQ-22 threshold uncrossed, and
+  caching would then NOT be owed — the threshold must be honoured in both
+  directions.
