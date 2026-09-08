@@ -1,4 +1,5 @@
 import { CandleUpsertOutcome, candleUpsertWrote } from '@karatx/contracts'
+import { ValidationError } from '@karatx/core'
 import type { Pool, PoolClient } from 'pg'
 
 /**
@@ -157,7 +158,16 @@ export interface CandleInput {
   readonly volume?: string | null
   readonly bid?: string | null
   readonly ask?: string | null
-  readonly rawDatetime: string
+  /**
+   * The provider datetime text. NULL ONLY for the `karatx_derived` provider,
+   * whose bars this system computes and no vendor ever sent.
+   *
+   * Migration 0006 dropped NOT NULL from the column, so the type widened with
+   * it. `assertRawDatetimePresent` below is what now enforces the vendor half
+   * of the old constraint - the database cannot, because a column cannot be
+   * nullable for one provider and NOT NULL for another.
+   */
+  readonly rawDatetime: string | null
   readonly isFinal: boolean
 }
 
@@ -247,6 +257,67 @@ async function runUpsert(
 }
 
 /**
+ * The provider whose bars this system DERIVES rather than receives.
+ *
+ * A KEY, NOT AN ID, AND THAT IS NOT STYLE. `providers.id` is
+ * `GENERATED ALWAYS AS IDENTITY`, so the number depends on insertion order and
+ * differs between databases - it is 3 on the machine migration 0006 was written
+ * on and could be anything in a restored or rebuilt one. A hard-coded id is
+ * correct where it was written and silently names the WRONG PROVIDER
+ * everywhere else, and the rows it would mislabel are price series.
+ */
+const DERIVED_PROVIDER_KEY = 'karatx_derived'
+
+/**
+ * Enforce, at the write boundary, the guarantee migration 0006 removed from the
+ * database.
+ *
+ * WHY THE LOOKUP IS NOT ON THE HOT PATH. It runs ONLY when `rawDatetime` is
+ * absent, so the ~166,000 vendor bars of a full backfill - every one of which
+ * carries the provider text - reach the upsert after a single string check and
+ * no extra query. The cost falls entirely on writes already claiming to be
+ * derived.
+ *
+ * NOT CACHED, DELIBERATELY. A memoised id would have to be invalidated per
+ * database, and this suite alone runs against a fresh ephemeral database every
+ * time. ADR-013 declines to add speculative indexes for the same reason: the
+ * measurement comes first. If T1.6 aggregation makes this hot, cache it then,
+ * against a number.
+ */
+async function assertRawDatetimePresent(
+  client: Pool | PoolClient,
+  candle: CandleInput,
+): Promise<void> {
+  // Not `!== null`: this is a boundary JavaScript can cross without TypeScript,
+  // so `undefined` and a non-string both have to be caught here too.
+  if (typeof candle.rawDatetime === 'string' && candle.rawDatetime !== '') return
+
+  const { rows } = await client.query<{ id: number }>('SELECT id FROM providers WHERE key = $1', [
+    DERIVED_PROVIDER_KEY,
+  ])
+  if (rows[0]?.id === candle.providerId) return
+
+  throw new ValidationError(
+    `A candle for provider ${String(candle.providerId)} was offered with no ` +
+      `raw_datetime (${JSON.stringify(candle.rawDatetime)}), at ` +
+      `instrument=${String(candle.instrumentId)} timeframe=${candle.timeframe} ` +
+      `openTime=${String(candle.openTime)}.\n\n` +
+      `THE DATABASE NO LONGER ENFORCES THIS, WHICH IS WHY THIS CHECK EXISTS.\n` +
+      `Migration 0006 dropped NOT NULL from candles.raw_datetime so that DERIVED ` +
+      `bars - aggregates this system computes, which no vendor ever sent - can ` +
+      `store NULL honestly instead of an invented string. A column cannot be ` +
+      `nullable for one provider and NOT NULL for another, so the guarantee left ` +
+      `the database for EVERY provider, including the ones that do send the ` +
+      `text. See ADR-014 and migration 0006.\n\n` +
+      `Only the '${DERIVED_PROVIDER_KEY}' provider may write a NULL raw_datetime, ` +
+      `and this one is not it. A vendor bar stored without the provider own ` +
+      `datetime text is UNRECOVERABLE: a timezone mis-parse becomes undetectable ` +
+      `after the fact, which is the entire reason the column exists.`,
+    { context: { providerId: candle.providerId, timeframe: candle.timeframe } },
+  )
+}
+
+/**
  * Store one candle, idempotently. Returns what happened; writes no event row.
  *
  * @throws PredicateDriftError if the reported outcome disagrees with whether the
@@ -258,6 +329,8 @@ export async function upsertCandle(
   client: Pool | PoolClient,
   candle: CandleInput,
 ): Promise<CandleUpsertResult> {
+  await assertRawDatetimePresent(client, candle)
+
   let result = await runUpsert(client, candle)
 
   // THE RACE, AND WHY IT IS NOT MERELY A RETRY.

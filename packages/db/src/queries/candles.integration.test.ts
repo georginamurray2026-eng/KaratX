@@ -1,3 +1,4 @@
+import { ValidationError } from '@karatx/core'
 import { Pool } from 'pg'
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from 'vitest'
 
@@ -364,5 +365,105 @@ describe('candle upsert - the six cases', () => {
 
     expect(r).toEqual({ outcome: 'noop', wrote: false })
     expect((await timestamps())!.updated_at).toEqual(before!.updated_at)
+  })
+})
+
+/**
+ * The vendor `raw_datetime` guard (T1.6 step 7).
+ *
+ * MIGRATION 0006 REMOVED THE DATABASE'S ENFORCEMENT, deliberately, so that
+ * derived aggregates can store NULL rather than an invented datetime string.
+ * A column cannot be nullable for one provider and NOT NULL for another, so
+ * the guarantee left the database for EVERY provider - including the two that
+ * do send the text. This block is what replaces it at the write boundary.
+ *
+ * THE THREE CASES ARE ONE TEST, NOT THREE. A blanket refusal would satisfy the
+ * rejection case alone and is indistinguishable from a correct guard without
+ * the two acceptances beside it; an absent guard satisfies both acceptances and
+ * is indistinguishable from a correct one without the rejection. Only the set
+ * separates a working guard from either failure.
+ */
+describe('vendor raw_datetime guard', () => {
+  let pool: Pool
+  let derivedProviderId: number
+
+  beforeAll(async () => {
+    const url = inject('databaseUrl')
+    await runMigrations(url)
+    pool = new Pool({ connectionString: url })
+
+    // Resolved BY KEY, never by a literal. `providers.id` is GENERATED ALWAYS
+    // AS IDENTITY, so the number differs between databases - it is 3 on the
+    // machine this was written on and that is an accident of insertion order.
+    const { rows } = await pool.query<{ id: number }>(
+      `SELECT id FROM providers WHERE key = 'karatx_derived'`,
+    )
+    const id = rows[0]?.id
+    if (id === undefined) {
+      throw new Error(
+        'The karatx_derived provider is missing. Migration 0006 inserts it; ' +
+          'if it is absent the migration did not run and this suite would ' +
+          'otherwise pass for the wrong reason.',
+      )
+    }
+    derivedProviderId = id
+  })
+  afterAll(async () => {
+    await pool.end()
+  })
+  afterEach(async () => {
+    await pool.query('DELETE FROM candles')
+  })
+
+  const rowCount = async () => {
+    const { rows } = await pool.query<{ n: string }>('SELECT count(*) AS n FROM candles')
+    return Number(rows[0]?.n ?? -1)
+  }
+
+  // --- THE REJECTION ------------------------------------------------------
+  it.each([
+    ['empty', ''],
+    ['null', null],
+    ['missing', undefined],
+  ])('REFUSES a vendor candle whose raw_datetime is %s', async (_label, value) => {
+    // `undefined` is not reachable through the type, and is passed anyway: the
+    // guard runs at a boundary that JavaScript can cross without TypeScript.
+    const candle = bar({ rawDatetime: value as string | null })
+
+    await expect(upsertCandle(pool, candle)).rejects.toThrow(ValidationError)
+    expect(await rowCount()).toBe(0)
+  })
+
+  it('names the provider and says the database no longer enforces it', async () => {
+    await expect(upsertCandle(pool, bar({ rawDatetime: null }))).rejects.toThrow(
+      /database no longer enforces/i,
+    )
+  })
+
+  it('classifies the refusal as ADR-004 validation/quarantine, not a bare Error', async () => {
+    // The taxonomy is the point: `quarantine` is what tells a caller to set the
+    // bar aside rather than retry it. A bare throw carries no policy at all.
+    const error = await upsertCandle(pool, bar({ rawDatetime: null })).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(ValidationError)
+    expect((error as ValidationError).category).toBe('validation')
+    expect((error as ValidationError).policy).toBe('quarantine')
+  })
+
+  // --- POSITIVE CONTROL 1: the guard is not a blanket refusal -------------
+  it('ACCEPTS a vendor candle WITH a raw_datetime, unchanged', async () => {
+    const r = await upsertCandle(pool, bar())
+    expect(r).toEqual({ outcome: 'inserted', wrote: true })
+    expect(await rowCount()).toBe(1)
+  })
+
+  // --- POSITIVE CONTROL 2: the derived writer step 8 needs ----------------
+  it('ACCEPTS a karatx_derived candle with a NULL raw_datetime', async () => {
+    const r = await upsertCandle(pool, bar({ providerId: derivedProviderId, rawDatetime: null }))
+    expect(r).toEqual({ outcome: 'inserted', wrote: true })
+
+    const { rows } = await pool.query<{ raw_datetime: string | null }>(
+      'SELECT raw_datetime FROM candles',
+    )
+    expect(rows[0]?.raw_datetime).toBeNull()
   })
 })
