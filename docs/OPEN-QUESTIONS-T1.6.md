@@ -591,3 +591,189 @@ is worth more than either instance on its own.**
 - **A lookup cost under 5 s** would leave the OQ-22 threshold uncrossed, and
   caching would then NOT be owed — the threshold must be honoured in both
   directions.
+
+---
+
+## THE REAL RUN — 2026-09-08, two runs. Predictions above untouched.
+
+40,359 derived bars written: **38,805 `1h` and 1,554 `1D`**, under `karatx_derived`.
+Run 1 inserted every one; run 2 wrote nothing. Backed up first to
+`karatx-20260908-175307.dump` (5,138,380 bytes, `migrations: 7`, `providers: 3`).
+
+### OQ-24 — FALSIFIED. 218.4 s against ~137 s predicted, range 100–185 s.
+
+**Outside the range by 18%.** Not adjusted.
+
+```
+                     predicted        actual
+lookups   40,359 x   1.30 ms  MEASURED
+upserts   40,359 x   1.80 ms  GUESSED     ~3.83 ms
+                  ----------            ----------
+per row              3.10 ms               5.13 ms
+write phase          125.1 s               207.2 s
+wall clock           ~137 s                218.4 s
+```
+
+**TWO OF THE THREE TERMS LANDED EXACTLY.** The lookup latency was measured on
+this machine — 1.3040 ms over 3,000 iterations — and the lookup count was
+predicted at 40,359 and came back **40,359, to the row**. The upsert term was
+the only one never measured, and it carried **82.1 s of the 81.4 s total
+error**. Everything that was measured was right; the one thing that was guessed
+was wrong by 2.1x.
+
+**THE LESSON IS ABOUT RANGE CONSTRUCTION, NOT ABOUT UPSERTS.** The range
+100–185 s was drawn around a total as though its three terms were equally
+solid. They were not: two were measurements and one was an assumption, and the
+prediction even SAID SO in the sentence beneath it — "the 1.8 ms upsert figure
+is an assumption, not a measurement". Having identified the weak term, the range
+was still drawn symmetrically around the whole.
+
+**A range should be widened by its weakest term alone.** The upsert term is
+~58% of the predicted per-row cost; a factor-of-2 uncertainty on that term
+alone spans roughly 90–240 s, which contains the actual. The arithmetic to get
+this right was available before the run and was not done. **This is the correct
+generalisation, and "upserts are slower than you think" is not** — that reading
+would fix one constant and leave the method that produced it intact.
+
+The upsert cost 3.83 ms, **3.27x a trivial round trip**, against the ~1.54x
+assumed. It is a large CTE doing an index probe, a multi-column conflict
+evaluation, a heap write, maintenance on two indexes, and a WAL flush at each
+chunk commit. It was costed as a round trip plus a little.
+
+### THE NO-OP FINDING — larger than the falsification
+
+**Run 2 wrote nothing and cost 194.3 s.**
+
+```
+run 1   207.2 s / 40,359 rows = 5.134 ms per row   (all inserted)
+run 2   194.3 s / 40,359 rows = 4.815 ms per row   (all noop)
+                                -----
+difference                       0.319 ms per row
+```
+
+**THE WRITE ITSELF IS 6.2% OF THE COST. ROUND TRIP PLUS STATEMENT EVALUATION IS
+93.8%.** A no-op upsert — which reads the stored row, evaluates the six-case
+conflict predicates, decides to change nothing, and returns — costs 94% of what
+a full insert costs.
+
+**THIS REFRAMES WHAT AN OPTIMISATION SHOULD TARGET.** The instinct on seeing
+207 s of "write time" is to write less: skip rows already present, diff before
+upserting, short-circuit unchanged periods. **Every one of those attacks the 6%.**
+A re-run that perfectly skipped all 40,359 writes would still pay ~194 s,
+because it would still make 40,359 round trips to discover there was nothing to
+do.
+
+**What would actually move it is fewer STATEMENTS, not fewer writes** —
+multi-row upserts, so one round trip carries many rows. Nothing here is
+implemented and nothing is decided; it is recorded so that the next session
+optimises against this measurement rather than against the intuition.
+
+### OQ-22's THRESHOLD IS CROSSED — the derived-provider-id cache is owed
+
+OQ-22 fixed the rule before any number existed: cache if the lookup cost exceeds
+**10% of wall clock, or 5 s absolute, whichever is the smaller bar**.
+
+```
+40,359 lookups x 1.3040 ms = 52.6 s = 24.1% of 218.4 s
+```
+
+**Crossed on both limbs. Caching is owed**, on a rule fixed in advance rather
+than chosen against the result.
+
+**STATED HONESTLY: 52.6 s IS THE PROBE FIGURE TIMES THE EXACT COUNT, NOT A
+MEASURED IN-SITU SPLIT.** Nothing timed the guard lookup separately from the
+upsert inside the run. The count is exact (40,359, from the counter) and the
+per-call latency is measured but out of context. **It clears the 5 s absolute
+bar by an order of magnitude, so no plausible error in that estimate changes the
+verdict** — the lookup would have to be 10x cheaper in situ than on the probe to
+fall under it.
+
+**AND IT IS THE SMALLER OF THE TWO AVAILABLE WINS.** Given the no-op finding,
+caching the provider id removes one of two round trips per row: at best ~52 s of
+218 s. Reducing the number of statements addresses the other ~155 s. Doing the
+cache first is defensible because the rule already commits us to it and it is
+small and self-contained — but **it must not be recorded as having solved the
+cost**, and closing obligation 57 on the strength of it would close the row
+against the smaller half.
+
+### OQ-23 — the PLAN is confirmed and stable; the TIMINGS are not
+
+Identical plan on both occasions: `Index Scan using candles_pk`, no Sort node,
+no Seq Scan. **ADR-013's no-new-index decision holds at 166,344 rows.**
+
+| Same query, same data | dry run | real run |
+|---|---|---|
+| cold (server-side) | 460.0 ms | **1,153.7 ms** |
+| warm (server-side) | 227.0 ms | **406.6 ms** |
+
+**2.5x and 1.8x apart, for the same statement over the same rows.** "Cold" here
+controls `shared_buffers` only — a container restart empties it and leaves the
+operating system's page cache, whose state differed between the two occasions
+(a full `pg_dump` had just read the entire database before the second).
+
+**NO SINGLE FIGURE SHOULD BE QUOTED AS THE COST OF THIS QUERY.** The stable,
+predicted, load-bearing result is the PLAN SHAPE. The timings are an
+environment measurement that happens to vary by more than 2x, and quoting one
+of them as "the" cost would be quoting noise. A genuinely cold read — cold OS
+cache too — still has not been measured.
+
+### THE VERIFICATIONS
+
+On a fresh connection, after run 1:
+
+```
+provider_id | timeframe | count
+          1 | 15min     | 166344   UNCHANGED
+          1 | 1D        |   1449   UNCHANGED
+          1 | 1h        |   1911   UNCHANGED
+          3 | 1D        |   1554
+          3 | 1h        |  38805
+```
+
+- `raw_datetime IS NULL` = **40,359**, exactly the derived row count
+- vendor rows holding a NULL `raw_datetime` = **0** — the ADR-014 guard held
+- derived rows with `NOT is_final` = **0**
+- `provider_instruments` = **2**
+- `data_quality_events` = **14,097**, unchanged: zero conflicts, zero rejections
+
+#### Idempotency, four assertions — and one stronger than asked for
+
+Run 2 returned `noop` for all 40,359 rows and **did not throw**, which is the
+10b partition-operand fix working outside a test.
+
+| | before run 2 | after run 2 |
+|---|---|---|
+| rows | 40,359 | **40,359** |
+| min/max `ingested_at` | 17:53:50.147620 / 17:57:22.804213 | **identical** |
+| min/max `updated_at` | 17:53:50.147620 / 17:57:22.804213 | **identical** |
+| `data_quality_events` | 14,097 | **14,097** |
+
+**AND AN md5 OVER EVERY DERIVED ROW'S `(timeframe, open_time, ingested_at,
+updated_at)`, IDENTICAL ACROSS BOTH RUNS** — `b869a063d63452b1afaea9649930b460`.
+
+**That is strictly stronger than min/max, and the difference is the point.**
+Extremes can hold while rows move: rewrite half the rows and set their
+`updated_at` to a value already inside the range, and min and max are unchanged
+while the table has been rewritten. The md5 covers every row individually, so it
+cannot hold under that. A prices md5 was also identical, and
+`updated_at > ingested_at` returns **0 rows** — no derived row has ever been
+rewritten.
+
+#### The derived 1D boundary, OBSERVED rather than reasoned
+
+```
+derived 1D (provider 3)     vendor 1D (provider 1)
+  22:00Z   1,053              00:00Z   1,449
+  23:00Z     501
+  00:00Z       0
+```
+
+22:00Z and 23:00Z are 18:00 New York under EDT and EST. **Zero derived daily
+bars sit at 00:00Z, where all 1,449 vendor daily bars sit.**
+
+Obligation 49 argued from the primary key that these are different objects that
+no filtering reconciles. **This is that argument confirmed by observation**: the
+two series coexist in one table, share a `timeframe` value, and overlap at no
+instant at all. It also makes obligation 12's warning concrete — an unscoped
+`WHERE timeframe = '1D'` now returns 3,003 rows from two incompatible
+definitions, and will look entirely reasonable.
