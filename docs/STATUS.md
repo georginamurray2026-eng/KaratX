@@ -21,6 +21,18 @@ from 20 to 21.
 **Read this whole section before touching anything.** Written for a session with
 no conversation history (§27, §44).
 
+### ⚠ FIRST ACTION: `pnpm ci:status` — CI IS UNVERIFIED FROM `9073045` ONWARD
+
+**CI could not be reached, not CI failed.** `HTTP 403`, the unauthenticated
+GitHub budget being 60/hour **per IP** and exhausted by traffic outside this
+session — obligation 58. The last commit touching a **code path** is `a6becd3`,
+**verified green at run #66**; everything after it is documentation only
+(`STATUS.md`, `LESSONS.md`, `OBLIGATIONS.md`), so the unverified surface is
+small. **That is a reason to expect green, not evidence of it.**
+
+Run `pnpm ci:status` first. It refuses rather than guesses, so `NOT ANSWERED`
+means try again later — it is not a failure and must not be read as one.
+
 ### ⚠ THE FIGURES BELOW ARE FROM THE COMMIT, NOT A LIVE READ
 
 They were produced by runs on 2026-09-06 and recorded here. **The Postgres
