@@ -20,17 +20,32 @@ both are linked because a second copy of a count is a second thing to drift.
 **Read this whole section before touching anything.** Written for a session with
 no conversation history (§27, §44).
 
-### ⚠ FIRST ACTION: NOTHING IS PUSHED. CI HAS SEEN NONE OF T1.6.
+### ✅ CI IS GREEN ON T1.6 — run **#74**, sha **`e3f40e3`**, verified 2026-09-08
 
-**11 commits sit on local `main` ahead of `origin/main`**, `9d1aede` through
-`8bf4475`. `pnpm ci:status` reports the newest run in the repository as **#73 on
-`6b5e0d1`** — the last PUSHED commit, which predates all of T1.6.
+All 12 T1.6 commits (`9d1aede` .. `e3f40e3`) are pushed, and `pnpm ci:status`
+reports **`e3f40e3: SUCCESS`** — run #74 `completed / success`. Local `main` and
+`origin/main` are level.
 
-**This is "CI has not run", not "CI failed".** Every gate was run locally and
-green before each commit — `pnpm test`, `pnpm test:integration`, `pnpm
-typecheck`, `pnpm lint`, `pnpm format:check`. **That is a reason to expect green,
-not evidence of it.** Decide deliberately whether to push; nothing about T1.6
-requires it.
+**WHAT CI PROVED THAT THE LOCAL GATES COULD NOT.** All five jobs passed —
+`static`, `unit`, `integration`, Playwright smoke, and `security` — and three of
+them tested something no local run had:
+
+- **Migration 0006 was applied to an EMPTY database.** The `integration` job runs
+  `pnpm db:migrate` as the real release step against a fresh PostgreSQL. Locally
+  0006 was only ever applied to an already-populated database, so **this is the
+  first evidence that the whole migration chain replays from nothing** — which is
+  exactly what ADR-003's immutability rule exists to keep true.
+- **`check-migrations-immutable` ran in CI with 0006 present**, comparing against
+  the real `origin/main` rather than a local ref.
+- **`unit` asserts no database is reachable** before running, so the 593 unit
+  tests are proven database-free rather than assumed to be.
+
+**WHAT GREEN AT `e3f40e3` DOES AND DOES NOT COVER.** It verifies the TREE at that
+sha. It does **not** verify each of the twelve commits individually — no
+intermediate sha was ever pushed, so if one of them was broken in isolation, CI
+would not have seen it. That matters only for `git bisect` and for reverts;
+`2b914fb` records one such case, where `9d1aede` was red on local `main` for one
+commit.
 
 ### ⚠ THE TRAP: AN UNSCOPED TIMEFRAME FILTER NOW RETURNS TWO INCOMPATIBLE SERIES
 
