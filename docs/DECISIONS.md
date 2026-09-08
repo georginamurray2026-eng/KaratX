@@ -15,6 +15,9 @@ Decisions are numbered, dated, and immutable once accepted. To change one, write
 | **ADR-009** | **Worker runs `tsx` in production** | **Accepted** | **2026-08-28** |
 | ADR-010 | Railway configuration mechanism | **NOT WRITTEN** — dangling reference in `.railway/railway.ts` | — |
 | **ADR-011** | **Local-only hosting for Phases 1–5** | **Accepted** | **2026-08-30** |
+| **ADR-012** | **The `Tick` contract is deferred, not forgotten** | **Accepted** | **2026-09-02** |
+| **ADR-013** | **Candle identity, conflict resolution and null comparison** | **Accepted** | **2026-09-02** |
+| **ADR-014** | **Derived candle provenance; `raw_datetime` enforcement moves out of the database** | **Accepted** | **2026-09-08** |
 
 ---
 
@@ -1191,3 +1194,101 @@ Enrichment exists at all because `provider_id` is in the primary key, so **chang
 **5. THE ENRICHMENT CASE HAS NO REAL PRODUCER, and its test is therefore synthetic.** `bid` and `ask` are null on every Twelve Data bar today, so the `null → value` path has no natural source: the test must construct the row itself. **A passing test is evidence about the RULE, not about the PATH.** Nothing has ever exercised this case with data a provider actually sent, and until something does, "enrichment works" is a statement about a fixture.
 
 **What would first exercise it for real:** a Twelve Data tier change that begins supplying bid/ask, or a second provider supplying them — noting that a second *provider* creates new rows rather than enrichment, since `provider_id` is in the primary key, so it would have to be bid/ask arriving on a series already stored under the same provider. Whichever happens first is the moment to check this rule against reality rather than against the fixture.
+
+---
+
+## ADR-014: Derived candle provenance, and `raw_datetime` enforcement moves out of the database
+
+**Date:** 2026-09-08
+**Status:** **Accepted.**
+**Task:** T1.6 (steps 3–7)
+**Supersedes:** **ADR-013 on `raw_datetime` NULLABILITY ONLY.** Every other decision in ADR-013 stands unchanged.
+**Related:** ADR-013 (candle identity), ADR-004 (classified errors), ADR-003 (migration policy), migration `0006_karatx_derived_provider`, BUILD-PLAN T1.6, obligations 49 and 62
+
+---
+
+### Decision
+
+**1. Aggregated 1H/4H/1D bars are stored in `candles`, under a provider row keyed `karatx_derived`.** Not in a separate table, and not under the vendor whose 15M bars they were computed from.
+
+**2. `candles.raw_datetime` is nullable, and NULL means "no vendor ever sent this bar".** Migration 0006 dropped the `NOT NULL`.
+
+**3. The vendor half of that constraint moves to the write boundary**, as `assertRawDatetimePresent` in `packages/db/src/queries/candles.ts`, called first in `upsertCandle`. It refuses a null, empty or non-string `raw_datetime` for any provider other than `karatx_derived`.
+
+**4. The derived provider is resolved BY KEY, never by a literal id.** `providers.id` is `GENERATED ALWAYS AS IDENTITY`.
+
+**5. No `provider_instruments` row is created for `karatx_derived`.**
+
+**6. ADR-013's exclusion of `raw_datetime` from the six-case conflict comparison is UNCHANGED**, and 0006 deliberately does not touch it.
+
+---
+
+### Reasoning
+
+#### Why a provider row, and why not a separate table
+
+ADR-013 put `provider_id` in the candle primary key because candles are per-provider rather than canonical. A derived bar is a claim about the market made by _this system_, not by Twelve Data — storing it under `twelve_data` would assert something the vendor never sent, and would collide with the 1,911 `1h` and 1,449 `1D` bars that vendor genuinely did send. So provenance has to be represented, and the primary key already has a column for exactly that.
+
+**A separate `derived_candles` table was considered and rejected, and the test applied was a specific one: name a query that must be STRUCTURALLY INCAPABLE of returning derived rows.** A separate table earns its complexity only if such a query exists — if some consumer would be _wrong_ to see a derived bar, and should be prevented by the schema rather than by a `WHERE` clause. That query was looked for and not found. Every consumer identified so far — the T1.6 aggregation reader, T1.5's detectors, the parity work of obligation 49, and the Phase 2 indicator engine — wants both provenances reachable through one read path, and would have to `UNION` them back together.
+
+**The rejection therefore rests on absence of evidence, and that is worth stating plainly rather than dressing up.** If such a query is later identified, this is the decision to revisit; splitting a table afterwards is a migration, whereas a wrong primary key is not.
+
+#### Why NULL, and not a synthesised string
+
+ADR-013 justifies `raw_datetime` in one sentence: a timezone mis-parse is **unrecoverable and undetectable** after the fact, and keeping the provider's own text is what makes it detectable. That justification is about a string that was **parsed**. A derived bar was never parsed — its `open_time` was computed from the session calendar and from constituent bars that each kept their own text.
+
+So the alternatives were to invent a datetime string, or to store the empty string. Both put a value in a column whose entire meaning is "this is what the provider sent", and both would be indistinguishable from a real rendering to every future reader. **NULL is the only value that says "there was never a wire format here" rather than "we lost it".**
+
+#### The cost, stated plainly
+
+**The guarantee left the database for EVERY provider, including the two that do send the text.** Between 0006 landing and the guard landing, a vendor bar with a null `raw_datetime` would have been stored successfully — not a hypothetical, but the observed result of the guard's own test on its first, failing run.
+
+**A `CHECK` cannot express "non-null unless derived".** PostgreSQL forbids subqueries in a `CHECK` constraint, so the constraint could not look the provider up by key; it could only name a literal id. That is precisely what decision 4 forbids, because `providers.id` is identity-generated and differs between databases — it came out as `3` on the machine 0006 was written on, and a restored or rebuilt database may assign anything. A `CHECK` hard-coding `3` would be correct where it was written and would silently name the **wrong provider** everywhere else, and the rows it mislabelled would be price series.
+
+#### The rejected alternative, and the least confident judgement in this gate
+
+**`is_derived boolean NOT NULL DEFAULT false`, plus `CHECK (is_derived OR raw_datetime IS NOT NULL)`, would restore database enforcement.** It needs no subquery, so PostgreSQL permits it, and it would make the guarantee structural again rather than procedural.
+
+It was rejected because it creates **two sources of truth for provenance** — `provider_id` and `is_derived` — which can disagree. A row with `provider_id` pointing at `karatx_derived` and `is_derived = false` is representable, and nothing would reject it; the drift would be silent, and would surface as a `raw_datetime` refusal on a bar that is genuinely derived. One fact, recorded twice, is a defect shape this project has already met more than once.
+
+**THIS IS THE LEAST CONFIDENT JUDGEMENT IN THIS GATE, AND IT IS RECORDED AS SUCH.** The argument against `is_derived` is real, but it trades a _structural_ guarantee for a _procedural_ one, and procedural guarantees are the ones that erode. **If a `raw_datetime` defect ever reaches vendor data — a NULL stored under `twelve_data` or `massive` — then `is_derived` is the argument to beat, and this row is where to start.** Do not re-derive the alternative from scratch: it was considered, and the reason it lost is narrow.
+
+#### Where the guarantee now lives
+
+`assertRawDatetimePresent` runs before the upsert statement. It **short-circuits on a string comparison before any lookup**, so the ~166,000 vendor bars of a full backfill — each carrying the provider's text — pay one `typeof` check and no additional query. The provider lookup is reachable only when `raw_datetime` is absent, which is the derived case and the error case.
+
+It is **not memoised, deliberately.** A cached id would need per-database invalidation, and the integration suite alone runs against a fresh ephemeral database with its own identity sequence every run; a stale cached id would name the wrong provider, which is the failure decision 4 exists to prevent. ADR-013 declines to add speculative indexes on the same principle: the measurement comes first. If T1.6's aggregation makes this hot, cache it then, against a number.
+
+**A caller-supplied provider id was rejected outright.** It would remove the query, and it would make the guard trust the caller it exists to check.
+
+**It is mutation-proven in both directions.** The five rejection assertions were observed failing against the unguarded upsert before the guard was written, fail again when the guard call is removed, and pass when it is restored. Two positive controls — a vendor candle _with_ a `raw_datetime`, and a `karatx_derived` candle with NULL — pass under that mutation, which is what distinguishes a working guard from a blanket refusal.
+
+The refusal is an ADR-004 `ValidationError` carrying category `validation` and policy `quarantine`: the caller is told to set the bar aside, not to retry it. Asserted in the test rather than assumed.
+
+#### No `provider_instruments` row
+
+Three reasons, all read off the live schema rather than assumed:
+
+1. **`provider_symbol` is `NOT NULL`.** The row cannot be created without supplying one.
+2. **That column holds a VENDOR SYMBOL TRANSLATION** — `XAU/USD` for `twelve_data`, `C:XAUUSD` for `massive`. A derived provider has no vendor, so any value would be an invention of exactly the kind decision 2 refuses for `raw_datetime`.
+3. **Nothing would read it.** The table exists so a request can be addressed to a vendor in that vendor's own symbol, and derived bars are never requested from anyone.
+
+#### What step 6 corrected, and what this ADR must not be read as saying
+
+**The `Candle` Zod schema in `packages/contracts` is NOT the ingestion guard, and never was.** It declares `rawDatetime: z.string().min(1)`, it is exported, it is documented, and it is **unreachable from production code**: its only references are its own unit test. Mutating it to `z.string().nullish()` fails two unit tests and **no integration test at all**, because no ingestion path calls it.
+
+**The real vendor guarantee is `parseUtcDatetime`** in `packages/providers/src/marketdata/twelvedata/parse.ts`, whose `DATETIME_PATTERN` refuses an empty or unrecognised provider datetime, and which is mutation-proven by `parse.test.ts`. That is what has actually been protecting vendor `raw_datetime` all along — not the column, and not the contract.
+
+**This is obligation 62.** Nothing in this ADR should be read as implying the `Candle` contract enforces anything. A contract that looks like a guarantee and is not is worse than no contract, because it stops people looking for the real one.
+
+---
+
+### ACCEPTED CONSEQUENCES
+
+**1. `karatx_derived` cannot encode WHICH upstream supplied the constituent 15M bars.** Every derived bar records that this system computed it, and loses the fact that it was computed from Twelve Data rather than Massive. Today there is one ingestion provider so nothing is ambiguous — but the moment T1.9 reconciliation makes a second one real, two derived series computed from different vendors would be indistinguishable in `candles`. **This is a known gap, not an oversight**, and the natural fix — a second provider row per upstream, `karatx_derived_twelve_data` and so on — is available without a schema change, precisely because provenance lives in a row rather than a column.
+
+**2. An unscoped `WHERE timeframe = '1D'` will mix provenances once step 8 writes aggregates.** `candles` already holds 1,449 vendor `1D` bars on a UTC-day boundary (obligation 49), and will hold derived `1D` bars on a 17:00-New-York session boundary. **These are different objects that will sit in the same table with the same `timeframe` value**, separated only by `provider_id`. Any query that reads daily bars without filtering on provider is wrong, and will look right. Obligation 49's parity work is the first consumer that must respect this.
+
+**3. A whitespace-only `raw_datetime` is ACCEPTED.** The guard refuses `null`, `undefined`, a non-string and the empty string; `'   '` passes. **This is a known limitation rather than an oversight:** no current writer can produce one — `parseUtcDatetime` refuses anything its pattern does not match, and the derived writer passes NULL — so tightening it would add an untestable branch guarding against a producer that does not exist. If a writer ever appears that could emit whitespace, this is the line to change, and it should be changed with a failing test first.
+
+**4. The guarantee is now procedural, and procedural guarantees erode.** Nothing prevents a future writer from reaching `candles` without going through `upsertCandle` — a raw `INSERT` in a migration, a script, or a test helper bypasses the guard entirely, and the database will accept it. **This is the direct cost of decision 2, and it is why the `is_derived` alternative above is recorded as the least confident judgement in this gate rather than as a closed question.**
