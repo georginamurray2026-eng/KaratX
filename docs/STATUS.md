@@ -299,12 +299,45 @@ whether T1.6's path is latency-sensitive; if it is not, say so and close 57 with
 a note.
 
 **Obligation 49 — 1D parity is BLOCKED on T1.6.** Of 1,449 fetched daily bars,
-**0 are at 21:00Z and 1,449 at 00:00Z**, while every golden fixture daily bar is
-at 21:00Z. Twelve Data's `1day` is a **UTC-day bar**; the fixture's day opens
-at **17:00 America/New_York**. **These are different objects and no filtering
-reconciles them.** T1.6 aggregating 15min bars onto the session calendar is what
-produces a 1D series comparable to the fixture — so **1D parity cannot be
-attempted before T1.6 and must not be attempted with the fetched series.**
+**0 are at 21:00Z and 1,449 at 00:00Z**, while the golden fixture's daily bars
+are at **21:00Z or 22:00Z**. Twelve Data's `1day` is a **UTC-day bar**; the
+fixture's day opens at **17:00 America/New_York**. **These are different objects
+and no filtering reconciles them.** T1.6 aggregating 15min bars onto the session
+calendar is what produces a 1D series comparable to the fixture — so **1D parity
+cannot be attempted before T1.6 and must not be attempted with the fetched
+series.**
+
+> **CORRECTED 2026-09-09. THIS PARAGRAPH SAID "every golden fixture daily bar is
+> at 21:00Z", AND IT WAS FALSE WHEN WRITTEN.** Measured over
+> `test/fixtures/tradingview/karatx-golden-1D.txt`: **299 bars, 211 at 21:00Z
+> and 88 at 22:00Z** — ONE local time, 17:00 `America/New_York`, rendered across
+> TWO UTC offsets, EDT and EST. The error is precisely the one this repository
+> guards against in several other places: a session boundary recorded as a fixed
+> UTC offset rather than as an IANA zone.
+>
+> **THE FINDING SURVIVES.** 00:00Z is neither 21:00Z nor 22:00Z, so the fetched
+> daily series still shares no timestamp with the fixture, and 1D parity still
+> cannot be run against it. This is a correction to the evidence, not a
+> withdrawal of the conclusion.
+>
+> **WHAT THE CORRECTION DOES CHANGE IS THE WORD "BLOCKED".** T1.6's derived 1D
+> over the same window is **302 bars, 212 at 22:00Z and 90 at 23:00Z** — 18:00
+> New York under EDT and EST, because the aggregation pins its daily boundary to
+> the `weekly_open` rule and migration 0004 moved that to 18:00 (see the
+> correction in ADR-014). Those stamps differ from the fixture's by an hour and
+> never coincide, and the two series nonetheless **join 299 of 299 on DATE KEY,
+> with zero fixture-only dates.** A date-keyed 1D parity run against the derived
+> series is therefore possible now.
+>
+> **NOT YET AN OHLC CLAIM.** The date keys correspond; the constituent bars need
+> not. The fixture's day contains the 17:00–18:00 New York hour and ours excludes
+> it as a calendar break, and migration 0004 records **816 stored bars inside
+> that window before 2026-04-05** — but that is a **REPOSITORY-WIDE** count over
+> the whole stored range from 2020, most of it earlier than the fixture window,
+> so it does **NOT** size this difference. **How many fall inside the fixture
+> window 2025-07-06 → 2026-08-31 is UNMEASURED.** On any date that holds one,
+> the two "days" do not hold the same bars. What that does to o/h/l/c is
+> unmeasured, and a parity run must establish it rather than assume it.
 
 **Also carry into T1.6:**
 
@@ -444,8 +477,13 @@ now.**
   nothing about the rate limit except that this workload cannot reach it. A real
   test must be BUILT, not waited for.
 - **1D parity cannot be done against the fetched daily series** (obligation 49).
-  0 of 1,449 fetched daily bars sit at the fixture's 21:00Z boundary; all 1,449
-  are UTC-day bars. It needs T1.6 aggregation on T1.5's calendar.
+  0 of 1,449 fetched daily bars sit at either of the fixture's two boundaries —
+  the fixture is **211 bars at 21:00Z and 88 at 22:00Z**, 17:00 New York under
+  EDT and EST — and all 1,449 are UTC-day bars. It needs T1.6 aggregation on
+  T1.5's calendar. **CORRECTED 2026-09-09:** this bullet said "the fixture's
+  21:00Z boundary", singular, which asserts one alignment where there are two
+  renderings of one. The conclusion is unchanged; the evidence for it was
+  misstated.
 - **Venue divergence is unmeasured** (obligation 43), so obligation 12's
   tolerance still cannot be a number.
 - **A provider gap wider than one window would truncate a run silently**

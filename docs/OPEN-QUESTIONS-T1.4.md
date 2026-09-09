@@ -497,6 +497,65 @@ provides for — a regression comparator for T1.6's aggregation, on the days whe
 a UTC day and a trading day happen to align. It is kept, not discarded, and it
 is not obligation 41's 1D leg.
 
+#### CORRECTION APPENDED 2026-09-09 — TWO FIGURES ABOVE ARE WRONG AND ARE LEFT STANDING
+
+**Nothing above this line has been edited.** This file's own rule says a
+prediction rewritten after the fact is worth nothing and the wrong ones are the
+valuable half; the same applies to a measurement written down wrongly. The wrong
+text is the evidence that the error was made, so it stays, and the correction is
+appended beneath it.
+
+**1. "Fixture 1D bars — all at `21:00Z`" IS FALSE.** Measured 2026-09-09 over
+`test/fixtures/tradingview/karatx-golden-1D.txt`: **299 bars, 211 at 21:00Z and
+88 at 22:00Z.** That is ONE local time — 17:00 `America/New_York` — rendered
+across TWO UTC offsets, EDT and EST. Three statements in the section above
+assert a single alignment where there are two renderings of one boundary:
+
+- the table row `| Fixture 1D bars | all at 21:00Z |`;
+- the parenthetical "(the fixture's alignment)" attached to the `21:00Z` count,
+  which makes 21:00Z definitional rather than seasonal;
+- the sentence "The fixture's daily bars open **21:00Z = 17:00
+  America/New_York**". That equation holds under EDT only. Under EST the same
+  local boundary is 22:00Z.
+
+**This is the error the rest of the repository is built to prevent** — a session
+boundary recorded as a fixed UTC offset rather than as an IANA zone.
+`packages/core/src/calendar.ts`, `packages/db/src/schema/market-hours.ts`,
+`docs/INDICATOR-SPEC.md` and `packages/db/src/calendar-seed.integration.test.ts`
+each state the two-offset rule correctly. This section did not.
+
+**2. THE FINDING SURVIVES THE CORRECTION, which is why the section stands rather
+than being withdrawn.** The fetched series is at `00:00Z`, which is neither
+`21:00Z` nor `22:00Z`. "The fetched 1D series shares NO TIMESTAMP with the golden
+fixture. Not one." remains TRUE, and 1D parity still cannot be run against the
+fetched daily series. The conclusion was right; one line of its evidence was not.
+
+**3. "aggregating 15M bars on a 17:00-NY boundary" IS ALSO WRONG.** The shipped
+aggregation rolls the session day at **18:00 New York**, not 17:00.
+`packages/core/src/timeframes/aggregate.ts` requires `dailyBoundaryLocal` to
+equal the `weekly_open` rule's `localStart` and throws when they disagree, and
+migration `0004_calendar_measured_against_twelve_data.sql` moved `weekly_open`
+from 17:00 to 18:00 on measured Twelve Data evidence. Measured over the fixture
+window, the derived 1D series is **302 bars, 212 at 22:00Z and 90 at 23:00Z** —
+18:00 New York under EDT and EST.
+
+**4. AND THE TWO SERIES DO CORRESPOND, WHICH THIS SECTION DID NOT ANTICIPATE.**
+The fixture's stamps and the derived stamps differ by one hour and never
+coincide, and the **date-key join still matches 299 of 299, with zero
+fixture-only dates.** So a date-keyed 1D parity run against the DERIVED series
+is possible. What is impossible is a parity run against the FETCHED one — which
+is what this section was about, and it should not be read as covering the
+derived series as well.
+
+**NOT YET AN OHLC CLAIM.** The date keys correspond; the constituent bars need
+not. The fixture's day contains the 17:00–18:00 New York hour and ours excludes
+it as a calendar break, and migration 0004 records **816 stored bars inside that
+window before 2026-04-05** — but that is a **REPOSITORY-WIDE** count over the
+whole stored range from 2020, most of it earlier than the fixture window, so it
+does **NOT** size this difference. **How many fall inside the fixture window
+2025-07-06 → 2026-08-31 is UNMEASURED.** On any date that holds one, the two
+"days" hold different bars. What that does to o/h/l/c is unmeasured.
+
 ---
 
 ## STEP 9 — the full 6.6-year 15M backfill. PREDICTIONS BEFORE THE RUN.
