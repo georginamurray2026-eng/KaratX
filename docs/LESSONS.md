@@ -2308,3 +2308,96 @@ numerators and denominators.
 section was not reopened — the second had already been rewritten wholesale, and
 amending the first would have been the individual fix rather than the rule. **The
 lesson is the record.** The next session to touch 58 has this to read.
+
+
+### NOTHING FORCES A SETTLED SENTENCE TO BE RE-READ WHEN THE FACT UNDER IT MOVES — three instances in one session
+
+**Not one of these was a wrong figure.** All three sentences were true when
+written and became false without anything noticing. That is what makes the class
+distinct: a wrong number is caught by the next person who checks it, because
+checking is a separate step that can fail. **A sentence that has gone stale is
+read, agreed with, and passed over — reading it is the only step, and reading it
+succeeds.**
+
+**INSTANCE 1 — REASONED, NOT CHECKED.** Obligation 12's note said the TradingView
+fixture "presumably INCLUDES" the 1,168 `daily_break` bars T1.6 excludes, and
+warned that excluding them pushed our aggregate AWAY from the fixture. It was
+inferred from what a chart is. **Nobody opened the file.** Measured: the 15m
+fixture holds **92 slots per day, not 96**, with 21:00Z–21:45Z absent, which is
+exactly 17:00–18:00 New York under EDT. OANDA has no bars in the break either, so
+excluding them moves our aggregate **TOWARD** the fixture. **The note had the sign
+backwards.** The word "presumably" was carrying the entire claim, and it was the
+only part of the sentence doing any work.
+
+**INSTANCE 2 — MIRRORED, THEN ORPHANED.** `INDICATOR-SPEC.md`'s 1D parity bullet
+was mirrored on **2026-09-04** as "1D parity input is fetched, not derived". On
+**2026-09-05** obligation 41 re-pointed the 1D leg at T1.6, precisely because
+fetching cannot deliver it. **The mirror contradicted its own source for four
+days.** **The same file already records an EIGHT-DAY version of this** — the
+2026-08-25 regression guard that contradicted ADR-008 until it was noticed on
+2026-09-04. **Twice in one file — and the precedent was invisible from where the
+second was written.** The two sit roughly **two hundred lines apart, in different
+sections**, so nothing put the earlier failure in front of whoever wrote the
+later one. **Proximity is what makes a precedent work, and a precedent in the
+same file is not necessarily near anything.**
+
+**INSTANCE 3 — A PRONOUN THAT OUTLIVED ITS REFERENT.** `INDICATOR-SPEC.md` said
+"the convention is confirmed twice and T1.6 imposes it rather than discovering
+it", where "it" resolved to the 17:00 chart boundary confirmed in the section
+above. **T1.6 imposes 18:00**, taken from `weekly_open` by migration 0004.
+The same paragraph then sent the regression guard to "the trading calendar" —
+which carries 18:00 — so it named one boundary and pointed at the other **within
+five lines**. "The convention", singular, was written when only one boundary was
+known, and it survived the arrival of the second because **a pronoun is
+completed by whoever reads it.** Anyone who already knew the calendar carried
+18:00 supplied that as the referent and found the sentence true. The only reader
+it could mislead was one who did not already know — and that reader had nothing
+to check it against. **It read correctly to everyone equipped to catch it, and
+wrongly only to the person who could not.**
+
+**THE MECHANISM, AND IT IS NOT CARELESSNESS.** Every one of these was correct
+when written and required no edit at the moment it became wrong. The fact moved
+somewhere else — into a fixture file, into an obligation row, into a migration —
+and **nothing links a fact to the sentences that depend on it.** The three are
+the three ways a sentence acquires a dependency it never declares:
+
+- **an inference** depends on a fact nobody looked up (instance 1);
+- **a mirror** depends on a source that can move without it (instance 2);
+- **a pronoun** depends on a referent that can be replaced while the sentence
+  still reads correctly (instance 3).
+
+**The third is the worst, because the sentence stays grammatical.** A stale
+figure at least looks like a figure and invites checking. "It" looks like
+nothing at all, and a reader who knows the current fact will resolve the pronoun
+to the current fact and find the sentence true.
+
+**The rule: a sentence that depends on a fact recorded elsewhere must NAME the
+fact, not point at it.** Write "the 17:00 CHART boundary", never "it" or "the
+convention". Write "obligation 41 as of 2026-09-04 says X", never "obligation 41
+says X". Use "presumably" only where the next sentence says what would settle it.
+**A named dependency can be found by grep when the fact moves. A dependency
+carried by a pronoun cannot be found at all** — not by search, and not by
+re-reading, because re-reading is what already failed.
+
+**And the cheaper half: when a fact moves, grep for it before closing the
+change.** All three were found by grep in one session, long after the change that
+invalidated them, and **every one would have been found by the same grep on the
+day the fact moved.** The cost of doing it is one search. The cost of not doing
+it was four days, eight days, and a sign error in a note about parity.
+
+**Applies to:** mirrored paragraphs, "see X" cross-references, any sentence
+containing "presumably", and every pronoun whose referent lives in another
+paragraph. **The preceding entry in this file is the
+sibling case:** "A RECORD DRIFTS TOWARD ITS OWN LAST OBSERVATION" covers a record
+that stops matching a RATE; this one covers a record that stops matching a FACT.
+Both fail silently and for the same underlying reason — **being read is not the
+same as being checked**, and documentation offers no equivalent of a test that
+goes red.
+
+**Deliberately NOT done here.** No mechanism was built. A checker that finds
+stale mirrors is a real thing to want and a large thing to specify, and naming
+one at the end of a documentation pass is how a tool acquires a name and no
+owner. **The lesson is the record.** The three corrections themselves are already
+committed — `b3ab7ed` and `a961ec6` — and each states in its own text what the
+error was, so the next reader of those paragraphs meets the failure rather than
+only the fix.
