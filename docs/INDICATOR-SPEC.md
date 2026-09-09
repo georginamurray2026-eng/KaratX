@@ -14,17 +14,27 @@ Belongs in `docs/STRATEGY_RULES.md` once the repo exists.
 |---|---|
 | Symbol | `OANDA:XAUUSD` (Gold Spot / U.S. Dollar) |
 | Execution broker | IC Markets — not a data source, see ADR-005 |
-| Daily boundary | 17:00 `America/New_York` — **CONFIRMED** |
+| Daily boundary | **TWO, an hour apart — see below.** CHART: 17:00 `America/New_York`, **CONFIRMED**, and what the golden fixtures carry. AGGREGATION: 18:00 `America/New_York`, from `weekly_open` via migration 0004, and what the derived 1D carries |
 | Chart display timezone | UTC+7 (Asia/Bangkok) — display only, never a calculation input |
 | User's operating timezone | `Asia/Bangkok` (UTC+7, no DST) |
 
 ### Daily boundary — provenance and guard
 
-Confirmed by the user on 2026-08-25 as 17:00 `America/New_York`, matching the standard spot-gold convention.
+Confirmed by the user on 2026-08-25 as 17:00 `America/New_York`, matching the standard spot-gold convention. **That is the CHART boundary** — the one OANDA draws and the golden fixtures carry. Measured over `karatx-golden-1D.txt`: 211 bars at 21:00Z and 88 at 22:00Z, one local time rendered under EDT and EST. **It is NOT the boundary this system aggregates on.**
 
-Stored as an IANA zone, **never as a fixed UTC offset.** This is 21:00 UTC during EDT and 22:00 UTC during EST. Hard-coding either value produces one wrong daily candle at each DST transition, which then corrupts previous-day high/low for the following week.
+**DISAMBIGUATED 2026-09-09 — THIS FILE SAID "the" DAILY BOUNDARY THROUGHOUT, AND THERE ARE TWO.** The second is the **AGGREGATION boundary, 18:00 `America/New_York`.** `packages/core/src/timeframes/aggregate.ts` pins the session-day roll to the `weekly_open` rule's `localStart` and throws if the two disagree, and migration `0004_calendar_measured_against_twelve_data.sql` set that rule to 18:00. The derived 1D series sits there: **212 bars at 22:00Z and 90 at 23:00Z** over the golden-fixture window.
+
+**WHY THEY DIFFER, AND WHY 18:00 IS NOT A CORRECTION OF 17:00.** ADR-008 recorded it before either was load-bearing: **Massive reopens the week at 17:00 New York and Twelve Data at 18:00 — the two venues AGREE on the daily boundary and differ by an hour on the RESTART.** Twelve Data closes at 17:00 and reopens after a one-hour break; Massive reopens immediately. Migration 0004 moved `weekly_open` and the daily break's end to 18:00 because ADR-008 made Twelve Data the ingestion feed, and this calendar's job is to answer "how many bars should have arrived?" about THAT feed. **Both boundaries are real. They belong to different venues, and the system aggregates on the feed's.** Neither supersedes the other, and a future session finding 18:00 in the calendar must not "fix" it to 17:00.
+
+**THE CONSEQUENCE FOR PARITY, STATED ONCE HERE:** a derived day is stamped one hour after the fixture's day of the same date, and the hour between them holds no expected bars — which is why the two series share no timestamp at all and still join **299 of 299 on date key.** Compare 1D by date, never by instant.
+
+Both are stored as an IANA zone, **never as a fixed UTC offset.** The CHART boundary is 21:00 UTC during EDT and 22:00 UTC during EST; the AGGREGATION boundary is 22:00 UTC during EDT and 23:00 UTC during EST. Hard-coding any of those four values produces one wrong daily candle at each DST transition, which then corrupts previous-day high/low for the following week.
+
+**AND THE TWO SETS OVERLAP AT ONE VALUE, WHICH IS THE TRAP.** `22:00Z` is the CHART boundary under EST **and** the AGGREGATION boundary under EDT. A bare `22:00Z` therefore identifies neither boundary, and a check written against it passes for the wrong reason for part of the year. Say which boundary and let the zone resolve the offset.
 
 **Retain as a regression guard in T1.6:** when aggregating 1D from 15M candles, assert our aggregate matches the provider's own daily candle. This is cheap and catches the case where the provider silently changes its alignment default at some future point. Audit finding C2 is closed, but the assertion stays.
+
+> **AND A SECOND, INDEPENDENT REASON THIS COMPARATOR DOES NOT WORK, ADDED 2026-09-09.** The note below supersedes the comparator on weekend synthesis. Even setting that aside, our aggregate sits on the **18:00** boundary and any 17:00 daily candle — the chart's, or a venue that reopens immediately — sits an hour away, so the two never share an instant to assert equality at. **Whatever this guard ends up comparing, it compares BY DATE KEY.** **AND THE EVIDENCE FOR DATE-KEY CORRESPONDENCE DOES NOT COVER THE RANGE THIS GUARD RUNS OVER.** The 299-of-299 join was measured over the FIXTURE WINDOW ALONE — 2025-07-06 to 2026-08-31 — which sits entirely inside Twelve Data's weekend-synthesis era. **This guard runs over the whole stored series, including the PRE-2025 era, where the feed had real session gaps. Date-key correspondence there is UNMEASURED.** Compare by date key regardless: that instruction holds whatever the pre-2025 correspondence turns out to be, because comparing by instant is wrong in every era. What is NOT established is that the keys all match, and a guard written as though they will is asserting something nobody has checked.
 
 > **SUPERSEDED IN ITS COMPARATOR BY ADR-008 (2026-08-27); NOTICED AND CORRECTED HERE 2026-09-04.** The guard above was written 2026-08-25, before the provider was chosen. **It cannot compare against "the provider's own daily candle"** — ADR-008 records that a 24/7 series emits Saturday and Sunday "days", so Twelve Data's daily candles are not the same object as ours. **The guard compares against the CALENDAR instead.** The intent — catch a silent alignment change — is unchanged and still worth having; only the comparator moves. This paragraph had been contradicting the ADR for eight days.
 
@@ -64,11 +74,23 @@ instrument is documented as a 24/7 "COMMODITY" venue. So the corroboration above
 is a fact about historical data, and **the boundary is no longer observable in
 that series going forward.**
 
-This does not weaken C2 — the convention is confirmed twice and T1.6 imposes it
-rather than discovering it. But the T1.6 regression guard described above cannot
-rely on a provider's own daily candle agreeing, because a 24/7 series will
-produce Saturday and Sunday "days". **The guard must compare against the trading
-calendar, not against the provider.** See STATUS.md on calendar-as-authority.
+This does not weaken C2 — the convention is confirmed twice, and T1.6 imposes a
+boundary rather than discovering one. But the T1.6 regression guard described
+above cannot rely on a provider's own daily candle agreeing, because a 24/7
+series will produce Saturday and Sunday "days". **The guard must compare against
+the trading calendar** — which carries the **18:00** aggregation boundary — **and
+not against the provider.** See STATUS.md on calendar-as-authority.
+
+> **CORRECTED 2026-09-09 — THIS PARAGRAPH SAID "T1.6 imposes IT", AND "it"
+> RESOLVED TO THE 17:00 CHART BOUNDARY CONFIRMED ABOVE. THAT WAS FALSE, NOT
+> MERELY AMBIGUOUS.** T1.6 imposes the **AGGREGATION** boundary, **18:00**, taken
+> from `weekly_open` by migration 0004. It does not impose the 17:00 chart
+> boundary anywhere, and nothing in the pipeline does. The paragraph then sent
+> the guard to "the trading calendar" two sentences later — the calendar that
+> carries 18:00 — so as written it named the calendar 17:00 and pointed at 18:00
+> within five lines. **The failure is the pronoun**: "the convention", singular,
+> was written when only one boundary was known, and survived the arrival of the
+> second because nothing forces a settled sentence to be re-read.
 
 ---
 
@@ -208,7 +230,7 @@ The engine must reproduce these within a documented tolerance. **Any bar that fa
 - **PARITY. Nothing has been asserted yet.** Having something to compare against is necessary and insufficient. Obligation 12 stays open and is narrowed to "parity not yet asserted".
 - **The engine needs ~1000 bars of history BEFORE the first golden bar** to reproduce EMA200 — obligation 41. These files are expected OUTPUT and contain no input history.
 - **THE FIXTURES AND THE FEED ARE DIFFERENT VENUES — obligation 43, raised 2026-09-04.** These files are `OANDA:XAUUSD`; ingestion is **Twelve Data** (ADR-008), and the two have **never been compared**. The nearest measured figure is Twelve Data against Massive on weekday 15M: **9–11% of bar range.** Because obligation 41's 1000 warm-up bars come from the FEED while these 299 come from TradingView, EMA200 carries `(1 − 2/201)^n` of its weight on that backfilled prefix — **100% at the first bar in these files, ~5% by the last.** Early-bar parity therefore tests the feed rather than the arithmetic, and more backfill does not fix it. **The tolerance obligation 12 requires cannot be a number until this is measured.** A 15m run beforehand is still worth doing: **a failure far larger than 11% of bar range is not venue divergence.**
-- **1D PARITY IS BLOCKED ON T1.5's CALENDAR, WHATEVER THE BACKFILL.** `karatx-golden-1D.txt` spans 2025-07-06 → 2026-08-31 — 299 bars across 421 calendar days, a ratio of 0.71, so **weekday-only**. That window sits **entirely inside Twelve Data's weekend-synthesis era** (weekend bars measured at 0 in 2020–2024, 49 on 2025-06-14, 96 from 2026), so a Twelve Data daily series over it emits Saturday and Sunday "days" this file does not contain. ADR-008 already records that consequence for T1.6's regression guard, and **it applies to a FETCHED 1D exactly as much as to an aggregated one.** Do not attempt 1D parity before the calendar can filter the feed. 1D parity input is **fetched, not derived** — obligation 41 records why, and that choice is a use of ADR-008's regression-assertion provision, **not a reversal of the 15M spine.**
+- **1D PARITY IS BLOCKED ON T1.5's CALENDAR, WHATEVER THE BACKFILL.** `karatx-golden-1D.txt` spans 2025-07-06 → 2026-08-31 — 299 bars across 421 calendar days, a ratio of 0.71, so **weekday-only**. That window sits **entirely inside Twelve Data's weekend-synthesis era** (weekend bars measured at 0 in 2020–2024, 49 on 2025-06-14, 96 from 2026), so a Twelve Data daily series over it emits Saturday and Sunday "days" this file does not contain. ADR-008 already records that consequence for T1.6's regression guard, and **it applies to a FETCHED 1D exactly as much as to an aggregated one.** Do not attempt 1D parity before the calendar can filter the feed. 1D parity input is **AGGREGATED from 15M bars on the session calendar — NOT fetched.** **CORRECTED 2026-09-09 — THIS SENTENCE SAID "fetched, not derived", AND THE MIRROR WENT STALE ONE DAY AFTER IT WAS WRITTEN.** It was mirrored here on **2026-09-04**, when "fetched, not derived" was the standing decision. Obligation 41's **2026-09-05** update re-pointed the 1D leg at **T1.6** precisely because fetching cannot deliver it: the fetched daily series is a UTC-day bar at `00:00Z` and shares no timestamp with the fixture, so no quantity of it produces a comparable series. The fetched series is kept as ADR-008's regression comparator, which is a different job from being the parity input. **THE FAILURE IS THE MIRROR, NOT THE FIGURE — and this bullet was REASONED from a decision rather than checked against it.** The text was copied to where a parity run would actually read it and then never revisited, so it contradicted its own source for four days. That is the same failure the SUPERSEDED note earlier in this file records against the 2026-08-25 guard, which contradicted ADR-008 for eight days: **a mirror is a second place to be wrong unless something makes it follow the first.** The 15M spine is unchanged, and aggregating 1D from it was never a reversal of ADR-008.
 - **The 300-row export cap is an INFERENCE, not a measurement.** All three files came back at 299 data rows + 1 header while the script requested 300, and identical counts across three different timeframes is not chance. But every capture requested 300, so a cap of exactly 300 has never been distinguished from any other explanation. **One re-run at `logLastNBars = 500` would settle it — tracked as obligation 42, which blocks obligation 40's longer capture.** Until then, do not record 300 as the limit.
 
 ---
