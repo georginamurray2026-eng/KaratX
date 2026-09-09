@@ -17,7 +17,8 @@
     "backfill": "tsx src/bin/backfill-run.ts",
     "detect:baseline": "tsx src/bin/detect-baseline.ts",
     "detect:gaps": "tsx src/bin/detect-gaps.ts",
-    "detect:stale": "tsx src/bin/detect-stale.ts"
+    "detect:stale": "tsx src/bin/detect-stale.ts",
+    "probe:roundtrip": "tsx src/bin/roundtrip-probe.ts"
   },
   "dependencies": {
     "@karatx/config": "workspace:*",

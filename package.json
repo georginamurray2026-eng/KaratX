@@ -37,7 +37,8 @@
     "detect:baseline": "pnpm --filter @karatx/worker detect:baseline",
     "ci:status": "node scripts/ci-status.mjs",
     "detect:gaps": "pnpm --filter @karatx/worker detect:gaps",
-    "detect:stale": "pnpm --filter @karatx/worker detect:stale"
+    "detect:stale": "pnpm --filter @karatx/worker detect:stale",
+    "probe:roundtrip": "pnpm --filter @karatx/worker probe:roundtrip"
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "^4.7.2",

@@ -2252,3 +2252,59 @@ costs almost nothing to measure once.
 against the total will appear to work whenever anything else in the path
 improves, and its own contribution is never isolated. Measure the baseline
 before, not after.
+
+
+### A RECORD DRIFTS TOWARD ITS OWN LAST OBSERVATION
+
+Two of this repository's records made standing claims that were true when
+written and had quietly stopped being current. Neither is a defect. Both are the
+same shape.
+
+**Obligation 58** records that `pnpm ci:status` cannot reliably answer, "OBSERVED
+THREE TIMES in three days", twice blocking verification for 25–40 minutes. In
+the T1.6 close-out it answered cleanly **three times in one session** — before
+the push, after it, and again while polling a run to completion. The row reads
+as a monotonic account of a check failing, because **it has nowhere to put
+evidence on the other side, and so carries none.**
+
+**STATUS.md's handoff** warned that the Postgres container "was stopped
+afterwards, so nothing has re-read the database since", and instructed the next
+session to re-verify before relying on any figure. The container had been **up
+two days and healthy**. The warning was correct when written and would have cost
+a cold session a needless restart, plus a suspicion of every number beneath it.
+
+**NEITHER WAS WRONG WHEN WRITTEN, AND THAT IS WHAT MAKES THIS HARD.** There was
+no error to catch at the time. The drift happens afterwards, in the gap between
+an observation being recorded and the world moving on from it.
+
+**The mechanism, and it is asymmetric.** A record written from one observation
+keeps reading as current until something contradicts it **loudly enough to be
+worth an edit**. A LOUD contradiction — a check failing in a new way, a
+migration refusing to apply — produces work, and the work produces an update. A
+QUIET contradiction produces nothing to do. **A check simply working is the
+quietest event available**: there is no output to paste, no failure to diagnose,
+and no natural moment at which someone opens the file. So records accumulate
+failures and never accumulate successes, and a reader six sessions later takes
+the accumulated failures for the current rate.
+
+**This compounds with severity.** The louder a record's wording, the more it
+resists quiet correction — nobody edits "OBSERVED THREE TIMES" to add "and it
+worked fine today" without feeling they are weakening a warning. The wording that
+makes a record useful is the wording that makes it hard to keep honest.
+
+**The rule: when a record makes a standing claim about INTERMITTENT behaviour, a
+contradicting observation is worth one line even when it changes nothing.** Not
+a re-scope, not a discharge, not a softening of the warning — one dated line
+saying the other thing was observed. An intermittent fault's rate is the fact
+that matters, and a rate cannot be read off a list containing only one of its two
+outcomes.
+
+**Applies to:** anything recorded as "flaky", "intermittent", "observed N
+times", "unreliable", or "has failed before". Those are all frequency claims
+wearing the clothes of an existence claim, and a frequency claim needs both
+numerators and denominators.
+
+**Deliberately NOT done here.** Obligation 58 was not amended and the STATUS.md
+section was not reopened — the second had already been rewritten wholesale, and
+amending the first would have been the individual fix rather than the rule. **The
+lesson is the record.** The next session to touch 58 has this to read.

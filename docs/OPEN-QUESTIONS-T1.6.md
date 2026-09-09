@@ -717,6 +717,33 @@ environment measurement that happens to vary by more than 2x, and quoting one
 of them as "the" cost would be quoting noise. A genuinely cold read — cold OS
 cache too — still has not been measured.
 
+### PEAK RSS — 321.3 MB dry run, 295.2 MB real run
+
+Against **166,344 bars held in memory at once**. The job reads the spine in 81
+month chunks but accumulates all of them before aggregating, deliberately: a
+period straddling a chunk boundary would otherwise be judged against a required
+set truncated by the chunk.
+
+**RECORDED LATE, AND THAT IS THE POINT OF RECORDING IT.** Peak RSS was in the
+acceptance criteria, was measured on both runs, was reported, and was then left
+out of the first write-up — the only figure in the criteria with no home in the
+repository until now. Every other number landed in OQ-24 or the run results.
+
+**IT IS THE FIGURE THAT MATTERS IF THE SHAPE OF THE INPUT EVER CHANGES**, and
+the two obvious changes both multiply it:
+
+- **A second instrument** doubles the spine, and nothing in the job streams —
+  two instruments aggregated in one process hold both series at once.
+- **A shorter timeframe.** `1min` instead of `15min` is 15x the rows for the
+  same span, so ~2.5 million bars and, on this scaling, several gigabytes.
+
+**Neither is a problem today and neither is guarded against.** ~300 MB for 6.6
+years of one instrument is unremarkable; the reason to write it down is that the
+accumulate-then-aggregate decision is invisible in the wall clock and shows up
+only here. If either change is ever made, this is the number that moves first,
+and the fix — aggregating period by period as chunks arrive — is a real
+restructuring rather than a tuning knob.
+
 ### THE VERIFICATIONS
 
 On a fresh connection, after run 1:
