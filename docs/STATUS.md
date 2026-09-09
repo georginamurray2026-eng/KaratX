@@ -271,6 +271,19 @@ baseline that the rate detector does not yet exist to compare against.**
    the run. The Sunday-evening term is ~0, not the 1,705 first claimed, and what
    the 3,237 is made of is unknown. Holidays are the hypothesis and
    `market_holidays` is still EMPTY.
+
+   > **CORRECTED 2026-09-09 — THE HOLIDAY HYPOTHESIS IS CONTRADICTED FOR THE
+   > SYNTHESIS ERA, AND THAT HALVES THE SEARCH SPACE.** A holiday after the era
+   > change does NOT produce missing bars. Twelve Data delivers a complete
+   > synthetic session, so the holiday produces a **phantom COMPLETE day** with a
+   > flat range instead — obligation 64. **Holidays can therefore explain no part
+   > of the 3,237 after the era change, and the whole total has to be accounted
+   > for from the PRE-2025 era alone.** Obligation 55's search space halves.
+   > **And one concrete slice of it is now known:** the April 2025 feed gap is
+   > **~322 absent 15M bars, roughly 10% of the total, out of a single week**
+   > (obligation 65) — and it is an outage, not a holiday. The hypothesis was not
+   > merely unproven; for half the range it was looking for the wrong shape
+   > entirely.
 2. **No `stale_feed` row has ever been written.** `occurred_at` stability is
    proven in unit tests only. The first real outage, or T1.7's polling, is what
    tests it against the database.
