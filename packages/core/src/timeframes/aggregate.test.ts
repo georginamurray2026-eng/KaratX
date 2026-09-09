@@ -287,7 +287,7 @@ describe('aggregate - 1D on the session boundary', () => {
     expect(r.bars[0]!.constituentCount).toBe(92)
   })
 
-  it('IANA zone, not a fixed offset: the same local 18:00 is 21:00Z under EST', () => {
+  it('IANA zone, not a fixed offset: the same local 18:00 is 23:00Z under EST', () => {
     // January - EST, UTC-5. The session opens at 23:00Z, not 22:00Z. A fixed
     // -4 offset would put the boundary an hour out and silently reshape the day.
     const r = aggregate(bars('2026-01-12T23:00:00Z', '2026-01-13T22:00:00Z'), '1D', config())

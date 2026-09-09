@@ -104,7 +104,9 @@ const LEGS: readonly Leg[] = [
       '    bars, so nothing tests the cap. It stays OPEN.\n' +
       '    WEEKEND BARS WILL BE STORED AND THAT IS EXPECTED, not a defect: the calendar\n' +
       '    is T1.5 and does not exist yet. Counted, not filtered.\n' +
-      '    AND WATCH THE ALIGNMENT: the fixture stamps daily bars 21:00Z (17:00 New York).\n' +
+      '    AND WATCH THE ALIGNMENT: the fixture stamps daily bars at 17:00 America/New_York,\n' +
+      '    which is 21:00Z under EDT and 22:00Z under EST - 211 and 88 of its 299 bars.\n' +
+      '    ONE local time, TWO UTC offsets: never match the fixture on a fixed offset.\n' +
       '    A date-only `datetime` parses to 00:00Z, which is a DIFFERENT daily boundary -\n' +
       '    UTC days rather than trading days.',
     expectMinBars: 1299,
