@@ -268,6 +268,29 @@ export const expectsBarAt = (
     }
     const from = weekMinutesOf(rule.dayOfWeek, rule.localStart)
     const to = weekMinutesOf(rule.dayOfWeek, rule.localEnd)
+
+    // OBLIGATION 69. An inverted interval was previously accepted SILENTLY and
+    // matched nothing - both endpoints come from the same `dayOfWeek`, so
+    // `to <= from` makes the test below unsatisfiable for every instant, leaving
+    // the window the rule was written to close OPEN on every date it was in
+    // force. `<=` rather than `<`: equal endpoints are a zero-length break,
+    // which is the same silent no-op arrived at a different way.
+    //
+    // COMPARED AS MINUTES, not as strings. String comparison happens to work
+    // for zero-padded `HH:MM:SS`, and a comparison that works by accident is
+    // what the weekly wrap above is written as an explicit branch to avoid.
+    //
+    // IN THE LOOP RATHER THAN UP FRONT, DELIBERATELY. `expectsBarAt` runs once
+    // per 15M slot - OQ-21 measured 464,062 calls in a single T1.6 aggregation
+    // run - so an up-front pass over every rule would repeat on every one of
+    // them. Any rule in force is reached within a day of querying, so this
+    // position costs detection LATENCY and nothing else.
+    if (to <= from) {
+      throw new Error(
+        `daily_break rule ${rule.id} does not end after it starts: ${rule.localStart} to ${rule.localEnd}; midnight-spanning breaks are not supported`,
+      )
+    }
+
     if (now >= from && now < to) return 'closed'
   }
 

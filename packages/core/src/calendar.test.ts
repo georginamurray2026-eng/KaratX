@@ -256,5 +256,58 @@ describe('expectsBarAt', () => {
       )
       expect(() => expectsBarAt(odd, [], at('2026-04-01T12:00:00Z'))).toThrow(/whole minute/)
     })
+
+    /**
+     * OBLIGATION 69. Both endpoints of a `daily_break` are computed from
+     * `rule.dayOfWeek` (calendar.ts:269-270), so an interval that does not end
+     * AFTER it starts - INVERTED, or ZERO-LENGTH - yields `to <= from`, and
+     * `now >= from && now < to` is unsatisfiable for EVERY instant. The two are
+     * the same silent no-op reached two ways, which is why one guard refuses
+     * both and this one test asserts both.
+     *
+     * WHAT THE THROW REPLACES, WHICH IS THE POINT OF THIS TEST: before the guard
+     * such a rule was accepted SILENTLY and matched nothing. The break it
+     * describes never fired, so the window it was written to close stayed OPEN
+     * on every date it was in force - with no error from the code, and none from
+     * `market_hours_span_check`, which tests null-ness only. **A closure rule
+     * that closes nothing, reported by nobody, is the failure being refused.**
+     *
+     * THE DECISION IS TO REFUSE, not to implement midnight-spanning breaks.
+     * Obligation 69 records why, and records it as DEFERRED rather than closed:
+     * an instrument that genuinely needs one relaxes the invariant then, with a
+     * real case and its own tests.
+     */
+    it('REJECTS a daily_break that does not end after it starts, instead of silently leaving the window it should close OPEN', () => {
+      // Wednesday 17:30 New York - INSIDE the 17:00-18:00 break when the
+      // interval is the right way round. Chosen so this test is about the
+      // inversion rather than about an arbitrary instant.
+      const inside = at('2026-04-01T21:30:00Z')
+
+      // POSITIVE CONTROL. Without it the throw below could be about an instant
+      // the break never covered, and the test would pass for the wrong reason.
+      expect(expectsBarAt(RULES, [], inside)).toBe('closed')
+
+      const inverted = RULES.map((rule) =>
+        rule.ruleType === 'daily_break' && rule.dayOfWeek === 3
+          ? { ...rule, localStart: '18:00:00', localEnd: '17:00:00' }
+          : rule,
+      )
+
+      // MATCHED ON THE MESSAGE, not a bare toThrow(): a bare one would pass if
+      // some unrelated error fired, and a test that cannot say which assertion
+      // failed is not evidence.
+      expect(() => expectsBarAt(inverted, [], inside)).toThrow(/does not end after it starts/)
+
+      // ZERO LENGTH IS ASSERTED HERE, IN CI, RATHER THAN ONLY PROBED BY HAND.
+      // The guard is `<=`. A future change weakening it to `<` would silently
+      // accept zero-length breaks again - the same no-op arrived at a different
+      // way, and nothing else in the suite would catch it.
+      const zeroLength = RULES.map((rule) =>
+        rule.ruleType === 'daily_break' && rule.dayOfWeek === 3
+          ? { ...rule, localStart: '17:00:00', localEnd: '17:00:00' }
+          : rule,
+      )
+      expect(() => expectsBarAt(zeroLength, [], inside)).toThrow(/does not end after it starts/)
+    })
   })
 })
