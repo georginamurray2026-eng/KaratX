@@ -50,6 +50,13 @@
       "when": 1788871461576,
       "tag": "0006_karatx_derived_provider",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789045284503,
+      "tag": "0007_refuse_inverted_daily_break",
+      "breakpoints": true
     }
   ]
 }

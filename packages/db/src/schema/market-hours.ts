@@ -132,6 +132,31 @@ export const marketHours = pgTable(
       'market_hours_span_check',
       sql`(${table.ruleType} = 'daily_break') = (${table.localEnd} IS NOT NULL)`,
     ),
+    // OBLIGATION 69. An interval that does not end AFTER it starts - inverted,
+    // or zero-length - matches no instant at all, because `expectsBarAt`
+    // computes both endpoints from the same `dayOfWeek`. Such a rule closed
+    // nothing, on every date it was in force, and reported nothing. The
+    // application guard refuses it; this is what makes the refusal structural,
+    // because ADR-014's accepted consequence 4 records that a procedural
+    // guarantee erodes - a raw INSERT in a migration, a script or a test helper
+    // reaches this table without passing through the code.
+    //
+    // SEPARATE FROM `market_hours_span_check`, NOT FOLDED INTO IT. That one says
+    // a break HAS an end; this says the end is AFTER the start. A combined
+    // constraint fails without saying which half broke.
+    //
+    // THIS PREDICATE IS TOTAL - always TRUE or FALSE, never NULL - and the
+    // explicit `rule_type` test is what makes it so rather than being defensive
+    // decoration. `market_hours_span_check` already guarantees `local_end IS NOT
+    // NULL` for every `daily_break` row, so the comparison cannot be NULL where
+    // it is reached, and the left disjunct is TRUE for every other rule_type.
+    // **Nothing here rests on a CHECK passing when its expression is NULL**,
+    // which is the three-valued behaviour a bare `local_end > local_start` would
+    // have leaned on for the weekly rules.
+    check(
+      'market_hours_break_order_check',
+      sql`${table.ruleType} <> 'daily_break' OR ${table.localEnd} > ${table.localStart}`,
+    ),
     check(
       'market_hours_effective_range_check',
       sql`${table.effectiveTo} IS NULL OR ${table.effectiveTo} > ${table.effectiveFrom}`,

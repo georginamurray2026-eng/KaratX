@@ -1,0 +1,1 @@
+ALTER TABLE "market_hours" ADD CONSTRAINT "market_hours_break_order_check" CHECK ("market_hours"."rule_type" <> 'daily_break' OR "market_hours"."local_end" > "market_hours"."local_start");

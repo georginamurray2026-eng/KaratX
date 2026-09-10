@@ -122,4 +122,75 @@ describe('trading calendar seed', () => {
       { key: 'twelve_data', provider_symbol: 'XAU/USD' },
     ])
   })
+
+  /**
+   * OBLIGATION 69, THE DATABASE HALF.
+   *
+   * The application guard landed at c87f7ce: `expectsBarAt` throws on a
+   * `daily_break` that does not end after it starts. **That proves the CODE
+   * refuses. It proves nothing about the DATABASE**, which accepts such a row
+   * today - `market_hours_span_check` tests null-ness only, so an interval that
+   * closes nothing satisfies every constraint the table currently carries.
+   *
+   * ADR-014's accepted consequence 4 is why the code guard alone is not enough:
+   * "the guarantee is now procedural, and procedural guarantees erode", because
+   * nothing stops a raw INSERT in a migration, a script or a test helper
+   * reaching this table without passing through `expectsBarAt`. **This test is
+   * the specification the CHECK has to satisfy.**
+   *
+   * EVERY INSERT RUNS IN ITS OWN TRANSACTION AND IS ROLLED BACK, on the failing
+   * path and the succeeding one alike. Assertions above count rows and assert
+   * DISTINCT values - the per-type counts, the two `local_start` values, the
+   * single 60-minute break duration - and a row left behind would break them
+   * somewhere other than where it was written. The last assertion proves
+   * nothing leaked.
+   */
+  it('the DATABASE refuses a daily_break that does not end after it starts', async () => {
+    // ONE TRANSACTION PER INSERT. A failed statement aborts its transaction, so
+    // a shared one would make every later assertion fail with "current
+    // transaction is aborted" rather than with its own reason.
+    const insertBreak = async (localStart: string, localEnd: string): Promise<void> => {
+      const client = await pool.connect()
+      try {
+        await client.query('BEGIN')
+        await client.query(
+          `INSERT INTO market_hours
+             (instrument_id, rule_type, day_of_week, local_start, local_end, timezone, effective_from)
+           VALUES ((SELECT id FROM instruments WHERE symbol = 'XAU/USD'),
+                   'daily_break', 3, $1, $2, 'America/New_York', DATE '2020-01-24')`,
+          [localStart, localEnd],
+        )
+      } finally {
+        await client.query('ROLLBACK')
+        client.release()
+      }
+    }
+
+    // POSITIVE CONTROL. Without it, a rejection below could be about the INSERT
+    // being malformed - a missing column, a bad foreign key - rather than about
+    // the interval, and the test would be red for the wrong reason before the
+    // fix and green for the wrong reason after it.
+    await expect(insertBreak('17:00:00', '18:00:00')).resolves.toBeUndefined()
+
+    // MATCHED ON THE CONSTRAINT NAME, which Postgres reports. A bare "it threw"
+    // would also pass if the row were refused by the foreign key, by a NOT NULL,
+    // or by `market_hours_span_check` - and a test that cannot say which
+    // assertion fired is not evidence.
+    await expect(insertBreak('18:00:00', '17:00:00')).rejects.toThrow(
+      /market_hours_break_order_check/,
+    )
+
+    // Zero length is the same silent no-op reached a different way. The
+    // constraint is `>` rather than `>=` precisely so that it is refused too.
+    await expect(insertBreak('17:00:00', '17:00:00')).rejects.toThrow(
+      /market_hours_break_order_check/,
+    )
+
+    // NOTHING LEAKED. Four seeded breaks, Mon-Thu. A leftover row would break
+    // the per-type count above and the break-duration assertion with it.
+    const remaining = await pool.query<{ n: string }>(
+      `SELECT count(*) AS n FROM market_hours WHERE rule_type = 'daily_break'`,
+    )
+    expect(Number(remaining.rows[0]?.n)).toBe(4)
+  })
 })
