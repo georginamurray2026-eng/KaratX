@@ -157,6 +157,18 @@ it was measured: *"WHICH US HOLIDAYS ACTUALLY AFFECT SPOT GOLD IS UNMEASURED.
 XAU/USD is OTC, not COMEX… Do not seed this from a futures calendar without
 checking it against Massive first."*
 
+**WHERE THE RELEASES' CONTENTS BELONG, AND THE FACT THAT THEY ARE NOT RECORDED
+ANYWHERE — obligation 70.** Everything above names the source and bounds what it
+may be used for. **It enumerates no date, and nothing else in this repository
+does either.** The home for the contents is
+**`docs/EXTERNAL-HOLIDAY-SOURCES.md`** — issuer, publication date, source URL,
+retrieval date, and the dates transcribed from the re-fetched artefact, per
+release. **UNTIL OBLIGATION 70 IS DISCHARGED THAT DOCUMENT DOES NOT EXIST AND
+THE CONTENTS ARE UNRECORDED**, so the set in §2 can be read but not
+independently checked. **No dates are duplicated into this section**; §2 is the
+set and `EXTERNAL-HOLIDAY-SOURCES.md` will be the evidence for it, and a third
+copy would be a third thing to drift.
+
 ### 3.2 AUTHORITATIVE HISTORICAL CME COMEX METALS MATERIAL COULD NOT BE OBTAINED
 
 For **2020–2025**, no authoritative CME COMEX metals holiday-and-hours record was
