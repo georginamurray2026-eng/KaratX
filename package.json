@@ -41,15 +41,15 @@
     "probe:roundtrip": "pnpm --filter @karatx/worker probe:roundtrip"
   },
   "devDependencies": {
-    "@eslint-community/eslint-plugin-eslint-comments": "^4.7.2",
+    "@eslint-community/eslint-plugin-eslint-comments": "^4.8.0",
     "@eslint/js": "^10.0.1",
     "@types/node": "^24.13.3",
-    "eslint": "^10.9.1",
+    "eslint": "^10.10.0",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.9.6",
     "railway": "^3.11.0",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.69.0",
+    "typescript-eslint": "^8.70.0",
     "vitest": "^4.1.11"
   }
 }
