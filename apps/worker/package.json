@@ -26,9 +26,9 @@
     "@karatx/core": "workspace:*",
     "@karatx/db": "workspace:*",
     "@karatx/providers": "workspace:*",
-    "drizzle-orm": "^0.45.2",
-    "pg": "^8.23.0",
-    "tsx": "^4.23.13"
+    "drizzle-orm": "^0.45.3",
+    "pg": "^8.23.1",
+    "tsx": "^4.23.15"
   },
   "devDependencies": {
     "@karatx/test-support": "workspace:*",
